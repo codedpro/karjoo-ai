@@ -1,0 +1,48 @@
+import Link from "next/link";
+
+import { site } from "@/lib/site";
+
+const nav = [
+  { href: "#features", label: "امکانات" },
+  { href: "#how", label: "چطور کار می‌کند" },
+  { href: "#boards", label: "سایت‌های پشتیبانی‌شده" },
+  { href: "/blog", label: "وبلاگ" },
+];
+
+export function SiteHeader() {
+  return (
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
+        <Link href="/" className="flex items-center gap-2 font-bold text-lg">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white">
+            ک
+          </span>
+          <span>{site.name}</span>
+        </Link>
+
+        <nav className="hidden items-center gap-7 text-sm text-muted md:flex">
+          {nav.map((item) => (
+            <Link key={item.href} href={item.href} className="transition-colors hover:text-foreground">
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="flex items-center gap-2">
+          <Link
+            href="#cta"
+            className="hidden rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5 sm:inline-block"
+          >
+            ورود
+          </Link>
+          <Link
+            href="#cta"
+            className="rounded-full bg-gradient-to-l from-brand to-brand-2 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-brand/30 transition-transform hover:-translate-y-0.5"
+          >
+            شروع رایگان
+          </Link>
+        </div>
+      </div>
+    </header>
+  );
+}

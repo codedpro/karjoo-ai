@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #0b1220;
+
+  /* برند کارجو — بنفش/نیلی */
+  --brand: #5b3df5;
+  --brand-2: #8b5cf6;
+  --accent: #06b6d4;
+  --muted: #64748b;
+  --card: #ffffff;
+  --border: #e7e8ee;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-2: var(--brand-2);
+  --color-accent: var(--accent);
+  --color-muted: var(--muted);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --font-sans: var(--font-vazir);
+  --font-display: var(--font-vazir);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #070a13;
+    --foreground: #eef1f8;
+    --muted: #94a3b8;
+    --card: #0e1322;
+    --border: #1e2640;
+  }
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-vazir), Tahoma, "Segoe UI", system-ui, sans-serif;
+  /* اعداد فارسی برای حس بومی */
+  font-feature-settings: "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* در RTL، اعداد لاتین داخل متن فارسی باید چپ‌به‌راست بمانند */
+.ltr-nums {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* محتوای وبلاگ از موتور IT Master (HTML خام) — تایپوگرافی پایه و RTL */
+.prose-fa {
+  line-height: 2;
+}
+.prose-fa h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 2rem 0 0.75rem;
+}
+.prose-fa h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.5rem;
+}
+.prose-fa p {
+  margin: 0.85rem 0;
+}
+.prose-fa ul,
+.prose-fa ol {
+  margin: 0.85rem 0;
+  padding-inline-start: 1.5rem;
+}
+.prose-fa li {
+  margin: 0.35rem 0;
+}
+.prose-fa a {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.prose-fa img {
+  border-radius: 0.75rem;
+  margin: 1.25rem 0;
+}
