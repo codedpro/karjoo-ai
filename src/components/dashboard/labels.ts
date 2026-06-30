@@ -54,3 +54,47 @@ export const BOARD_ACCOUNT_STATUS: Record<
   expired: { label: "منقضی", tone: "amber" },
   needs_reauth: { label: "نیازمند اتصال مجدد", tone: "rose" },
 };
+
+/**
+ * برچسب + لحنِ نشانِ تگ‌های مدلِ هوش مصنوعی (Track A). کلیدها = تگ‌های catalog-sync
+ * (recommended/premium/cheap/fast/persian). توضیح (title) برای راهنمای کاربر.
+ */
+export const MODEL_TAGS: Record<
+  string,
+  {
+    label: string;
+    tone: "brand" | "accent" | "muted" | "green" | "amber" | "rose";
+    title: string;
+  }
+> = {
+  recommended: {
+    label: "پیشنهادی",
+    tone: "brand",
+    title: "انتخابِ متعادلِ پیشنهادیِ کارجو برای این ارائه‌دهنده",
+  },
+  premium: {
+    label: "پریمیوم",
+    tone: "accent",
+    title: "قوی‌ترین و گران‌ترین مدلِ این ارائه‌دهنده",
+  },
+  cheap: {
+    label: "اقتصادی",
+    tone: "green",
+    title: "کم‌هزینه — مناسبِ مصرفِ زیاد",
+  },
+  fast: { label: "سریع", tone: "amber", title: "پاسخِ سریع‌تر با تأخیرِ کم" },
+  persian: {
+    label: "فارسیِ بهتر",
+    tone: "muted",
+    title: "کیفیتِ بهترِ زبانِ فارسی",
+  },
+};
+
+/** ترتیبِ نمایشِ تگ‌ها روی کارتِ مدل (مهم‌ترین اول). */
+export const MODEL_TAG_ORDER = [
+  "recommended",
+  "premium",
+  "cheap",
+  "fast",
+  "persian",
+] as const;

@@ -11,7 +11,14 @@ import { site } from "@/lib/site";
 
 import { signOut } from "./actions";
 
-type NavKey = "home" | "matches" | "applications" | "interests" | "resume";
+type NavKey =
+  | "home"
+  | "matches"
+  | "applications"
+  | "interests"
+  | "resume"
+  | "models"
+  | "billing";
 
 const NAV: { key: NavKey; href: string; label: string; icon: string }[] = [
   { key: "home", href: "/dashboard", label: "خانه", icon: "🏠" },
@@ -29,6 +36,8 @@ const NAV: { key: NavKey; href: string; label: string; icon: string }[] = [
     icon: "📨",
   },
   { key: "resume", href: "/dashboard/resume", label: "رزومه", icon: "📄" },
+  { key: "models", href: "/dashboard/models", label: "مدلِ هوش مصنوعی", icon: "🤖" },
+  { key: "billing", href: "/dashboard/billing", label: "کیف‌پول", icon: "💳" },
 ];
 
 export function DashboardShell({
