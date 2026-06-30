@@ -1,6 +1,8 @@
 # سرویس‌های توسعه‌ی محلی کارجو (Karjoo local-dev services).
 # پایگاه‌داده‌ی کنترل‌پلین (control plane) — جدا از موتور محتوای IT Master.
-# اجرا: `npm run db:up`  →  `npm run db:generate` → `npm run db:migrate`
+# اجرا: `npm run db:up` → `npm run db:migrate` → `npm run db:seed`
+# (db:seed یک‌بار کاتالوگِ مدل‌ها را پر می‌کند؛ بدونِ آن مدل‌پیکر خالی و اولین
+#  فراخوانیِ پولیِ هوش مصنوعی بی‌قیمت می‌ماند. idempotent — تکرارش بی‌خطر است.)
 
 services:
   db:

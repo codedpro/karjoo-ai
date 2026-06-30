@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 import { getTableName } from "drizzle-orm";
 
 import {
+  aiModelCatalog,
+  aiProviderEnum,
   applications,
   applyTypeEnum,
   auditEvents,
@@ -16,7 +18,9 @@ import {
   jobBoardEnum,
   jobCategories,
   jobListings,
+  ledgerKindEnum,
   matches,
+  planEnum,
   profileImportStatusEnum,
   profileImports,
   rawListings,
@@ -27,8 +31,13 @@ import {
   sessionShapeEnum,
   taskStatusEnum,
   tasks,
+  usageKindEnum,
+  usageRecords,
+  userAiSettings,
   userInterests,
   users,
+  wallets,
+  walletLedger,
   workerNodes,
 } from "@/db/schema";
 
@@ -86,5 +95,27 @@ describe("schema داربست کارجو", () => {
     expect(tasks.idempotencyKey).toBeDefined();
     expect(tasks.runAfter).toBeDefined();
     expect(tasks.attempts).toBeDefined();
+  });
+
+  it("جدول‌های بیلینگ/مترینگ (کیف‌پول) را صادر می‌کند", () => {
+    const billing: Record<string, ReturnType<typeof getTableName>> = {
+      ai_model_catalog: getTableName(aiModelCatalog),
+      user_ai_settings: getTableName(userAiSettings),
+      wallets: getTableName(wallets),
+      wallet_ledger: getTableName(walletLedger),
+      usage_records: getTableName(usageRecords),
+    };
+    for (const [expected, actual] of Object.entries(billing)) {
+      expect(actual, `نام جدول ${expected} باید درست باشد`).toBe(expected);
+    }
+  });
+
+  it("enumهای بیلینگ با مقادیر درست تعریف شده‌اند", () => {
+    expect(aiProviderEnum.enumValues).toEqual(["openai", "anthropic", "google"]);
+    expect(planEnum.enumValues).toEqual(["free", "payg", "premium"]);
+    expect(ledgerKindEnum.enumValues).toEqual(["topup", "charge", "refund", "grant"]);
+    expect(usageKindEnum.enumValues).toEqual(["match", "cover_letter", "resume_parse"]);
+    // users.plan افزوده شده (پیش‌فرض payg).
+    expect(users.plan).toBeDefined();
   });
 });

@@ -11,6 +11,7 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx --conditions=react-server src/db/seed-catalog.ts",
     "db:up": "docker compose up -d db"
   },
   "dependencies": {

@@ -13,6 +13,7 @@
  */
 import {
   type AnyPgColumn,
+  bigint,
   boolean,
   doublePrecision,
   index,
@@ -133,6 +134,47 @@ export const profileImportStatusEnum = pgEnum("profile_import_status", [
   "failed",
 ]);
 
+/* ─────────────────────  Billing / metering (مدلِ کیف‌پول)  ───────────────── */
+
+/**
+ * ارائه‌دهنده‌ی مدلِ هوش مصنوعی — هم‌راستا با مسیریابیِ گیت‌وی 1xai بر اساسِ پیشوندِ
+ * نامِ مدل: gpt-*→openai، claude-*→anthropic، gemini-*→google.
+ */
+export const aiProviderEnum = pgEnum("ai_provider", [
+  "openai",
+  "anthropic",
+  "google",
+]);
+
+/** پلنِ اشتراکِ کاربر: رایگان | پرداخت‌به‌ازای‌مصرف | پریمیوم. */
+export const planEnum = pgEnum("plan", ["free", "payg", "premium"]);
+
+/**
+ * نوعِ رویدادِ دفترِ کیف‌پول (wallet_ledger):
+ *   • topup  — شارژِ کیف‌پول توسطِ کاربر (مثبت).
+ *   • charge — کسرِ بابتِ یک فراخوانیِ پولیِ هوش مصنوعی (منفی).
+ *   • refund — بازگردانیِ هزینه (مثبت).
+ *   • grant  — اعتبارِ هدیه/پلنِ پریمیوم (مثبت).
+ */
+export const ledgerKindEnum = pgEnum("ledger_kind", [
+  "topup",
+  "charge",
+  "refund",
+  "grant",
+]);
+
+/**
+ * نوعِ مصرفِ پولیِ هوش مصنوعی (usage_records):
+ *   • match        — امتیازدهی/تطبیقِ شغل (scoreAndDraft).
+ *   • cover_letter — نگارشِ انگیزه‌نامه (در صورتِ فراخوانیِ جدا).
+ *   • resume_parse — ساخت‌یافته‌سازیِ فیلدهای رزومه با هوش مصنوعی.
+ */
+export const usageKindEnum = pgEnum("usage_kind", [
+  "match",
+  "cover_letter",
+  "resume_parse",
+]);
+
 /* ───────────────────────────────  Tables  ──────────────────────────────── */
 
 /** کاربر — احراز هویت با OTP پیامکی (شماره موبایل ایران). */
@@ -142,6 +184,8 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     phone: text("phone").notNull(), // E.164، مثلاً +98912...
     fullName: text("full_name"),
+    /** پلنِ اشتراکِ کاربر — پیش‌فرض پرداخت‌به‌ازای‌مصرف (payg). */
+    plan: planEnum("plan").notNull().default("payg"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -655,6 +699,130 @@ export const profileImports = pgTable(
   ],
 );
 
+/* ───────────────────  Billing / metering tables (کیف‌پول)  ──────────────── */
+
+/**
+ * کاتالوگِ مدل‌های هوش مصنوعی — منبعِ حقیقتِ قیمت‌گذاری (به تومان) و قابلیت‌ها.
+ *
+ * با catalog-sync از گیت‌وی 1xai پر می‌شود؛ اگر اندپوینت در دسترس نباشد، با SEED
+ * منحنیِ مدل‌های شناخته‌شده پر می‌شود تا هرگز خالی نماند. قیمت‌ها «به‌ازای هر ۱۰۰۰
+ * توکن، به تومان» ذخیره می‌شوند (bigint — صحیح، بدونِ خطای ممیزِ شناور).
+ */
+export const aiModelCatalog = pgTable(
+  "ai_model_catalog",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: aiProviderEnum("provider").notNull(),
+    /** شناسه‌ی مدل در گیت‌وی (مثلاً gpt-4o-mini) — یکتا. */
+    modelId: text("model_id").notNull(),
+    displayName: text("display_name").notNull(),
+    /** قیمتِ ورودی به‌ازای هر ۱۰۰۰ توکن، به تومان. */
+    inputPer1kToman: bigint("input_per_1k_toman", { mode: "number" }).notNull(),
+    /** قیمتِ خروجی به‌ازای هر ۱۰۰۰ توکن، به تومان. */
+    outputPer1kToman: bigint("output_per_1k_toman", { mode: "number" }).notNull(),
+    /** پنجره‌ی متن (context window) — در صورتِ گزارشِ گیت‌وی. */
+    contextWindow: integer("context_window"),
+    /** برچسب‌ها: recommended | premium | cheap | fast | persian … (برای UI). */
+    tags: text("tags").array().notNull().default([]),
+    enabled: boolean("enabled").notNull().default(true),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("ai_model_catalog_model_uq").on(t.modelId),
+    index("ai_model_catalog_provider_idx").on(t.provider),
+    index("ai_model_catalog_enabled_idx").on(t.enabled),
+  ],
+);
+
+/**
+ * مدلِ انتخابیِ کاربر (کاربر × یک تنظیم). فراخوانی‌های پولیِ کاربر با این مدل اجرا
+ * می‌شوند مگر اینکه درخواست صریحاً مدلِ دیگری بدهد. یکتا روی userId.
+ */
+export const userAiSettings = pgTable(
+  "user_ai_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: aiProviderEnum("provider").notNull(),
+    modelId: text("model_id").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("user_ai_settings_user_uq").on(t.userId)],
+);
+
+/**
+ * کیف‌پولِ کاربر (کاربر × یک کیف‌پول). موجودی به تومان (bigint — صحیح).
+ * یکتا روی userId؛ هر کاربر دقیقاً یک کیف‌پول دارد.
+ */
+export const wallets = pgTable(
+  "wallets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    balanceToman: bigint("balance_toman", { mode: "number" }).notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("wallets_user_uq").on(t.userId)],
+);
+
+/**
+ * دفترِ کیف‌پول (append-only) — هر تغییرِ موجودی یک ردیف. amountToman علامت‌دار
+ * (+ شارژ/هدیه/بازگشت، − کسر)؛ balanceAfterToman موجودیِ پس از این رویداد را تثبیت
+ * می‌کند تا تاریخچه‌ی حسابرسی‌پذیر بماند. refType/refId به منبعِ رویداد اشاره می‌کند.
+ */
+export const walletLedger = pgTable(
+  "wallet_ledger",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: ledgerKindEnum("kind").notNull(),
+    /** مبلغِ علامت‌دار به تومان (+ topup/grant/refund، − charge). */
+    amountToman: bigint("amount_toman", { mode: "number" }).notNull(),
+    /** موجودیِ پس از این رویداد — برای حسابرسیِ تاریخی. */
+    balanceAfterToman: bigint("balance_after_toman", { mode: "number" }).notNull(),
+    /** نوعِ منبعِ رویداد، مثلاً 'usage_record' | 'topup' | 'grant'. */
+    refType: text("ref_type"),
+    refId: text("ref_id"),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("wallet_ledger_user_created_idx").on(t.userId, t.createdAt)],
+);
+
+/**
+ * رکوردِ مصرفِ پولیِ هوش مصنوعی — یک ردیف به‌ازای هر فراخوانیِ مترشده. توکن‌های
+ * مصرف‌شده + هزینه‌ی بالادست (1xai) + درصدِ حاشیه‌ی سود + هزینه‌ی نهاییِ کسرشده از کاربر.
+ */
+export const usageRecords = pgTable(
+  "usage_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: usageKindEnum("kind").notNull(),
+    provider: aiProviderEnum("provider").notNull(),
+    modelId: text("model_id").notNull(),
+    promptTokens: integer("prompt_tokens").notNull().default(0),
+    completionTokens: integer("completion_tokens").notNull().default(0),
+    /** هزینه‌ی خامِ بالادست (1xai) به تومان — پیش از حاشیه‌ی سود. */
+    upstreamCostToman: bigint("upstream_cost_toman", { mode: "number" }).notNull(),
+    /** درصدِ حاشیه‌ی سودِ کارجو که هنگامِ این فراخوانی اعمال شد. */
+    marginPct: integer("margin_pct").notNull(),
+    /** هزینه‌ی نهاییِ کسرشده از کیف‌پولِ کاربر به تومان (بالادست × (۱ + حاشیه)). */
+    costToman: bigint("cost_toman", { mode: "number" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("usage_records_user_created_idx").on(t.userId, t.createdAt)],
+);
+
 /* ─────────────────────  Inferred types (برای پایین‌دست)  ────────────────── */
 
 export type User = typeof users.$inferSelect;
@@ -695,3 +863,19 @@ export type UserInterest = typeof userInterests.$inferSelect;
 export type NewUserInterest = typeof userInterests.$inferInsert;
 export type ProfileImport = typeof profileImports.$inferSelect;
 export type NewProfileImport = typeof profileImports.$inferInsert;
+/** مقادیرِ enumهای بیلینگ به‌صورتِ unionِ نوع‌دار (برای امضای توابعِ لایه‌ی billing). */
+export type AiProvider = (typeof aiProviderEnum.enumValues)[number];
+export type Plan = (typeof planEnum.enumValues)[number];
+export type LedgerKind = (typeof ledgerKindEnum.enumValues)[number];
+export type UsageKind = (typeof usageKindEnum.enumValues)[number];
+
+export type AiModelCatalogRow = typeof aiModelCatalog.$inferSelect;
+export type NewAiModelCatalogRow = typeof aiModelCatalog.$inferInsert;
+export type UserAiSettings = typeof userAiSettings.$inferSelect;
+export type NewUserAiSettings = typeof userAiSettings.$inferInsert;
+export type Wallet = typeof wallets.$inferSelect;
+export type NewWallet = typeof wallets.$inferInsert;
+export type WalletLedgerRow = typeof walletLedger.$inferSelect;
+export type NewWalletLedgerRow = typeof walletLedger.$inferInsert;
+export type UsageRecord = typeof usageRecords.$inferSelect;
+export type NewUsageRecord = typeof usageRecords.$inferInsert;

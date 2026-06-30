@@ -74,7 +74,17 @@ const envSchema = z.object({
   // پیش‌فرض `./uploads` در ریشه‌ی پروژه (در .gitignore) استفاده می‌شود. مسیرِ مطلق
   // یا نسبی هر دو پذیرفته می‌شود (نسبی نسبت به cwd حل می‌شود).
   KARJOO_UPLOADS_DIR: optionalNonEmpty(z.string().min(1)),
+
+  // ── حاشیه‌ی سودِ کارجو روی فراخوانیِ پولیِ هوش مصنوعی (billing) ─────────────
+  // درصدِ سودِ کارجو روی قیمتِ بالادستِ 1xai. هزینه‌ی نهاییِ کاربر:
+  //   costToman = upstreamCostToman × (۱ + KARJOO_AI_MARGIN_PCT/۱۰۰).
+  // اختیاری؛ اگر تنظیم نشود پیش‌فرضِ ۲۰٪ استفاده می‌شود (resolveMarginPct()).
+  // عددِ صحیحِ نامنفی (رشته‌ی محیط به عدد coerce می‌شود).
+  KARJOO_AI_MARGIN_PCT: optionalNonEmpty(z.coerce.number().int().min(0)),
 });
+
+/** درصدِ پیش‌فرضِ حاشیه‌ی سود اگر KARJOO_AI_MARGIN_PCT تنظیم نشده باشد. */
+export const DEFAULT_AI_MARGIN_PCT = 20;
 
 type Env = z.infer<typeof envSchema>;
 
@@ -152,6 +162,15 @@ export function requireAuthPepper(): string {
     );
   }
   return env.AUTH_TOKEN_PEPPER;
+}
+
+/**
+ * درصدِ حاشیه‌ی سودِ کارجو روی فراخوانیِ پولیِ هوش مصنوعی. هرگز throw نمی‌کند: اگر
+ * KARJOO_AI_MARGIN_PCT تنظیم نشده باشد، پیش‌فرضِ DEFAULT_AI_MARGIN_PCT برمی‌گردد.
+ * این تابع را در محاسبه‌ی هزینه (src/lib/billing/pricing.ts) صدا بزنید.
+ */
+export function resolveMarginPct(): number {
+  return env.KARJOO_AI_MARGIN_PCT ?? DEFAULT_AI_MARGIN_PCT;
 }
 
 /** پیکربندیِ حل‌شده‌ی ارائه‌دهنده‌ی پیامک — یکی از Kavenegar یا providerِ عمومی. */

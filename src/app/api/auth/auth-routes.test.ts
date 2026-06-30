@@ -54,7 +54,7 @@ const clearSessionCookieMock = vi.mocked(authHttp.clearSessionCookie);
 const logoutByTokenMock = vi.mocked(authHttp.logoutByToken);
 const createPairingCodeMock = vi.mocked(createPairingCode);
 
-const USER = { id: "u1", phone: "+989121234567", fullName: null, isActive: true, createdAt: new Date(), updatedAt: new Date() };
+const USER = { id: "u1", phone: "+989121234567", fullName: null, plan: "payg" as const, isActive: true, createdAt: new Date(), updatedAt: new Date() };
 
 function jsonRequest(url: string, body: unknown): Request {
   return new Request(url, {

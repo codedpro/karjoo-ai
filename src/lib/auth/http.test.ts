@@ -398,6 +398,7 @@ describe("publicUser", () => {
       id: "u1",
       phone: PHONE,
       fullName: null,
+      plan: "payg",
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),

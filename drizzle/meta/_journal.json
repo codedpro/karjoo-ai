@@ -22,6 +22,13 @@
       "when": 1782829806486,
       "tag": "0002_flat_johnny_blaze",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782833288604,
+      "tag": "0003_red_night_thrasher",
+      "breakpoints": true
     }
   ]
 }
