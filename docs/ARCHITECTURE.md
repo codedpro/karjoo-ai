@@ -130,10 +130,10 @@ The `src/lib/apply/` layer already has the right contracts — we **extend**, no
   Proves the actual moat (AI matching), slots into the existing scaffold.
 - **Phase 2 — Extension MVP (standard tier).** MV3 extension drains the user's own
   queue and applies on Jobinja in the user's browser; dedupe + throttle + report-back.
-- **Phase 3 — Session vault + capture. 🚫 PARKED (see §10).** Server-side credential
-  replay is ToS-violating; not built.
-- **Phase 4 — Worker nodes (premium 24/7). 🚫 PARKED (see §10).** Unattended
-  credential replay from Iranian nodes is parked.
+- **Phase 3 — Auto-apply: extension background apply (Free/Pro) + toggle + local session
+  refresh.** In scope (§10), guardrailed (toggle, caps, threshold, audit, no evasion).
+- **Phase 4 — Worker fleet (Max/Max+ 24/7): node registration + secure dispatch +
+  per-plan IP limits + server-commanded auto-update + session vault/refresh.** In scope (§10), guardrailed.
 - **Phase 5 — Scale boards.** JobVision (token/API), then IranTalent, contact-type boards.
 - **Phase 6 — Polish.** Human-approval mode, analytics, proof screenshots, billing/tiers, alerts.
 
@@ -153,15 +153,32 @@ serves that same user — already locked.)
 - **Browser extension as a USER-PRESENT assistant** — pre-fills the application;
   the user reviews and approves each submit (smart autofill). Defensible assistive automation.
 
-**🚫 SKIP / PARK — ToS-violating or evasion**
-- **Server-side replay of users' stored session cookies/tokens** from our own / Iranian
-  nodes (automated access using stored credentials).
-- **The anti-bot / geo "humanization" + fingerprint-matching layer** — its purpose is
-  evading detection / circumventing access controls.
-- **Unattended mass auto-submit "while you sleep"** with no human in the loop.
+**⚖️ AUTO-APPLY — IN SCOPE (owner decision, 2026-06-30), with guardrails.** (This
+supersedes the earlier "parked" stance; recorded honestly.) Auto-apply is core across
+tiers, gated by an explicit user **"auto-apply" toggle** (one-time consent, revocable).
+Two execution paths, both acting ONLY as the consenting user on their own accounts/data:
+- **Free/Pro — extension background apply.** With the toggle ON, the MV3 background
+  service worker (chrome.alarms) applies to queued, above-threshold matches **in the
+  user's OWN browser** even when the popup is closed (while the browser runs), using the
+  user's live session. It periodically refreshes its **local** session snapshot
+  (cookies + localStorage + sessionStorage) for the target boards so it keeps working as
+  sessions rotate. Session stays on the device.
+- **Max/Max+ — server worker apply.** The user's session is captured into the encrypted,
+  perishable **vault** (`session_blobs`) and replayed by **Iranian worker nodes** (1 IP
+  Max, 5 IPs Max+) so apply runs 24/7 **without** the extension. The extension keeps the
+  vaulted session fresh.
 
-The DB keeps `session_blobs` / `worker_nodes` / `apply_channel` as a harmless data
-model, but the **credential-replay engine** that would drive them is parked. Net
-reframe: from *"credential-replay auto-apply bot"* → *"AI job-search copilot +
-user-approved assisted apply"* — more defensible, still high value. The premium tier
-becomes assisted-apply + richer AI tailoring + priority, **not** unattended replay.
+Guardrails on BOTH paths (non-negotiable): the opt-in toggle; **per-day caps** (Free
+100/day; plan-based otherwise); a **match-quality threshold**; a full **audit trail**; a
+user's session/data only ever serves **that same user** (never cross-user); and
+reasonable **throttling/jitter for politeness + account-safety**.
+
+**THE ONE FIRM LINE (unchanged): NO detection-evasion.** We do not build fingerprint
+spoofing, captcha-solving, identity rotation, or any feature whose purpose is to defeat a
+platform's bot-detection / access controls. Using the user's OWN session faithfully (its
+real cookies/UA) is acting as the authorized user — not evasion.
+
+Honest residual risk (owner-accepted): this violates the boards' ToS for automated
+access; accounts can be banned; storing live sessions server-side (Max/Max+) is a real
+security liability → encrypted at rest, short retention, per-user isolation, tight
+access. Quality-gating + caps + the toggle exist to protect the user's account (the asset).
