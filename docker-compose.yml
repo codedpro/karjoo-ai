@@ -1,0 +1,27 @@
+# سرویس‌های توسعه‌ی محلی کارجو (Karjoo local-dev services).
+# پایگاه‌داده‌ی کنترل‌پلین (control plane) — جدا از موتور محتوای IT Master.
+# اجرا: `npm run db:up`  →  `npm run db:generate` → `npm run db:migrate`
+
+services:
+  db:
+    image: postgres:16
+    container_name: karjoo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: karjoo
+      POSTGRES_USER: karjoo
+      POSTGRES_PASSWORD: karjoo
+    # پورت میزبان قابل‌تنظیم (پیش‌فرض 5432). در ماشین‌های مشترک که 5432 اشغال است
+    # می‌توان با KARJOO_DB_PORT آن را عوض کرد بدون دست‌زدن به این فایل.
+    ports:
+      - "${KARJOO_DB_PORT:-5432}:5432"
+    volumes:
+      - karjoo-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U karjoo -d karjoo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  karjoo-db-data:

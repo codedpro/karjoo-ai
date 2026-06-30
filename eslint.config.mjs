@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // افزونه‌ی MV3 پکیج مستقل با lint/build مخصوص خود است.
+    "extension/**",
   ]),
 ]);
 
