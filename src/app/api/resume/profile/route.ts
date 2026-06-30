@@ -1,0 +1,51 @@
+import "server-only";
+
+/**
+ * PATCH /api/resume/profile — ذخیره‌ی نسخه‌ی ویرایش‌شده‌ی کاربر روی پروفایلِ کارجو.
+ *
+ * پس از اینکه کاربر فیلدهای استخراج‌شده‌ی AI را در UI دید و تصحیح کرد، این مسیر را با
+ * فیلدهای نهایی صدا می‌زند. مستقل از AI/فایل است؛ فقط candidate_profiles را به‌روز می‌کند.
+ *
+ * امنیت (قاعده‌ی ۴): userId از نشستِ وب گرفته می‌شود، نه از بدنه — پروفایلِ هر کاربر فقط
+ * توسطِ خودش ویرایش می‌شود. هیچ رازی برنمی‌گردد.
+ */
+import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
+import { getCurrentUser } from "@/lib/auth/http";
+import { resumeProfileSaveSchema } from "@/lib/resume/api-schemas";
+import { saveProfileFields } from "@/lib/resume/service";
+
+// به DB دست می‌زند → اجرای Node لازم است.
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function PATCH(request: Request): Promise<Response> {
+  return withErrorHandling(async () => {
+    // ۱) احراز هویتِ وب.
+    const user = await getCurrentUser();
+    if (!user) {
+      return errorJson("احراز هویت لازم است", 401);
+    }
+
+    // ۲) اعتبارسنجیِ بدنه (parseJsonBody در شکست خودش ۴۰۰ می‌دهد).
+    const body = await parseJsonBody(request, resumeProfileSaveSchema);
+
+    // ۳) ذخیره/upsert پروفایل — به نشست مقید.
+    const profile = await saveProfileFields(user.id, {
+      fullName: body.fullName,
+      headline: body.headline ?? null,
+      city: body.city ?? null,
+      yearsExperience: body.yearsExperience ?? null,
+      skills: body.skills,
+    });
+
+    return json({
+      profile: {
+        fullName: profile.fullName,
+        headline: profile.headline,
+        city: profile.city,
+        yearsExperience: profile.yearsExperience,
+        skills: profile.skills,
+      },
+    });
+  });
+}
