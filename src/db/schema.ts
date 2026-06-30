@@ -98,6 +98,11 @@ export const auditEventTypeEnum = pgEnum("audit_event_type", [
   "apply_queued",
   "apply_submitted",
   "apply_failed",
+  // اپلای خودکار (WF auto-apply، قاعده‌ی ۱): هر تلاش/تصمیمِ اپلایِ خودکار یک ردیف می‌نویسد.
+  "auto_apply_enabled", // کاربر تاگلِ اپلای خودکار را روشن کرد (رضایت).
+  "auto_apply_disabled", // کاربر تاگل را خاموش کرد (لغوِ رضایت).
+  "auto_apply_attempted", // یک آیتمِ اپلایِ خودکار از صف برداشته شد (claim).
+  "auto_apply_skipped", // آیتم به‌دلیلِ آستانه/سقف/خاموش‌بودنِ تاگل رد شد.
 ]);
 
 /** هدفِ یک کد OTP — ورود/ثبت‌نام یا اتصال یک حساب سایت کاریابی. */
@@ -895,6 +900,37 @@ export const appSettings = pgTable(
   (t) => [uniqueIndex("app_settings_key_uq").on(t.key)],
 );
 
+/* ─────────────────  Auto-apply: تاگلِ رضایت + آستانه (قاعده‌ی ۱)  ────────── */
+
+/**
+ * تنظیماتِ «اپلای خودکار» به‌ازای هر کاربر (کاربر × یک ردیف، یکتا روی userId).
+ *
+ * قاعده‌ی ۱ (CONTEXT/§۱۰): هیچ‌چیز به‌صورت خودکار اپلای نمی‌شود مگر کاربر این تاگل را
+ * صریحاً روشن کند (رضایتِ یک‌باره، قابلِ لغو در هر زمان). پیش‌فرضِ `enabled` = false.
+ * `minScore` آستانه‌ی امتیازِ تطبیق است که هر اپلایِ خودکار باید از آن بگذرد (پیش‌فرض
+ * ۰٫۷). سقفِ روزانه جداگانه از طریقِ apply-quota (پلن) اعمال می‌شود؛ اینجا فقط تاگل و
+ * آستانه نگه‌داری می‌شود. هر تغییرِ تاگل یک ردیفِ audit_events می‌نویسد.
+ */
+export const userAutoApply = pgTable(
+  "user_auto_apply",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** تاگلِ رضایتِ اپلای خودکار — پیش‌فرض خاموش (هیچ اپلای خودکاری بدونِ روشن‌کردنِ صریح). */
+    enabled: boolean("enabled").notNull().default(false),
+    /** آستانه‌ی امتیازِ تطبیق (۰..۱) که هر اپلایِ خودکار باید از آن بگذرد. پیش‌فرض ۰٫۷. */
+    minScore: doublePrecision("min_score").notNull().default(0.7),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // یک ردیفِ تنظیمات به‌ازای هر کاربر.
+    uniqueIndex("user_auto_apply_user_uq").on(t.userId),
+  ],
+);
+
 /* ─────────────────────  Inferred types (برای پایین‌دست)  ────────────────── */
 
 export type User = typeof users.$inferSelect;
@@ -955,3 +991,5 @@ export type AppAiBudgetRow = typeof appAiBudget.$inferSelect;
 export type NewAppAiBudgetRow = typeof appAiBudget.$inferInsert;
 export type AppSettingsRow = typeof appSettings.$inferSelect;
 export type NewAppSettingsRow = typeof appSettings.$inferInsert;
+export type UserAutoApplyRow = typeof userAutoApply.$inferSelect;
+export type NewUserAutoApplyRow = typeof userAutoApply.$inferInsert;

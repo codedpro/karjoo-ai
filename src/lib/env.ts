@@ -98,6 +98,23 @@ const envSchema = z.object({
   // سقفِ تعدادِ آگهیِ پردازش‌شده در هر اجرای ارکستریتور (جلوگیری از fan-outِ نامحدودِ
   // فراخوانیِ مدل در یک اجرا). اختیاری؛ پیش‌فرض ۲۵. عددِ صحیحِ مثبت.
   KARJOO_ORCHESTRATOR_RUN_CAP: optionalNonEmpty(z.coerce.number().int().positive()),
+
+  // ── خزانه‌ی نشست (session vault — Max/Max+ track C، قاعده‌ی ۴) ───────────────
+  // کلیدِ AES-256-GCM برای رمزنگاریِ بلابِ نشستِ کاربر در خزانه. یک کلیدِ ۳۲ بایتیِ
+  // base64 یا hex. اختیاری در بوت: اگر تنظیم نشده باشد، /api/session/refresh یک خطای
+  // روشنِ «پیکربندی‌نشده» می‌دهد و *هرگز* نشستِ خام را ذخیره نمی‌کند (fail-closed).
+  // requireVaultKey() اگر کلید کم/نامعتبر باشد VaultNotConfiguredError می‌دهد.
+  KARJOO_VAULT_KEY: optionalNonEmpty(z.string().min(1)),
+
+  // ── اپلای خودکار: راهنماییِ زمان‌بندیِ افزونه (advisory) ─────────────────────
+  // فاصله‌ی زمانیِ chrome.alarms برای درینِ صفِ اپلایِ خودکار، به دقیقه. اختیاری؛
+  // پیش‌فرض ۱۵. این فقط به افزونه «توصیه» می‌شود (در پاسخِ تنظیمات)؛ خودِ سرور با آن
+  // کاری نمی‌کند. عددِ صحیحِ مثبت.
+  KARJOO_AUTO_APPLY_ALARM_MINUTES: optionalNonEmpty(z.coerce.number().int().positive()),
+  // کفِ بازه‌ی jitterِ ادبِ اپلای خودکار، به میلی‌ثانیه (advisory برای افزونه). پیش‌فرض ۲۰۰۰.
+  KARJOO_AUTO_APPLY_JITTER_MS_MIN: optionalNonEmpty(z.coerce.number().int().min(0)),
+  // سقفِ بازه‌ی jitterِ ادبِ اپلای خودکار، به میلی‌ثانیه (advisory برای افزونه). پیش‌فرض ۸۰۰۰.
+  KARJOO_AUTO_APPLY_JITTER_MS_MAX: optionalNonEmpty(z.coerce.number().int().min(0)),
 });
 
 /** درصدِ پیش‌فرضِ حاشیه‌ی سود اگر KARJOO_AI_MARGIN_PCT تنظیم نشده باشد. */
@@ -115,6 +132,15 @@ export const DEFAULT_AI_MAX_OUTPUT_TOKENS = 1200;
 export const DEFAULT_AI_TIMEOUT_MS = 60_000;
 /** سقفِ پیش‌فرضِ تعدادِ آگهیِ پردازش‌شده در هر اجرای ارکستریتور. */
 export const DEFAULT_ORCHESTRATOR_RUN_CAP = 25;
+
+/* ─────────────  پیش‌فرض‌های اپلای خودکار (advisory برای افزونه)  ──────────── */
+
+/** فاصله‌ی پیش‌فرضِ chrome.alarms برای درینِ صفِ اپلای خودکار، به دقیقه. */
+export const DEFAULT_AUTO_APPLY_ALARM_MINUTES = 15;
+/** کفِ پیش‌فرضِ بازه‌ی jitterِ ادبِ اپلای خودکار، به میلی‌ثانیه. */
+export const DEFAULT_AUTO_APPLY_JITTER_MS_MIN = 2_000;
+/** سقفِ پیش‌فرضِ بازه‌ی jitterِ ادبِ اپلای خودکار، به میلی‌ثانیه. */
+export const DEFAULT_AUTO_APPLY_JITTER_MS_MAX = 8_000;
 
 type Env = z.infer<typeof envSchema>;
 
@@ -236,6 +262,40 @@ export function aiTimeoutMs(): number {
 /** سقفِ تعدادِ آگهیِ پردازش‌شده در هر اجرای ارکستریتور (env یا پیش‌فرض ۲۵). */
 export function orchestratorRunCap(): number {
   return env.KARJOO_ORCHESTRATOR_RUN_CAP ?? DEFAULT_ORCHESTRATOR_RUN_CAP;
+}
+
+/* ─────────────  حل‌کننده‌های خزانه‌ی نشست + اپلای خودکار  ─────────────────── */
+
+/**
+ * کلیدِ خامِ خزانه (KARJOO_VAULT_KEY) را برمی‌گرداند، یا `null` اگر تنظیم نشده باشد.
+ *
+ * این تابع هرگز throw نمی‌کند و کلید را *رمزگشایی/اعتبارسنجی نمی‌کند*؛ صرفاً مقدارِ خام
+ * (یا null) را می‌دهد. اعتبارسنجی (طولِ ۳۲ بایت، base64/hex) و خطای typedِ
+ * VaultNotConfiguredError در src/lib/vault/crypto.ts انجام می‌شود — تا env.ts به لایه‌ی
+ * رمزنگاری وابسته نشود و «server-only»بودنِ آن لایه حفظ بماند.
+ */
+export function vaultKeyRaw(): string | null {
+  return env.KARJOO_VAULT_KEY ?? null;
+}
+
+/** آیا کلیدِ خزانه اصلاً تنظیم شده است؟ (برای پاسخِ سریعِ «پیکربندی‌نشده» بدونِ decode). */
+export function isVaultConfigured(): boolean {
+  return Boolean(env.KARJOO_VAULT_KEY);
+}
+
+/** فاصله‌ی chrome.alarms اپلای خودکار به دقیقه (env یا پیش‌فرض ۱۵) — advisory. */
+export function autoApplyAlarmMinutes(): number {
+  return env.KARJOO_AUTO_APPLY_ALARM_MINUTES ?? DEFAULT_AUTO_APPLY_ALARM_MINUTES;
+}
+
+/**
+ * بازه‌ی jitterِ ادبِ اپلای خودکار به میلی‌ثانیه (advisory برای افزونه).
+ * اگر env معکوس باشد (min > max)، به‌صورتِ دفاعی جابه‌جا می‌شوند تا همیشه min ≤ max بماند.
+ */
+export function autoApplyJitterMs(): { min: number; max: number } {
+  const a = env.KARJOO_AUTO_APPLY_JITTER_MS_MIN ?? DEFAULT_AUTO_APPLY_JITTER_MS_MIN;
+  const b = env.KARJOO_AUTO_APPLY_JITTER_MS_MAX ?? DEFAULT_AUTO_APPLY_JITTER_MS_MAX;
+  return a <= b ? { min: a, max: b } : { min: b, max: a };
 }
 
 /** پیکربندیِ حل‌شده‌ی ارائه‌دهنده‌ی پیامک — یکی از Kavenegar یا providerِ عمومی. */
