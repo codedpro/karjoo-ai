@@ -10,6 +10,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { AiMaintenanceBanner } from "@/components/dashboard/ai-maintenance-banner";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import {
   getDashboardCounts,
@@ -36,6 +37,11 @@ export default async function DashboardHomePage() {
 
   return (
     <DashboardShell active="home">
+      {/* بنرِ نگه‌داریِ هوش مصنوعی — فقط در حالتِ نگه‌داری (سقفِ بودجه/پرچمِ دستی) دیده می‌شود. */}
+      <div className="mb-6 empty:hidden">
+        <AiMaintenanceBanner />
+      </div>
+
       <Suspense fallback={<HeadingSkeleton />}>
         <Welcome userId={user.userId} fallbackName={user.fullName} />
       </Suspense>

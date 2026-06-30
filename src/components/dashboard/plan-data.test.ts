@@ -1,0 +1,121 @@
+/**
+ * تست‌های لایه‌ی وضعیتِ پلنِ کاربر (`plan-data.ts`) — Track A.
+ *
+ * DB، هسته‌ی موجودی (getBalance) و شمارشِ اپلای (countAppliesToday) mock می‌شوند —
+ * هیچ DB/شبکه‌ی زنده. تمرکز:
+ *   • نرمال‌سازیِ پلنِ تاریخی (payg→free) در planKey.
+ *   • وضعیتِ گرنتِ ماهِ جاری از روی وجود/نبودِ ردیفِ دفترِ 'grant' (بدونِ نوشتن).
+ *   • پلنِ نامحدود (pro/…): سهمیه null و *بدونِ* کوئریِ شمارشِ اپلای (مسیرِ ارزان).
+ *   • پلنِ Free: سهمیه ۱۰۰ و باقی‌مانده درست محاسبه می‌شود.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const h = vi.hoisted(() => {
+  const selectResults: unknown[][] = [];
+  return { selectResults };
+});
+
+vi.mock("@/lib/billing/wallet", () => ({ getBalance: vi.fn() }));
+vi.mock("@/lib/billing/apply-quota", () => ({ countAppliesToday: vi.fn() }));
+vi.mock("@/db", () => ({
+  db: {
+    select: vi.fn(() => {
+      const rows = h.selectResults.shift() ?? [];
+      const builder: Record<string, unknown> = {};
+      const ret = () => builder;
+      builder.from = ret;
+      builder.where = ret;
+      builder.limit = () => Promise.resolve(rows);
+      builder.then = (resolve: (r: unknown[]) => unknown) =>
+        Promise.resolve(resolve(rows));
+      return builder;
+    }),
+  },
+}));
+
+import { getBalance } from "@/lib/billing/wallet";
+import { countAppliesToday } from "@/lib/billing/apply-quota";
+import { getUserPlanStatus } from "@/components/dashboard/plan-data";
+
+const getBalanceMock = vi.mocked(getBalance);
+const countAppliesMock = vi.mocked(countAppliesToday);
+
+function pushSelect(rows: unknown[]) {
+  h.selectResults.push(rows);
+}
+
+// زمانی قطعی برای period (UTC) — ۲۰۲۶-۰۶.
+const NOW = Date.UTC(2026, 5, 15);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  h.selectResults.length = 0;
+});
+
+describe("getUserPlanStatus", () => {
+  it("Free با گرنتِ اعمال‌نشده: سهمیه ۱۰۰، باقی‌مانده درست، اعتبار ۰", async () => {
+    pushSelect([{ plan: "free" }]); // readRawPlan
+    pushSelect([]); // readGrantApplied → ردیفِ گرنت نیست
+    getBalanceMock.mockResolvedValue(0);
+    countAppliesMock.mockResolvedValue(7);
+
+    const status = await getUserPlanStatus("user-1", NOW);
+    expect(status.planKey).toBe("free");
+    expect(status.balanceToman).toBe(0);
+    expect(status.grant.period).toBe("2026-06");
+    expect(status.grant.granted).toBe(false);
+    expect(status.grant.amountToman).toBe(0);
+    expect(status.apply.limit).toBe(100);
+    expect(status.apply.usedToday).toBe(7);
+    expect(status.apply.remaining).toBe(93);
+    expect(countAppliesMock).toHaveBeenCalledWith("user-1");
+  });
+
+  it("پلنِ تاریخیِ payg به free نرمال می‌شود", async () => {
+    pushSelect([{ plan: "payg" }]);
+    pushSelect([]);
+    getBalanceMock.mockResolvedValue(5_000);
+    countAppliesMock.mockResolvedValue(0);
+
+    const status = await getUserPlanStatus("user-1", NOW);
+    expect(status.planKey).toBe("free");
+    expect(status.rawPlan).toBe("payg");
+  });
+
+  it("pro: سهمیه نامحدود (null) و هیچ کوئریِ شمارشِ اپلای زده نمی‌شود", async () => {
+    pushSelect([{ plan: "pro" }]);
+    pushSelect([{ id: "ledger-1" }]); // گرنتِ این ماه قبلاً اعمال شده
+    getBalanceMock.mockResolvedValue(120_000);
+
+    const status = await getUserPlanStatus("user-1", NOW);
+    expect(status.planKey).toBe("pro");
+    expect(status.apply.limit).toBeNull();
+    expect(status.apply.usedToday).toBe(0);
+    expect(status.apply.remaining).toBeNull();
+    expect(status.grant.granted).toBe(true);
+    expect(status.grant.amountToman).toBe(100_000);
+    // مسیرِ ارزانِ پلنِ نامحدود: شمارشِ اپلای صدا نمی‌شود.
+    expect(countAppliesMock).not.toHaveBeenCalled();
+  });
+
+  it("موجودیِ خطادار → ۰ (هرگز throw نمی‌کند)", async () => {
+    pushSelect([{ plan: "free" }]);
+    pushSelect([]);
+    getBalanceMock.mockRejectedValue(new Error("db down"));
+    countAppliesMock.mockResolvedValue(0);
+
+    const status = await getUserPlanStatus("user-1", NOW);
+    expect(status.balanceToman).toBe(0);
+  });
+
+  it("کاربرِ یافت‌نشده → پلنِ پیش‌فرضِ free", async () => {
+    pushSelect([]); // readRawPlan → ردیفی نیست
+    pushSelect([]);
+    getBalanceMock.mockResolvedValue(0);
+    countAppliesMock.mockResolvedValue(0);
+
+    const status = await getUserPlanStatus("user-1", NOW);
+    expect(status.planKey).toBe("free");
+    expect(status.rawPlan).toBe("free");
+  });
+});

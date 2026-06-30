@@ -18,7 +18,8 @@ type NavKey =
   | "interests"
   | "resume"
   | "models"
-  | "billing";
+  | "billing"
+  | "plans";
 
 const NAV: { key: NavKey; href: string; label: string; icon: string }[] = [
   { key: "home", href: "/dashboard", label: "خانه", icon: "🏠" },
@@ -38,6 +39,7 @@ const NAV: { key: NavKey; href: string; label: string; icon: string }[] = [
   { key: "resume", href: "/dashboard/resume", label: "رزومه", icon: "📄" },
   { key: "models", href: "/dashboard/models", label: "مدلِ هوش مصنوعی", icon: "🤖" },
   { key: "billing", href: "/dashboard/billing", label: "کیف‌پول", icon: "💳" },
+  { key: "plans", href: "/dashboard/plans", label: "پلن‌ها", icon: "🪙" },
 ];
 
 export function DashboardShell({
