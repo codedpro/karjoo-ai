@@ -16,6 +16,12 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
 import { toFaDigits } from "./ui";
+import { CostHint, FreeBadge, TopupPrompt } from "./paid-action";
+import {
+  readPaidActionResponse,
+  type CostEstimate,
+  type TopupNeeded,
+} from "@/lib/billing/ui";
 
 /** فیلدهای قابلِ‌ویرایشِ پروفایل (هم‌شکل با خروجیِ parse/profile API). */
 export interface EditableProfile {
@@ -66,8 +72,17 @@ function fromApiProfile(p: ApiProfile): EditableProfile {
 
 export function ResumeManager({
   initialProfile,
+  parseCostEstimate = null,
+  balanceToman,
 }: {
   initialProfile: ApiProfile | null;
+  /**
+   * تخمینِ هزینه‌ی «پردازشِ AIِ رزومه» (resume_parse) — کنشِ پولی. اگر کاتالوگ خالی
+   * بود null می‌رسد و نشانِ هزینه نمایش داده نمی‌شود.
+   */
+  parseCostEstimate?: CostEstimate | null;
+  /** موجودیِ فعلیِ کیف‌پول (برای نمایش در پرامپتِ شارژ). اختیاری. */
+  balanceToman?: number;
 }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -80,6 +95,8 @@ export function ResumeManager({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [skillDraft, setSkillDraft] = useState("");
+  // پرامپتِ «نیازمندِ شارژ» — هنگامِ پاسخِ ۴۰۲ از پردازشِ پولی پر می‌شود.
+  const [topup, setTopup] = useState<TopupNeeded | null>(null);
 
   async function handleUpload(file: File) {
     setError(null);
@@ -126,6 +143,7 @@ export function ResumeManager({
     if (!resumeFileId) return;
     setError(null);
     setNotice(null);
+    setTopup(null);
     setBusy("parse");
     try {
       const res = await fetch("/api/resume/parse", {
@@ -133,16 +151,21 @@ export function ResumeManager({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ resumeFileId }),
       });
-      const data: { error?: string; profile?: ApiProfile } = await res
-        .json()
-        .catch(() => ({}));
 
-      if (!res.ok || !data.profile) {
-        setError(data.error ?? "پردازشِ هوش مصنوعی ناموفق بود.");
+      // پردازشِ پولی: پاسخ را با کمکِ helperِ مشترک می‌خوانیم تا ۴۰۲ (نیازمندِ شارژ)
+      // به پرامپتِ شارژ تبدیل شود نه یک خطای متنیِ ساده.
+      const outcome = await readPaidActionResponse<{ profile?: ApiProfile }>(res);
+
+      if (outcome.topup) {
+        setTopup(outcome.topup);
+        return;
+      }
+      if (!outcome.ok || !outcome.data?.profile) {
+        setError(outcome.error ?? "پردازشِ هوش مصنوعی ناموفق بود.");
         return;
       }
 
-      setProfile(fromApiProfile(data.profile));
+      setProfile(fromApiProfile(outcome.data.profile));
       setNotice("فیلدها استخراج شدند. آن‌ها را بررسی/ویرایش کنید و «ذخیره» بزنید.");
       router.refresh();
     } catch {
@@ -237,12 +260,27 @@ export function ResumeManager({
         </div>
       ) : null}
 
+      {/* پرامپتِ «نیازمندِ شارژ» — فقط هنگامِ پاسخِ ۴۰۲ از پردازشِ پولی. */}
+      {topup ? (
+        <TopupPrompt
+          topup={topup}
+          balanceToman={balanceToman}
+          topupHref="/dashboard/billing"
+          onDismiss={() => setTopup(null)}
+        />
+      ) : null}
+
       {/* ───── گام ۱ و ۲: آپلود + پردازش ───── */}
       <div className="rounded-2xl border border-border bg-card p-6">
-        <h3 className="text-base font-bold">۱. آپلودِ رزومه (PDF)</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-base font-bold">۱. آپلودِ رزومه (PDF)</h3>
+          {/* آپلود + استخراجِ متن همیشه رایگان است (CONTEXT: FREE_ACTIONS). */}
+          <FreeBadge />
+        </div>
         <p className="mt-1 text-sm text-muted">
           فایلِ PDF رزومه‌تان را انتخاب کنید (حداکثر ۵ مگابایت). متنِ آن استخراج می‌شود و
-          سپس می‌توانید با هوش مصنوعی فیلدها را بسازید.
+          سپس می‌توانید با هوش مصنوعی فیلدها را بسازید. آپلود و استخراجِ متن رایگان است؛
+          فقط «پردازش با هوش مصنوعی» (گامِ ۲) پولی است.
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -266,14 +304,18 @@ export function ResumeManager({
             {busy === "upload" ? "در حال آپلود…" : "انتخابِ فایلِ PDF"}
           </button>
 
-          <button
-            type="button"
-            onClick={() => void handleParse()}
-            disabled={busy !== null || !resumeFileId}
-            className="rounded-full bg-gradient-to-l from-brand to-brand-2 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand/30 transition-transform hover:-translate-y-0.5 disabled:opacity-60"
-          >
-            {busy === "parse" ? "در حال پردازش…" : "۲. پردازش با هوش مصنوعی"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleParse()}
+              disabled={busy !== null || !resumeFileId}
+              className="rounded-full bg-gradient-to-l from-brand to-brand-2 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand/30 transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+            >
+              {busy === "parse" ? "در حال پردازش…" : "۲. پردازش با هوش مصنوعی"}
+            </button>
+            {/* تخمینِ هزینه‌ی پردازشِ پولی (پیش از کنش). */}
+            <CostHint estimate={parseCostEstimate} />
+          </div>
         </div>
       </div>
 

@@ -9,6 +9,11 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { AiCostPanel } from "@/components/dashboard/ai-cost-panel";
+import {
+  actionEstimate,
+  getUserAiCostContext,
+} from "@/components/dashboard/billing-data";
 import {
   getBoardAccountsForUser,
   getMatchesForUser,
@@ -53,6 +58,9 @@ export default async function MatchesPage() {
         </div>
 
         <div className="space-y-6">
+          <Suspense fallback={<Skeleton className="h-64" />}>
+            <CostPanel userId={user.userId} />
+          </Suspense>
           <PairExtensionPanel />
           <Suspense fallback={<Skeleton className="h-40" />}>
             <ConnectedBoards userId={user.userId} />
@@ -87,6 +95,19 @@ async function MatchesList({ userId }: { userId: string }) {
         <MatchCard key={m.id} match={m} />
       ))}
     </div>
+  );
+}
+
+async function CostPanel({ userId }: { userId: string }) {
+  const ctx = await getUserAiCostContext(userId);
+  return (
+    <AiCostPanel
+      plan={ctx.plan}
+      balanceToman={ctx.balanceToman}
+      canUsePaidAi={ctx.canUsePaidAi}
+      matchEstimate={actionEstimate(ctx, "match")}
+      coverLetterEstimate={actionEstimate(ctx, "cover_letter")}
+    />
   );
 }
 

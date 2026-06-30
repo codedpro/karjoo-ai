@@ -14,6 +14,10 @@ import { Suspense } from "react";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { ResumeManager } from "@/components/dashboard/resume-manager";
 import {
+  actionEstimate,
+  getUserAiCostContext,
+} from "@/components/dashboard/billing-data";
+import {
   getResumeFiles,
   getResumeProfile,
 } from "@/components/dashboard/resume-data";
@@ -60,8 +64,18 @@ export default async function ResumePage() {
 /* ───────────────────────── بخش‌های async (Suspense) ───────────────────────── */
 
 async function ResumeManagerSection({ userId }: { userId: string }) {
-  const profile = await getResumeProfile(userId);
-  return <ResumeManager initialProfile={profile} />;
+  const [profile, costCtx] = await Promise.all([
+    getResumeProfile(userId),
+    getUserAiCostContext(userId),
+  ]);
+  // پردازشِ AIِ رزومه یک کنشِ پولی است (resume_parse) → تخمینِ هزینه را به فرم می‌دهیم.
+  return (
+    <ResumeManager
+      initialProfile={profile}
+      parseCostEstimate={actionEstimate(costCtx, "resume_parse")}
+      balanceToman={costCtx.balanceToman}
+    />
+  );
 }
 
 async function UploadedFiles({ userId }: { userId: string }) {
