@@ -32,12 +32,15 @@ export const dynamic = "force-dynamic";
  * فعلاً کوکی فرض می‌شوند (بخش ۷ سند معماری).
  */
 const SESSION_SHAPE_BY_BOARD: Record<
-  "jobvision" | "jobinja" | "e-estekhdam" | "karboom" | "linkedin",
+  "jobvision" | "jobinja" | "e-estekhdam" | "irantalent" | "karboom" | "linkedin",
   "cookie" | "token"
 > = {
   jobvision: "token",
   jobinja: "cookie",
   "e-estekhdam": "cookie",
+  // irantalent یک SPA است (auth از مرورگرِ کاربر، شکلِ نشست token) — هم‌راستا با
+  // session-schemas/افزونه؛ این ستون NOT NULL است پس باید برای هر boardِ معتبر مقدار داشته باشد.
+  irantalent: "token",
   karboom: "cookie",
   linkedin: "cookie",
 };

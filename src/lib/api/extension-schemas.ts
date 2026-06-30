@@ -12,11 +12,17 @@ import "server-only";
  */
 import { z } from "zod";
 
-/** سایت‌های کاریابی پشتیبانی‌شده — هم‌راستا با jobBoardEnum/JobBoardId. */
+/**
+ * سایت‌های کاریابی پشتیبانی‌شده — هم‌راستا با jobBoardEnum/JobBoardId.
+ * irantalent باید حاضر باشد چون افزونه آن را connect می‌کند (هم‌چون import/session
+ * که از قبل irantalent را می‌پذیرند و jobBoardEnumِ پایه)؛ نبودش باعثِ ۴۰۰ روی
+ * connectِ irantalent می‌شد (seamِ شکسته).
+ */
 export const jobBoardSchema = z.enum([
   "jobvision",
   "jobinja",
   "e-estekhdam",
+  "irantalent",
   "karboom",
   "linkedin",
 ]);
