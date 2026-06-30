@@ -9,15 +9,24 @@ import "server-only";
  * شکل می‌گرفت. با گذاشتنِ رجیستری در این ماژولِ برگ، هم index و هم orchestrator
  * مستقیماً از اینجا import می‌کنند و چرخه‌ای نیست.
  */
+import { eEstekhdam } from "@/lib/apply/boards/e-estekhdam";
+import { irantalent } from "@/lib/apply/boards/irantalent";
 import { jobinja } from "@/lib/apply/boards/jobinja";
 import { jobvision } from "@/lib/apply/boards/jobvision";
 import type { JobBoardConnector, JobBoardId } from "@/lib/apply/types";
 
-/** ثبت کانکتورها — افزودن سایت کاریابی تازه = یک ورودی اینجا. */
+/**
+ * ثبت کانکتورها — افزودن سایت کاریابی تازه = یک ورودی اینجا.
+ *
+ * چهار سایتِ هدفِ WF1 ثبت شده‌اند (jobinja, jobvision, e-estekhdam, irantalent).
+ * karboom/linkedin عمداً ثبت نشده‌اند (هنوز در دامنه‌ی محصول نیستند).
+ */
 export const connectors: Record<string, JobBoardConnector> = {
   [jobvision.id]: jobvision,
   [jobinja.id]: jobinja,
-  // TODO: e-estekhdam, karboom, linkedin
+  [eEstekhdam.id]: eEstekhdam,
+  [irantalent.id]: irantalent,
+  // karboom/linkedin هنوز ثبت نشده‌اند.
 };
 
 export function getConnector(id: JobBoardId): JobBoardConnector | undefined {

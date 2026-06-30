@@ -68,6 +68,12 @@ const envSchema = z.object({
   SMS_API_KEY: optionalNonEmpty(z.string().min(1)),
   /** شماره/شناسه‌ی فرستنده‌ی پیامک (برای providerِ عمومی). */
   SMS_SENDER: optionalNonEmpty(z.string().min(1)),
+
+  // ── ذخیره‌سازیِ فایلِ آپلود (WF1 — رزومه‌ی PDF) ───────────────────────────
+  // پوشه‌ی پایه‌ی ذخیره‌ی فایلِ خامِ رزومه روی دیسکِ محلی. اختیاری: اگر تنظیم نشود،
+  // پیش‌فرض `./uploads` در ریشه‌ی پروژه (در .gitignore) استفاده می‌شود. مسیرِ مطلق
+  // یا نسبی هر دو پذیرفته می‌شود (نسبی نسبت به cwd حل می‌شود).
+  KARJOO_UPLOADS_DIR: optionalNonEmpty(z.string().min(1)),
 });
 
 type Env = z.infer<typeof envSchema>;

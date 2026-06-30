@@ -12,6 +12,7 @@
  * و فناپذیر (perishable)؛ هر اپلای dedupe + سقف روزانه + jitter دارد.
  */
 import {
+  type AnyPgColumn,
   boolean,
   doublePrecision,
   index,
@@ -32,6 +33,7 @@ export const jobBoardEnum = pgEnum("job_board", [
   "jobvision",
   "jobinja",
   "e-estekhdam",
+  "irantalent",
   "karboom",
   "linkedin",
 ]);
@@ -110,6 +112,25 @@ export const deviceLinkStatusEnum = pgEnum("device_link_status", [
   "pending", // کد جفت‌سازی ساخته شده، هنوز مصرف نشده
   "linked", // افزونه با موفقیت جفت شد و نشست گرفت
   "expired", // منقضی/باطل‌شده
+]);
+
+/**
+ * منشأِ یک فایلِ رزومه (WF1):
+ *   • `upload`       — کاربر یک PDF آپلود کرده.
+ *   • `board_import` — متن/فیلدهای رزومه از یک سایت کاریابی (با رضایت کاربر) ایمپورت شده.
+ */
+export const resumeSourceEnum = pgEnum("resume_source", ["upload", "board_import"]);
+
+/**
+ * وضعیتِ یک ایمپورتِ پروفایل از یک سایت کاریابی (WF1، قاعده‌ی §10):
+ *   • `received` — DATAِ پروفایل از افزونه رسید و ذخیره شد (هرگز کوکی/توکن/رمز).
+ *   • `applied`  — فیلدهای نرمال‌شده روی پروفایلِ کاربر merge شد.
+ *   • `failed`   — نرمال‌سازی/merge ناموفق بود.
+ */
+export const profileImportStatusEnum = pgEnum("profile_import_status", [
+  "received",
+  "applied",
+  "failed",
 ]);
 
 /* ───────────────────────────────  Tables  ──────────────────────────────── */
@@ -527,6 +548,113 @@ export const auditEvents = pgTable(
   ],
 );
 
+/* ─────────────────  WF1: پروفایل‌سازی و ایمپورت چندسایته  ───────────────── */
+
+/**
+ * فایلِ رزومه (PDF آپلودشده یا داده‌ی ایمپورت‌شده) — مسیرِ پردازشِ پروفایل‌سازی.
+ *
+ * مسیرِ رایگان: استخراجِ متنِ خام (extractedText) با کتابخانه‌ی unpdf. مسیرِ هوش‌مصنوعی:
+ * ساخت‌یافته‌سازیِ فیلدها (parsedFields) از طریق گیت‌وی 1xai. هر دو nullable‌اند تا
+ * رکورد بلافاصله پس از آپلود ساخته شود و پردازش به‌صورت تدریجی پر شود.
+ *
+ * فایلِ خام فعلاً به‌صورت محلی روی دیسک نگه‌داری می‌شود (storagePath)؛ راهبردِ پوشه‌ی
+ * آپلود در src/lib/resume/storage.ts مستند است (./uploads یا KARJOO_UPLOADS_DIR).
+ */
+export const resumeFiles = pgTable(
+  "resume_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    /** مسیرِ فایلِ خام روی دیسکِ محلی (نسبت به پوشه‌ی آپلود). */
+    storagePath: text("storage_path").notNull(),
+    /** متنِ خامِ استخراج‌شده از PDF (مسیرِ رایگان) — تا پردازش انجام نشده null است. */
+    extractedText: text("extracted_text"),
+    /** فیلدهای ساخت‌یافته‌ی استخراج‌شده با هوش مصنوعی (نام، مهارت‌ها، سابقه و …). */
+    parsedFields: jsonb("parsed_fields").$type<Record<string, unknown>>(),
+    source: resumeSourceEnum("source").notNull().default("upload"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("resume_files_user_idx").on(t.userId)],
+);
+
+/**
+ * تاکسونومیِ دسته‌بندیِ مشاغلِ ایران — درختیِ تک‌سطحی/چندسطحی (parentId خود-ارجاع).
+ * با ~۲۵ دسته‌ی متداولِ بازارِ کارِ ایران seed می‌شود (src/lib/taxonomy). slug یکتاست
+ * و در URL/فیلتر استفاده می‌شود؛ برچسبِ فارسی و انگلیسی برای نمایشِ دوزبانه.
+ */
+export const jobCategories = pgTable(
+  "job_categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    slug: text("slug").notNull(),
+    labelFa: text("label_fa").notNull(),
+    labelEn: text("label_en").notNull(),
+    /** دسته‌ی والد (برای زیرشاخه‌ها) — برای دسته‌ی ریشه null است. خود-ارجاع. */
+    parentId: uuid("parent_id").references((): AnyPgColumn => jobCategories.id, {
+      onDelete: "set null",
+    }),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (t) => [uniqueIndex("job_categories_slug_uq").on(t.slug)],
+);
+
+/**
+ * علاقه‌مندی/انتخابِ دسته‌بندیِ کاربر (کاربر × دسته) — هر جفت یکتا. این انتخاب‌ها
+ * JobPreferences (titles/categories) را تغذیه می‌کنند که در جست‌وجو/تطبیق به‌کار می‌رود.
+ */
+export const userInterests = pgTable(
+  "user_interests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => jobCategories.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // یک علاقه‌مندی به‌ازای هر (کاربر، دسته) — جلوگیری از انتخابِ تکراری.
+    uniqueIndex("user_interests_user_category_uq").on(t.userId, t.categoryId),
+    index("user_interests_user_idx").on(t.userId),
+  ],
+);
+
+/**
+ * رکوردِ ایمپورتِ پروفایل از یک سایت کاریابی (قابلیتِ حملِ داده‌ی کاربر — §10).
+ *
+ * قاعده‌ی سختِ ایمنی: rawPayload فقط *داده‌ی* پروفایل/رزومه/سابقه‌ی اپلایِ کاربر است
+ * که افزونه از صفحه‌ی خودِ کاربر خوانده — هرگز کوکی/توکن/رمزِ سایتِ مبدأ. اندپوینتِ
+ * ایمپورت هر فیلدِ شبیهِ اعتبارنامه را رد می‌کند. appliedFields آن‌چیزی است که پس از
+ * نرمال‌سازی روی CandidateProfile merge شد (برای شفافیت/آنچه تغییر کرد).
+ */
+export const profileImports = pgTable(
+  "profile_imports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    board: jobBoardEnum("board").notNull(),
+    status: profileImportStatusEnum("status").notNull().default("received"),
+    /** DATAِ خامی که افزونه فرستاد (پروفایل/رزومه/سابقه) — هرگز اعتبارنامه. */
+    rawPayload: jsonb("raw_payload").$type<Record<string, unknown>>().notNull(),
+    /** فیلدهایی که پس از نرمال‌سازی روی پروفایلِ کاربر اعمال شد. */
+    appliedFields: jsonb("applied_fields").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("profile_imports_user_idx").on(t.userId),
+    index("profile_imports_board_idx").on(t.board),
+  ],
+);
+
 /* ─────────────────────  Inferred types (برای پایین‌دست)  ────────────────── */
 
 export type User = typeof users.$inferSelect;
@@ -559,3 +687,11 @@ export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type NewAuditEvent = typeof auditEvents.$inferInsert;
+export type ResumeFile = typeof resumeFiles.$inferSelect;
+export type NewResumeFile = typeof resumeFiles.$inferInsert;
+export type JobCategory = typeof jobCategories.$inferSelect;
+export type NewJobCategory = typeof jobCategories.$inferInsert;
+export type UserInterest = typeof userInterests.$inferSelect;
+export type NewUserInterest = typeof userInterests.$inferInsert;
+export type ProfileImport = typeof profileImports.$inferSelect;
+export type NewProfileImport = typeof profileImports.$inferInsert;

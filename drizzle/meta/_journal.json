@@ -15,6 +15,13 @@
       "when": 1782806130005,
       "tag": "0001_naive_stingray",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782829806486,
+      "tag": "0002_flat_johnny_blaze",
+      "breakpoints": true
     }
   ]
 }

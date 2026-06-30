@@ -55,7 +55,13 @@ export interface ApplicationResult {
   submittedAt?: string;
 }
 
-export type JobBoardId = "jobvision" | "jobinja" | "e-estekhdam" | "karboom" | "linkedin";
+export type JobBoardId =
+  | "jobvision"
+  | "jobinja"
+  | "e-estekhdam"
+  | "irantalent"
+  | "karboom"
+  | "linkedin";
 
 /**
  * کانکتور یک سایت کاریابی. هر متد در پیاده‌سازی واقعی، احراز هویت و قوانین همان
