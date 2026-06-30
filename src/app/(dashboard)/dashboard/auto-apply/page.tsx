@@ -23,6 +23,8 @@ import {
   AutoApplyAuditPanel,
   BoardReadinessPanel,
 } from "@/components/dashboard/auto-apply-panels";
+import { FleetStatusPanel } from "@/components/dashboard/fleet-status-panel";
+import { getFleetStatusData } from "@/components/dashboard/fleet-status-data";
 import { SectionHeading, Skeleton } from "@/components/dashboard/ui";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node و رندرِ پویا (وابسته به کوکی).
@@ -57,10 +59,13 @@ export default async function AutoApplyPage() {
           </Suspense>
         </div>
 
-        {/* ستونِ کناری: مصرفِ امروز + آمادگیِ سایت‌ها */}
+        {/* ستونِ کناری: مصرفِ امروز + وضعیتِ کارگرِ سرور + آمادگیِ سایت‌ها */}
         <div className="space-y-6">
           <Suspense fallback={<Skeleton className="h-40" />}>
             <UsageSection userId={user.userId} />
+          </Suspense>
+          <Suspense fallback={<Skeleton className="h-56" />}>
+            <FleetSection userId={user.userId} />
           </Suspense>
           <Suspense fallback={<Skeleton className="h-40" />}>
             <BoardsSection userId={user.userId} />
@@ -97,4 +102,10 @@ async function UsageSection({ userId }: { userId: string }) {
 async function BoardsSection({ userId }: { userId: string }) {
   const data = await getAutoApplyDashboardData(userId);
   return <BoardReadinessPanel boards={data.boards} />;
+}
+
+async function FleetSection({ userId }: { userId: string }) {
+  // وضعیتِ اپلای خودکارِ کارگرِ سرور (Max/Max+ فعال؛ Free/Pro دعوت به ارتقا).
+  const data = await getFleetStatusData(userId);
+  return <FleetStatusPanel data={data} />;
 }
