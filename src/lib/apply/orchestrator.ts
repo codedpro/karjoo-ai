@@ -29,7 +29,7 @@ import {
 //   • getConnector از همان رجیستریِ index.ts (تابع است، در زمان اجرا صدا زده می‌شود)
 //   • scoreAndDraft از @/lib/apply/scoring (پیاده‌سازیِ واقعیِ گیت‌وی 1xai)
 // این کار رفتارِ زمان‌اجرا را تغییر نمی‌دهد، فقط ترتیبِ ارزیابیِ ماژول‌ها را امن می‌کند.
-import { scoreAndDraft } from "@/lib/apply/scoring";
+import { meteredScoreAndDraft } from "@/lib/apply/metered-scoring";
 import { getConnector } from "@/lib/apply/registry";
 import { enqueue as defaultEnqueue } from "@/lib/queue";
 import type {
@@ -67,6 +67,12 @@ export interface IngestRunInput {
   scoreThreshold?: number;
   /** سقفِ اختیاری روی تعداد آگهی‌هایی که در این اجرا امتیاز می‌گیرند. */
   limit?: number;
+  /**
+   * تابعِ امتیازدهی — تزریقی برای تست. در مسیرِ تولید خالی می‌ماند و به‌صورتِ پیش‌فرض
+   * نسخه‌ی *مترشده‌ی* scoreAndDraft (مقید به کاربرِ صاحبِ پروفایل) استفاده می‌شود تا
+   * هزینه‌ی هر فراخوانیِ تطبیق به کیف‌پولِ همان کاربر بسته شود.
+   */
+  scoreFn?: ScoreAndDraftFn;
 }
 
 /** آیا این خطا از نوعِ «هنوز پیاده‌نشده»‌ی داربست است؟ */
@@ -102,6 +108,11 @@ export async function runJobinjaIngest(input: IngestRunInput): Promise<IngestRun
   const prefs = toJobPreferences(profileRow.preferences);
   const profile = toCandidateProfile(profileRow, prefs);
 
+  // مسیرِ تولید: امتیازدهیِ *مترشده* مقید به کاربرِ صاحبِ پروفایل (هزینه به کیف‌پولِ او).
+  // تست می‌تواند scoreFn را تزریق کند تا بدونِ بیلینگ/گیت‌وی اجرا شود.
+  const scoreFn: ScoreAndDraftFn =
+    input.scoreFn ?? ((job, prof) => meteredScoreAndDraft(profileRow.userId, job, prof));
+
   // ۲) ingest عمومی. اگر کانکتور هنوز داربست است → NotImplemented (۵۰۱).
   let listings: JobListing[];
   try {
@@ -135,7 +146,7 @@ export async function runJobinjaIngest(input: IngestRunInput): Promise<IngestRun
     // ۴) امتیازدهی + نگارشِ انگیزه‌نامه. خطای یک آگهی نباید کل اجرا را بشکند —
     //    مگر اینکه قراردادِ scoreAndDraft هنوز اصلاً پیاده نشده باشد (آن‌وقت ۵۰۱).
     try {
-      const { matchScore, coverLetter } = await scoreAndDraft(listing, profile);
+      const { matchScore, coverLetter } = await scoreFn(listing, profile);
       const drafted = matchScore >= threshold;
       await upsertMatch({
         userId: profileRow.userId,
@@ -447,10 +458,15 @@ export async function runAutoApply(
     boards,
     threshold = DEFAULT_MATCH_THRESHOLD,
     dailyCap = DEFAULT_DAILY_CAP,
-    scoreFn = scoreAndDraft,
     db: conn = db,
     enqueueFn = defaultEnqueue,
   } = options;
+
+  // مسیرِ تولید: اگر scoreFn تزریق نشده، نسخه‌ی *مترشده* مقید به userId استفاده می‌شود
+  // تا هزینه‌ی هر فراخوانیِ تطبیق به کیف‌پولِ همین کاربر بسته شود (مدلِ بیلینگِ قفل‌شده).
+  // تست‌ها همیشه scoreFn را تزریق می‌کنند و رفتارشان دست‌نخورده می‌ماند.
+  const scoreFn: ScoreAndDraftFn =
+    options.scoreFn ?? ((job, prof) => meteredScoreAndDraft(userId, job, prof));
 
   // رجیستریِ کانکتور: تزریقی یا از getConnector.
   const resolveConnector = (id: JobBoardId): JobBoardConnector | undefined =>

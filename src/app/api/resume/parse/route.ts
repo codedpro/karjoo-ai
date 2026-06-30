@@ -17,8 +17,10 @@ import "server-only";
 import { errorJson, json, withErrorHandling } from "@/lib/api/http";
 import { getCurrentUser } from "@/lib/auth/http";
 import { resumeParseSchema } from "@/lib/resume/api-schemas";
-import { parseResumeText, ResumeParseError } from "@/lib/resume/parse";
+import { ResumeParseError } from "@/lib/resume/parse";
+import { meteredParseResumeText } from "@/lib/resume/metered-parse";
 import { GatewayError } from "@/lib/ai/gateway";
+import { InsufficientBalanceError } from "@/lib/billing/errors";
 import {
   getResumeFileOwned,
   persistParsedFields,
@@ -62,10 +64,11 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    // ۵) فراخوانیِ AI برای ساخت‌یافته‌سازی.
+    // ۵) فراخوانیِ AIِ مترشده برای ساخت‌یافته‌سازی (به کیف‌پولِ کاربر مقید).
+    //    گیتِ موجودی پیش از فراخوانی؛ کسرِ هزینه‌ی واقعی پس از آن.
     let parsed;
     try {
-      parsed = await parseResumeText(record.extractedText);
+      parsed = await meteredParseResumeText(user.id, record.extractedText);
     } catch (err) {
       return mapAiError(err);
     }
@@ -89,10 +92,15 @@ export async function POST(request: Request): Promise<Response> {
 
 /**
  * خطای لایه‌ی AI را به پاسخِ تمیزِ کاربری نگاشت می‌کند (بدونِ نشتِ جزئیاتِ داخلی).
+ *   • موجودیِ ناکافی → ۴۰۲ (نیازمندِ شارژِ کیف‌پول).
  *   • گیت‌وی پیکربندی‌نشده → ۵۰۳ (سرویس موقتاً در دسترس نیست).
  *   • خطای مدل/پاسخِ نامعتبر → ۵۰۲ (سرویسِ بالادست بد پاسخ داد).
  */
 function mapAiError(err: unknown): Response {
+  // گیتِ بیلینگ: پیش از هر فراخوانی پرتاب می‌شود؛ هرگز هزینه‌ی بالادست خرج نشده.
+  if (err instanceof InsufficientBalanceError) {
+    return errorJson(err.message, 402);
+  }
   const cause = err instanceof ResumeParseError ? err.cause : err;
   if (cause instanceof GatewayError && cause.code === "not_configured") {
     return errorJson("سرویسِ هوش مصنوعی پیکربندی نشده است.", 503);

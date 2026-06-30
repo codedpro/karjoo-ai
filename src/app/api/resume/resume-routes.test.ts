@@ -24,6 +24,11 @@ vi.mock("@/lib/resume/parse", async () => {
   );
   return { ...actual, parseResumeText: vi.fn() };
 });
+// مسیرِ تولید اکنون از نسخه‌ی *مترشده* استفاده می‌کند (بیلینگ مقید به کاربر)؛ همان را
+// mock می‌کنیم تا تستِ روت بدونِ کیف‌پول/گیت‌وی اجرا شود (همان شکلِ ParsedResume برمی‌گرداند).
+vi.mock("@/lib/resume/metered-parse", () => ({
+  meteredParseResumeText: vi.fn(),
+}));
 vi.mock("@/lib/resume/service", () => ({
   createResumeFileRecord: vi.fn(),
   getResumeFileOwned: vi.fn(),
@@ -33,7 +38,7 @@ vi.mock("@/lib/resume/service", () => ({
 
 import { getCurrentUser } from "@/lib/auth/http";
 import { extractText } from "@/lib/resume/pdf";
-import { parseResumeText } from "@/lib/resume/parse";
+import { meteredParseResumeText } from "@/lib/resume/metered-parse";
 import { saveResumeFile } from "@/lib/resume/storage";
 import {
   createResumeFileRecord,
@@ -48,7 +53,7 @@ import { PATCH as profilePATCH } from "@/app/api/resume/profile/route";
 
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const extractTextMock = vi.mocked(extractText);
-const parseResumeTextMock = vi.mocked(parseResumeText);
+const parseResumeTextMock = vi.mocked(meteredParseResumeText);
 const saveResumeFileMock = vi.mocked(saveResumeFile);
 const createRecordMock = vi.mocked(createResumeFileRecord);
 const getOwnedMock = vi.mocked(getResumeFileOwned);
