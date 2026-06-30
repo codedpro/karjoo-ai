@@ -18,6 +18,9 @@ const PLAN_LABELS: Record<Plan, string> = {
   free: "رایگان",
   payg: "پرداخت‌به‌ازای‌مصرف",
   premium: "ویژه",
+  pro: "حرفه‌ای",
+  max: "مکس",
+  maxplus: "مکس پلاس",
 };
 
 /** یک ردیفِ «نامِ کنش — حدودِ هزینه». */

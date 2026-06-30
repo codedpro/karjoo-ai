@@ -17,11 +17,17 @@ import { useRef, useState } from "react";
 
 import { toFaDigits } from "./ui";
 import { CostHint, FreeBadge, TopupPrompt } from "./paid-action";
+import { AiMaintenanceBanner } from "./ai-maintenance-banner";
 import {
   readPaidActionResponse,
   type CostEstimate,
   type TopupNeeded,
 } from "@/lib/billing/ui";
+import {
+  detectMaintenance,
+  maintenanceMessage,
+  type AiStatus,
+} from "@/lib/billing/guardrail-ui";
 
 /** فیلدهای قابلِ‌ویرایشِ پروفایل (هم‌شکل با خروجیِ parse/profile API). */
 export interface EditableProfile {
@@ -97,6 +103,9 @@ export function ResumeManager({
   const [skillDraft, setSkillDraft] = useState("");
   // پرامپتِ «نیازمندِ شارژ» — هنگامِ پاسخِ ۴۰۲ از پردازشِ پولی پر می‌شود.
   const [topup, setTopup] = useState<TopupNeeded | null>(null);
+  // وضعیتِ نگه‌داریِ هوش مصنوعی — از بنر (poll /api/ai-status) می‌آید؛ در حالتِ نگه‌داری
+  // دکمه‌ی پردازشِ پولی غیرفعال می‌شود (کنشِ پولی همان‌جا سمتِ سرور هم ۵۰۳ می‌گیرد).
+  const [aiMaintenance, setAiMaintenance] = useState(false);
 
   async function handleUpload(file: File) {
     setError(null);
@@ -151,6 +160,19 @@ export function ResumeManager({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ resumeFileId }),
       });
+
+      // حالتِ نگه‌داریِ هوش مصنوعی (۵۰۳ + code=ai_maintenance): پیامِ نگه‌داری را نشان بده
+      // و دکمه را غیرفعال نگه دار — این یک خطای موقتیِ سرویس است نه خطای کاربر.
+      const maintBody: unknown = await res
+        .clone()
+        .json()
+        .catch(() => null);
+      const maint = detectMaintenance(res.status, maintBody);
+      if (maint) {
+        setAiMaintenance(true);
+        setError(maintenanceMessage(maint.reason));
+        return;
+      }
 
       // پردازشِ پولی: پاسخ را با کمکِ helperِ مشترک می‌خوانیم تا ۴۰۲ (نیازمندِ شارژ)
       // به پرامپتِ شارژ تبدیل شود نه یک خطای متنیِ ساده.
@@ -260,6 +282,12 @@ export function ResumeManager({
         </div>
       ) : null}
 
+      {/* بنرِ نگه‌داریِ هوش مصنوعی — اگر سقفِ بودجه/پرچمِ دستی فعال باشد. وضعیت را به
+          state می‌دهد تا دکمه‌ی پردازشِ پولی غیرفعال شود. */}
+      <AiMaintenanceBanner
+        onStatus={(s: AiStatus) => setAiMaintenance(s.maintenance)}
+      />
+
       {/* پرامپتِ «نیازمندِ شارژ» — فقط هنگامِ پاسخِ ۴۰۲ از پردازشِ پولی. */}
       {topup ? (
         <TopupPrompt
@@ -308,7 +336,12 @@ export function ResumeManager({
             <button
               type="button"
               onClick={() => void handleParse()}
-              disabled={busy !== null || !resumeFileId}
+              disabled={busy !== null || !resumeFileId || aiMaintenance}
+              title={
+                aiMaintenance
+                  ? "سرویسِ هوش مصنوعی موقتاً در دسترس نیست."
+                  : undefined
+              }
               className="rounded-full bg-gradient-to-l from-brand to-brand-2 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand/30 transition-transform hover:-translate-y-0.5 disabled:opacity-60"
             >
               {busy === "parse" ? "در حال پردازش…" : "۲. پردازش با هوش مصنوعی"}
