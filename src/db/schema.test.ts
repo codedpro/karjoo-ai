@@ -10,6 +10,8 @@ import { getTableName } from "drizzle-orm";
 import {
   aiModelCatalog,
   aiProviderEnum,
+  appAiBudget,
+  appSettings,
   applications,
   applyTypeEnum,
   auditEvents,
@@ -112,10 +114,27 @@ describe("schema داربست کارجو", () => {
 
   it("enumهای بیلینگ با مقادیر درست تعریف شده‌اند", () => {
     expect(aiProviderEnum.enumValues).toEqual(["openai", "anthropic", "google"]);
-    expect(planEnum.enumValues).toEqual(["free", "payg", "premium"]);
+    // WF3: لایه‌های قیمت‌گذاری به enum افزوده شدند (legacy payg/premium حفظ شده).
+    expect(planEnum.enumValues).toEqual([
+      "free",
+      "payg",
+      "premium",
+      "pro",
+      "max",
+      "maxplus",
+    ]);
     expect(ledgerKindEnum.enumValues).toEqual(["topup", "charge", "refund", "grant"]);
     expect(usageKindEnum.enumValues).toEqual(["match", "cover_letter", "resume_parse"]);
-    // users.plan افزوده شده (پیش‌فرض payg).
+    // users.plan افزوده شده (پیش‌فرض free در WF3).
     expect(users.plan).toBeDefined();
+  });
+
+  it("جدول‌های گاردریلِ WF3 (بودجه + تنظیمات) را صادر می‌کند", () => {
+    expect(getTableName(appAiBudget)).toBe("app_ai_budget");
+    expect(getTableName(appSettings)).toBe("app_settings");
+    // ستون‌های کلیدی.
+    expect(appAiBudget.periodMonth).toBeDefined();
+    expect(appAiBudget.upstreamCostToman).toBeDefined();
+    expect(appSettings.aiMaintenanceManual).toBeDefined();
   });
 });

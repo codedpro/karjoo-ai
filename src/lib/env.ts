@@ -81,10 +81,40 @@ const envSchema = z.object({
   // اختیاری؛ اگر تنظیم نشود پیش‌فرضِ ۲۰٪ استفاده می‌شود (resolveMarginPct()).
   // عددِ صحیحِ نامنفی (رشته‌ی محیط به عدد coerce می‌شود).
   KARJOO_AI_MARGIN_PCT: optionalNonEmpty(z.coerce.number().int().min(0)),
+
+  // ── گاردریلِ بودجه‌ی ماهانه‌ی هوش مصنوعی (WF3 — محافظِ هزینه‌ی واقعیِ بالادست) ──
+  // سقفِ ماهانه به دلار: جمعِ هزینه‌ی بالادستِ هوش مصنوعیِ کلِ اپ که اگر از آن بگذرد،
+  // حالتِ نگه‌داری (maintenance) فعال و هر فراخوانیِ پولی بلاک می‌شود. اختیاری؛ پیش‌فرض ۳۰.
+  KARJOO_AI_MONTHLY_BUDGET_USD: optionalNonEmpty(z.coerce.number().min(0)),
+  // نرخِ تبدیلِ دلار به تومان برای محاسبه‌ی سقفِ ماهانه (cap به تومان). اختیاری؛ پیش‌فرض ۷۰۰۰۰.
+  KARJOO_USD_TO_TOMAN: optionalNonEmpty(z.coerce.number().min(0)),
+
+  // ── محدودیت‌های سختِ هر فراخوانی (WF3 — جلوگیری از حلقه/فراریِ هزینه) ──────
+  // سقفِ پیش‌فرضِ توکنِ خروجی برای هر فراخوانیِ مدل (اگر فراخواننده خودش نداده باشد).
+  // اختیاری؛ پیش‌فرض ۱۲۰۰. عددِ صحیحِ مثبت.
+  KARJOO_AI_MAX_OUTPUT_TOKENS: optionalNonEmpty(z.coerce.number().int().positive()),
+  // تایم‌اوتِ هر درخواستِ گیت‌وی به میلی‌ثانیه (AbortController). اختیاری؛ پیش‌فرض ۶۰۰۰۰.
+  KARJOO_AI_TIMEOUT_MS: optionalNonEmpty(z.coerce.number().int().positive()),
+  // سقفِ تعدادِ آگهیِ پردازش‌شده در هر اجرای ارکستریتور (جلوگیری از fan-outِ نامحدودِ
+  // فراخوانیِ مدل در یک اجرا). اختیاری؛ پیش‌فرض ۲۵. عددِ صحیحِ مثبت.
+  KARJOO_ORCHESTRATOR_RUN_CAP: optionalNonEmpty(z.coerce.number().int().positive()),
 });
 
 /** درصدِ پیش‌فرضِ حاشیه‌ی سود اگر KARJOO_AI_MARGIN_PCT تنظیم نشده باشد. */
 export const DEFAULT_AI_MARGIN_PCT = 20;
+
+/* ─────────────  پیش‌فرض‌های گاردریلِ ایمنی (WF3)  ────────────────────────── */
+
+/** سقفِ ماهانه‌ی هوش مصنوعی به دلار اگر env تنظیم نشده باشد. */
+export const DEFAULT_AI_MONTHLY_BUDGET_USD = 30;
+/** نرخِ پیش‌فرضِ تبدیلِ دلار به تومان اگر env تنظیم نشده باشد. */
+export const DEFAULT_USD_TO_TOMAN = 70_000;
+/** سقفِ پیش‌فرضِ توکنِ خروجی برای هر فراخوانیِ مدل. */
+export const DEFAULT_AI_MAX_OUTPUT_TOKENS = 1200;
+/** تایم‌اوتِ پیش‌فرضِ هر درخواستِ گیت‌وی به میلی‌ثانیه. */
+export const DEFAULT_AI_TIMEOUT_MS = 60_000;
+/** سقفِ پیش‌فرضِ تعدادِ آگهیِ پردازش‌شده در هر اجرای ارکستریتور. */
+export const DEFAULT_ORCHESTRATOR_RUN_CAP = 25;
 
 type Env = z.infer<typeof envSchema>;
 
@@ -171,6 +201,41 @@ export function requireAuthPepper(): string {
  */
 export function resolveMarginPct(): number {
   return env.KARJOO_AI_MARGIN_PCT ?? DEFAULT_AI_MARGIN_PCT;
+}
+
+/* ─────────────  حل‌کننده‌های گاردریلِ ایمنی (WF3)  ───────────────────────── */
+
+/** سقفِ ماهانه‌ی هوش مصنوعی به دلار (env یا پیش‌فرض ۳۰). هرگز throw نمی‌کند. */
+export function aiMonthlyBudgetUsd(): number {
+  return env.KARJOO_AI_MONTHLY_BUDGET_USD ?? DEFAULT_AI_MONTHLY_BUDGET_USD;
+}
+
+/** نرخِ تبدیلِ دلار به تومان (env یا پیش‌فرض ۷۰۰۰۰). هرگز throw نمی‌کند. */
+export function usdToToman(): number {
+  return env.KARJOO_USD_TO_TOMAN ?? DEFAULT_USD_TO_TOMAN;
+}
+
+/**
+ * سقفِ ماهانه‌ی هوش مصنوعی به *تومان* = budgetUsd × usdToToman (گرد به عددِ صحیح).
+ * مرجعِ گاردریلِ بودجه (ai-budget.ts isAiInMaintenance این را با جمعِ ماه مقایسه می‌کند).
+ */
+export function aiMonthlyCapToman(): number {
+  return Math.round(aiMonthlyBudgetUsd() * usdToToman());
+}
+
+/** سقفِ پیش‌فرضِ توکنِ خروجیِ هر فراخوانیِ مدل (env یا پیش‌فرض ۱۲۰۰). */
+export function aiMaxOutputTokens(): number {
+  return env.KARJOO_AI_MAX_OUTPUT_TOKENS ?? DEFAULT_AI_MAX_OUTPUT_TOKENS;
+}
+
+/** تایم‌اوتِ هر درخواستِ گیت‌وی به میلی‌ثانیه (env یا پیش‌فرض ۶۰۰۰۰). */
+export function aiTimeoutMs(): number {
+  return env.KARJOO_AI_TIMEOUT_MS ?? DEFAULT_AI_TIMEOUT_MS;
+}
+
+/** سقفِ تعدادِ آگهیِ پردازش‌شده در هر اجرای ارکستریتور (env یا پیش‌فرض ۲۵). */
+export function orchestratorRunCap(): number {
+  return env.KARJOO_ORCHESTRATOR_RUN_CAP ?? DEFAULT_ORCHESTRATOR_RUN_CAP;
 }
 
 /** پیکربندیِ حل‌شده‌ی ارائه‌دهنده‌ی پیامک — یکی از Kavenegar یا providerِ عمومی. */

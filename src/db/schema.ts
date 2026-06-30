@@ -11,6 +11,7 @@
  * قواعد ایمنی (از سند): نشست هر کاربر فقط برای همان کاربر؛ بلابِ نشست رمزنگاری‌شده
  * و فناپذیر (perishable)؛ هر اپلای dedupe + سقف روزانه + jitter دارد.
  */
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   bigint,
@@ -146,8 +147,22 @@ export const aiProviderEnum = pgEnum("ai_provider", [
   "google",
 ]);
 
-/** پلنِ اشتراکِ کاربر: رایگان | پرداخت‌به‌ازای‌مصرف | پریمیوم. */
-export const planEnum = pgEnum("plan", ["free", "payg", "premium"]);
+/**
+ * پلنِ اشتراکِ کاربر (نسخه‌ی WF3 — لایه‌های قیمت‌گذاری):
+ *   • free    — رایگان (بدونِ اعتبارِ هوش مصنوعی؛ ۱۰۰ اپلای در روز؛ همه‌ی قابلیت‌های غیر-AI).
+ *   • pro/max/maxplus — پلن‌های پولی با اعتبارِ ماهانه‌ی هوش مصنوعی و اپلای نامحدود.
+ *   • payg/premium — مقادیرِ تاریخی (legacy) که هنوز در enum می‌مانند تا داده‌ی موجود
+ *     نشکند؛ مهاجرت به‌صورت دفاعی payg→free و premium→pro می‌کند. مرجعِ تعریفِ پلن‌ها
+ *     src/lib/billing/plans.ts است (PLAN_DEFINITIONS).
+ */
+export const planEnum = pgEnum("plan", [
+  "free",
+  "payg",
+  "premium",
+  "pro",
+  "max",
+  "maxplus",
+]);
 
 /**
  * نوعِ رویدادِ دفترِ کیف‌پول (wallet_ledger):
@@ -184,8 +199,8 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     phone: text("phone").notNull(), // E.164، مثلاً +98912...
     fullName: text("full_name"),
-    /** پلنِ اشتراکِ کاربر — پیش‌فرض پرداخت‌به‌ازای‌مصرف (payg). */
-    plan: planEnum("plan").notNull().default("payg"),
+    /** پلنِ اشتراکِ کاربر — پیش‌فرض رایگان (free). */
+    plan: planEnum("plan").notNull().default("free"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -793,7 +808,17 @@ export const walletLedger = pgTable(
     description: text("description"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("wallet_ledger_user_created_idx").on(t.userId, t.createdAt)],
+  (t) => [
+    index("wallet_ledger_user_created_idx").on(t.userId, t.createdAt),
+    // ایدمپوتنسیِ گرنتِ ماهانه (WF3 بخش E): یکتاییِ (user, refId) *فقط* برای ردیف‌های
+    // 'grant'. ایندکسِ partial (WHERE kind = 'grant') است تا با refIdهای nullable/تکراریِ
+    // ردیف‌های topup/charge برخورد نکند. با این یکتایی، دو grantOnceِ همزمان برای یک
+    // (کاربر، ماه) نمی‌توانند هر دو درج کنند: دومی روی unique-violation شکست می‌خورد و کلِ
+    // تراکنشش (شاملِ credit) rollback می‌شود → گرنت واقعاً ایدمپوتنت می‌ماند.
+    uniqueIndex("wallet_ledger_grant_ref_uq")
+      .on(t.userId, t.refId)
+      .where(sql`kind = 'grant'`),
+  ],
 );
 
 /**
@@ -821,6 +846,53 @@ export const usageRecords = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("usage_records_user_created_idx").on(t.userId, t.createdAt)],
+);
+
+/* ─────────────────  WF3: گاردریل‌های ایمنی (بودجه + تنظیمات)  ───────────── */
+
+/**
+ * شمارنده‌ی ماهانه‌ی هزینه‌ی *بالادستِ* هوش مصنوعیِ کلِ اپ — قلبِ گاردریلِ بودجه.
+ *
+ * به‌جای اسکنِ کاملِ usage_records در هر فراخوانی، این شمارنده داخلِ همان تراکنشِ
+ * تسویه‌ی metering با مقدارِ upstreamCostToman هر فراخوانی افزایش می‌یابد (یک ردیف
+ * به‌ازای هر ماهِ تقویمی). وقتی جمعِ ماه ≥ سقف شود، حالتِ نگه‌داریِ هوش مصنوعی فعال
+ * می‌شود و هر فراخوانیِ پولی بلاک می‌گردد (assertAiAvailable).
+ *
+ * periodMonth قالبِ 'YYYY-MM' (مثلاً '2026-06') و یکتاست — یک ردیف برای هر ماه.
+ */
+export const appAiBudget = pgTable(
+  "app_ai_budget",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** ماهِ تقویمی به قالبِ 'YYYY-MM' (UTC) — یکتا. */
+    periodMonth: text("period_month").notNull(),
+    /** جمعِ هزینه‌ی بالادستِ هوش مصنوعیِ این ماه به تومان (شمارنده‌ی فزاینده). */
+    upstreamCostToman: bigint("upstream_cost_toman", { mode: "number" })
+      .notNull()
+      .default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("app_ai_budget_period_uq").on(t.periodMonth)],
+);
+
+/**
+ * تنظیماتِ سراسریِ اپ — جدولِ تک‌ردیفیِ کلیددار (singleton).
+ *
+ * فعلاً فقط پرچمِ aiMaintenanceManual را نگه می‌دارد: اگر دستی true شود، حالتِ نگه‌داریِ
+ * هوش مصنوعی صرف‌نظر از بودجه فعال می‌شود (برای خاموش/روشن‌کردنِ دستیِ سرویس). با کلیدِ
+ * ثابتِ 'global' یکتا می‌ماند تا همیشه دقیقاً یک ردیفِ تنظیمات وجود داشته باشد.
+ */
+export const appSettings = pgTable(
+  "app_settings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** کلیدِ ثابتِ singleton — همیشه 'global' (یکتا). */
+    key: text("key").notNull().default("global"),
+    /** خاموش/روشن‌کردنِ دستیِ حالتِ نگه‌داریِ هوش مصنوعی (force maintenance). */
+    aiMaintenanceManual: boolean("ai_maintenance_manual").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("app_settings_key_uq").on(t.key)],
 );
 
 /* ─────────────────────  Inferred types (برای پایین‌دست)  ────────────────── */
@@ -879,3 +951,7 @@ export type WalletLedgerRow = typeof walletLedger.$inferSelect;
 export type NewWalletLedgerRow = typeof walletLedger.$inferInsert;
 export type UsageRecord = typeof usageRecords.$inferSelect;
 export type NewUsageRecord = typeof usageRecords.$inferInsert;
+export type AppAiBudgetRow = typeof appAiBudget.$inferSelect;
+export type NewAppAiBudgetRow = typeof appAiBudget.$inferInsert;
+export type AppSettingsRow = typeof appSettings.$inferSelect;
+export type NewAppSettingsRow = typeof appSettings.$inferInsert;

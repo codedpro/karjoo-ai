@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "wallet_ledger_grant_ref_uq" ON "wallet_ledger" USING btree ("user_id","ref_id") WHERE kind = 'grant';

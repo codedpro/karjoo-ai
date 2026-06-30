@@ -1,0 +1,19 @@
+-- WF3: مهاجرتِ تاریخیِ پلن‌ها (payg→free, premium→pro) — عمداً «no-op» در SQL.
+--
+-- چرا no-op؟ مهاجرتِ 0004 مقادیرِ enum جدید ('pro'/'max'/'maxplus') را با
+-- `ALTER TYPE ... ADD VALUE` اضافه می‌کند. در PostgreSQL یک مقدارِ enumِ تازه‌افزوده را
+-- نمی‌توان در همان «تراکنش» استفاده کرد (خطای 55P04: «unsafe use of new value»).
+-- اجراگرِ مهاجرتِ drizzle (postgres-js) همه‌ی مهاجرت‌های در انتظار را در یک تراکنشِ
+-- واحد اجرا می‌کند؛ پس هر UPDATE که به 'pro' ارجاع دهد در همان تراکنشِ 0004 می‌افتد و
+-- شکست می‌خورد — حتی اگر در فایلِ جدا یا داخلِ DO/EXECUTE باشد (چک، تراکنش‌محور است).
+--
+-- چرا بی‌خطر است که این‌جا چیزی ننویسیم؟ نرمال‌سازیِ مقادیرِ تاریخی در «لایه‌ی کد» و
+-- هنگامِ خواندن انجام می‌شود — منبعِ حقیقت plans.normalizePlanKey است (payg→free,
+-- premium→pro) و همه‌ی مصرف‌کننده‌ها (planFor/monthlyCreditFor/applyQuotaFor و
+-- entitlement/grants) از همان عبور می‌کنند. پس داده‌ی فیزیکیِ payg/premium بی‌اثر است.
+--
+-- اگر روزی خواستید داده را هم فیزیکی پاک‌سازی کنید، آن را به‌صورتِ یک اسکریپتِ
+-- نگه‌داریِ جداگانه (یک migrate-pass مستقل، پس از commitِ 0004) اجرا کنید، نه این‌جا:
+--   UPDATE "users" SET "plan" = 'free' WHERE "plan" = 'payg';
+--   UPDATE "users" SET "plan" = 'pro'  WHERE "plan" = 'premium';
+SELECT 1;

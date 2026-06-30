@@ -29,6 +29,27 @@
       "when": 1782833288604,
       "tag": "0003_red_night_thrasher",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782836874855,
+      "tag": "0004_big_manta",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782836924907,
+      "tag": "0005_legacy_plan_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782838603621,
+      "tag": "0006_green_zaran",
+      "breakpoints": true
     }
   ]
 }
