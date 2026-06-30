@@ -1,0 +1,161 @@
+/**
+ * تست‌های هندلرِ `/api/apply-queue/claim` و `/api/apply-queue/:id/result`.
+ *
+ * نگهبانِ Bearer و توابعِ صفِ افزونه (claimUserApplyItems/recordResult) mock می‌شوند.
+ * تمرکز: احراز با نشستِ افزونه، مقیدبودن به همان کاربر (قاعده‌ی ۴)، و اینکه نتیجه
+ * فقط با گزارشِ صریحِ افزونه ثبت می‌شود (قاعده‌ی ۲).
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/api/bearer-auth", () => ({ requireBearerSession: vi.fn() }));
+vi.mock("@/lib/apply/extension-queue", () => ({
+  claimUserApplyItems: vi.fn(),
+  recordResult: vi.fn(),
+}));
+
+import { requireBearerSession } from "@/lib/api/bearer-auth";
+import { claimUserApplyItems, recordResult } from "@/lib/apply/extension-queue";
+import { HttpError } from "@/lib/api/http";
+import { POST as claimPOST } from "@/app/api/apply-queue/claim/route";
+import { POST as resultPOST } from "@/app/api/apply-queue/[id]/result/route";
+
+const authMock = vi.mocked(requireBearerSession);
+const claimMock = vi.mocked(claimUserApplyItems);
+const recordMock = vi.mocked(recordResult);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+const VALID_ID = "11111111-1111-4111-8111-111111111111";
+
+describe("POST /api/apply-queue/claim", () => {
+  function claimReq(body?: unknown) {
+    const init: RequestInit = {
+      method: "POST",
+      headers: { authorization: "Bearer t" },
+    };
+    if (body !== undefined) {
+      init.headers = { ...(init.headers as object), "content-type": "application/json" };
+      init.body = JSON.stringify(body);
+    }
+    return new Request("https://k.app/api/apply-queue/claim", init);
+  }
+
+  it("نشستِ افزونه → آیتم‌های همین کاربر (limit پیش‌فرض)", async () => {
+    authMock.mockResolvedValue({
+      userId: "user-5",
+      session: { kind: "extension" },
+    } as never);
+    claimMock.mockResolvedValue([
+      { taskId: "t1", matchId: "m1", listing: { title: "Dev" } },
+    ] as never);
+
+    const res = await claimPOST(claimReq());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.count).toBe(1);
+    expect(body.items[0].taskId).toBe("t1");
+    expect(claimMock).toHaveBeenCalledWith("user-5", 5);
+    expect(authMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ requireKind: "extension" }),
+    );
+  });
+
+  it("بدنه‌ی خالی هم مجاز است (پیش‌فرض)", async () => {
+    authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
+    claimMock.mockResolvedValue([] as never);
+    const res = await claimPOST(claimReq());
+    expect(res.status).toBe(200);
+    expect(claimMock).toHaveBeenCalledWith("u", 5);
+  });
+
+  it("limit سفارشی رعایت می‌شود", async () => {
+    authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
+    claimMock.mockResolvedValue([] as never);
+    await claimPOST(claimReq({ limit: 3 }));
+    expect(claimMock).toHaveBeenCalledWith("u", 3);
+  });
+
+  it("limit نامعتبر → ۴۰۰", async () => {
+    authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
+    const res = await claimPOST(claimReq({ limit: 999 }));
+    expect(res.status).toBe(400);
+    expect(claimMock).not.toHaveBeenCalled();
+  });
+
+  it("نشستِ نامعتبر → ۴۰۱", async () => {
+    authMock.mockRejectedValue(new HttpError(401, "unauthorized"));
+    const res = await claimPOST(claimReq());
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /api/apply-queue/:id/result — قاعده‌ی ۲ (تأییدِ صریح)", () => {
+  function resultReq(body: unknown) {
+    return new Request(`https://k.app/api/apply-queue/${VALID_ID}/result`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer t" },
+      body: JSON.stringify(body),
+    });
+  }
+  const params = () => Promise.resolve({ id: VALID_ID });
+
+  it("گزارشِ submitted → ثبتِ application با channel=extension", async () => {
+    authMock.mockResolvedValue({
+      userId: "user-8",
+      session: { kind: "extension" },
+    } as never);
+    recordMock.mockResolvedValue({
+      application: { id: "app-1", status: "submitted", channel: "extension" },
+      taskStatus: "succeeded",
+    } as never);
+
+    const res = await resultPOST(resultReq({ status: "submitted", externalRef: "ref" }), {
+      params: params(),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.application.channel).toBe("extension");
+    expect(body.taskStatus).toBe("succeeded");
+    expect(recordMock).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: VALID_ID, userId: "user-8", status: "submitted" }),
+    );
+  });
+
+  it("taskِ متعلق به کاربرِ دیگر/ناموجود → ۴۰۴", async () => {
+    authMock.mockResolvedValue({
+      userId: "user-8",
+      session: { kind: "extension" },
+    } as never);
+    recordMock.mockResolvedValue(null);
+    const res = await resultPOST(resultReq({ status: "submitted" }), {
+      params: params(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("idِ غیرUUID → ۴۰۰", async () => {
+    authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
+    const res = await resultPOST(resultReq({ status: "submitted" }), {
+      params: Promise.resolve({ id: "bad" }),
+    });
+    expect(res.status).toBe(400);
+    expect(recordMock).not.toHaveBeenCalled();
+  });
+
+  it("statusِ نامعتبر → ۴۰۰", async () => {
+    authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
+    const res = await resultPOST(resultReq({ status: "queued" }), { params: params() });
+    expect(res.status).toBe(400);
+  });
+
+  it("نشستِ نامعتبر → ۴۰۱", async () => {
+    authMock.mockRejectedValue(new HttpError(401, "unauthorized"));
+    const res = await resultPOST(resultReq({ status: "submitted" }), {
+      params: params(),
+    });
+    expect(res.status).toBe(401);
+  });
+});
