@@ -15,6 +15,7 @@ type NavKey =
   | "home"
   | "matches"
   | "applications"
+  | "auto-apply"
   | "interests"
   | "resume"
   | "models"
@@ -35,6 +36,12 @@ const NAV: { key: NavKey; href: string; label: string; icon: string }[] = [
     href: "/dashboard/applications",
     label: "اپلای‌ها",
     icon: "📨",
+  },
+  {
+    key: "auto-apply",
+    href: "/dashboard/auto-apply",
+    label: "اپلای خودکار",
+    icon: "⚡",
   },
   { key: "resume", href: "/dashboard/resume", label: "رزومه", icon: "📄" },
   { key: "models", href: "/dashboard/models", label: "مدلِ هوش مصنوعی", icon: "🤖" },
