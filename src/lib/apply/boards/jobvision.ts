@@ -17,6 +17,13 @@ import type {
 export const jobvision: JobBoardConnector = {
   id: "jobvision",
   displayName: "جاب‌ویژن",
+  applyType: "structured",
+  // توکن جاب‌ویژن کوکی نیست؛ JWT در localStorage است (بخش ۷ سند معماری).
+  sessionShape: "token",
+
+  async scrapePublic(_prefs: JobPreferences): Promise<JobListing[]> {
+    throw new Error("jobvision.scrapePublic: not implemented yet");
+  },
 
   async search(_prefs: JobPreferences): Promise<JobListing[]> {
     throw new Error("jobvision.search: not implemented yet");

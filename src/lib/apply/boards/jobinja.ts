@@ -7,18 +7,411 @@ import type {
   JobListing,
   JobPreferences,
 } from "@/lib/apply/types";
+import { KARJOO_USER_AGENT, isAllowed as robotsIsAllowed } from "@/lib/apply/robots";
 
 /**
- * کانکتور جابینجا (jobinja.ir) — داربست.
+ * کانکتور جابینجا (jobinja.ir) — فاز ۱: ingestion عمومی و فقط‌خواندنی.
  *
- * TODO: احراز هویت کاربر، جست‌وجوی آگهی‌ها و ارسال درخواست مطابق با شرایط استفاده‌ی
- * جابینجا. هیچ اسکریپینگ/اتوماسیونی هنوز پیاده نشده است.
+ * فقط `scrapePublic()` پیاده شده است: صفحه‌ی نتایج جست‌وجوی عمومی جابینجا را می‌خواند،
+ * هر آگهی را پارس می‌کند و به `JobListing` نرمال می‌سازد. این مسیر هیچ نشست کاربری
+ * لازم ندارد و هیچ ریسک حسابی ندارد (بخش ۹، فاز ۱ سند معماری).
+ *
+ * `search()` و `apply()` همچنان داربست‌اند و در فازهای بعد (افزونه/ورکر) پیاده می‌شوند.
+ *
+ * نکته‌ی پارسر: عمداً به کتابخانه‌ی خارجی وابسته نیستیم؛ پارس با regex مقاوم انجام
+ * می‌شود تا «یک کانکتور = یک فایل» باقی بماند و وابستگی جدیدی به package.json اضافه نشود.
+ * منطق پارس به‌صورت تابع خالص (`parseSearchHtml`) صادر شده تا تست‌ها بدون شبکه روی
+ * فیکسچر اجرا شوند.
  */
-export const jobinja: JobBoardConnector = {
+
+/** میزبان رسمی جابینجا. همه‌ی URLهای نسبی نسبت به همین مبنا حل می‌شوند. */
+const JOBINJA_ORIGIN = "https://jobinja.ir";
+
+/** نقطه‌ی شروع جست‌وجوی آگهی‌ها. */
+const JOBINJA_JOBS_URL = `${JOBINJA_ORIGIN}/jobs`;
+
+/**
+ * User-Agent برداشت — همان رشته‌ی قابل‌شناساییِ کارجو (KARJOO_USER_AGENT) که هم در
+ * هدرِ درخواست و هم در بررسیِ robots.txt استفاده می‌شود، تا تطبیقِ robots دقیقاً با
+ * همان UAیی باشد که واقعاً درخواست می‌فرستد (مرورگرمانند + توکنِ KarjooBot).
+ */
+const BROWSER_USER_AGENT = KARJOO_USER_AGENT;
+
+/** ادب در برداشت: سقف تعداد صفحه، مکث بین صفحه‌ها و مهلت هر درخواست. */
+const DEFAULT_MAX_PAGES = 3;
+const DELAY_BETWEEN_PAGES_MS = 1_200;
+const REQUEST_TIMEOUT_MS = 25_000;
+
+/** آپشن‌های داخلی برداشت (برای تست/تنظیم؛ بخشی از قرارداد عمومی نیست). */
+export interface ScrapeOptions {
+  /** بیشینه‌ی صفحه‌های پیمایش‌شده. */
+  maxPages?: number;
+  /** مکث بین صفحه‌ها (میلی‌ثانیه) — برای رعایت ادب. */
+  delayMs?: number;
+  /** پیاده‌سازی fetch قابل‌تزریق (تست). پیش‌فرض: fetch سراسری. */
+  fetchImpl?: typeof fetch;
+  /**
+   * بررسیِ مجاز بودنِ یک URL طبق robots.txt — قابل‌تزریق برای تست.
+   * پیش‌فرض: در مسیرِ واقعی (بدون fetchِ تزریقی)، بررسیِ واقعیِ robots؛ در تست (با
+   * fetchِ تزریقی) به‌صورت «همیشه مجاز» تا شبکه/شمارشِ fetch دست‌نخورده بماند.
+   */
+  isAllowed?: (url: string) => Promise<boolean>;
+}
+
+/* ------------------------------------------------------------------ */
+/* ابزارهای پارس متن/HTML                                             */
+/* ------------------------------------------------------------------ */
+
+/** جدول حداقلیِ entityهای HTML که در صفحات جابینجا دیده می‌شوند. */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+  zwnj: "‌", // نیم‌فاصله — در نام نوع همکاری/شرکت زیاد است.
+  laquo: "«",
+  raquo: "»",
+  hellip: "…",
+};
+
+/** entityهای نام‌دار و عددی (ده‌دهی/شانزده‌شانزدهی) را به کاراکتر تبدیل می‌کند. */
+function decodeEntities(input: string): string {
+  return input.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (whole, body: string) => {
+    if (body[0] === "#") {
+      const isHex = body[1] === "x" || body[1] === "X";
+      const code = Number.parseInt(body.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+      if (Number.isFinite(code) && code > 0) {
+        try {
+          return String.fromCodePoint(code);
+        } catch {
+          return whole;
+        }
+      }
+      return whole;
+    }
+    const named = NAMED_ENTITIES[body];
+    return named ?? whole;
+  });
+}
+
+/** تگ‌ها را حذف، entityها را decode و فاصله‌ها را نرمال می‌کند → متن تمیز. */
+function stripTags(html: string): string {
+  const withoutTags = html.replace(/<[^>]*>/g, " ");
+  // نیم‌فاصله را نگه می‌داریم اما فاصله‌های افقی تکراری را جمع می‌کنیم.
+  return decodeEntities(withoutTags)
+    .replace(/[\t\r\n ]+/g, " ")
+    .replace(/ /g, " ")
+    .trim();
+}
+
+/** هر URL نسبی/مطلق جابینجا را به URL مطلق و تمیز (بدون پارامترهای ردیابی) تبدیل می‌کند. */
+function normalizeUrl(rawHref: string): string | null {
+  const href = decodeEntities(rawHref).trim();
+  if (!href) return null;
+  let url: URL;
+  try {
+    url = new URL(href, JOBINJA_ORIGIN);
+  } catch {
+    return null;
+  }
+  // پارامترهای ردیابی جابینجا را دور می‌ریزیم تا URL پایدار و canonical بماند.
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+/**
+ * شناسه‌ی کوتاه و پایدار آگهی را از مسیر URL درمی‌آورد:
+ * `/companies/{slug}/jobs/{shortId}/...` → `{shortId}` (مثلاً `tO4x`).
+ * این پایدارترین منبع externalId است؛ روی همه‌ی کارت‌ها (حتی premium) حاضر است.
+ */
+function extractShortId(absoluteUrl: string): string | null {
+  const match = /\/jobs\/([A-Za-z0-9]+)(?:\/|$)/.exec(absoluteUrl);
+  return match ? match[1] : null;
+}
+
+/** اولین گروهِ یک regex را روی متن اجرا و trim‌شده برمی‌گرداند (یا undefined). */
+function firstGroup(re: RegExp, source: string): string | undefined {
+  const m = re.exec(source);
+  if (!m) return undefined;
+  const text = stripTags(m[1]);
+  return text.length > 0 ? text : undefined;
+}
+
+/* ------------------------------------------------------------------ */
+/* پارسرِ خالصِ صفحه‌ی نتایج                                          */
+/* ------------------------------------------------------------------ */
+
+/** هر بلوک `<li ... c-jobListView__item ...>...</li>` را جدا می‌کند. */
+function sliceCards(html: string): string[] {
+  const cards: string[] = [];
+  const openRe = /<li[^>]*\bc-jobListView__item\b[^>]*>/g;
+  let open: RegExpExecArray | null;
+  while ((open = openRe.exec(html)) !== null) {
+    const start = open.index;
+    // از انتهای تگِ باز، با شمارش <li>/<\/li> تا بسته‌ی متناظر جلو می‌رویم.
+    let depth = 1;
+    const liToken = /<li\b|<\/li>/g;
+    liToken.lastIndex = openRe.lastIndex;
+    let end = -1;
+    let token: RegExpExecArray | null;
+    while ((token = liToken.exec(html)) !== null) {
+      if (token[0] === "</li>") {
+        depth -= 1;
+        if (depth === 0) {
+          end = liToken.lastIndex;
+          break;
+        }
+      } else {
+        depth += 1;
+      }
+    }
+    if (end === -1) break; // HTML ناقص؛ ادامه نمی‌دهیم.
+    cards.push(html.slice(start, end));
+    openRe.lastIndex = end; // از کارت بعدی ادامه بده (تو‌درتو نشمار).
+  }
+  return cards;
+}
+
+/** متن «نوع همکاری/حقوق» را به نوع‌همکاری و (در صورت وجود عمومی) حقوق تفکیک می‌کند. */
+function parseEmploymentAndSalary(block: string): {
+  employment?: string;
+  salary?: string;
+} {
+  // متن داخلی‌ترین <span>ها: اولی نوع همکاری، در صورت وجود حقوقِ عمومی هم می‌آید.
+  const innerSpan = /<span>([\s\S]*?)<\/span>/.exec(block);
+  const employment = innerSpan ? stripTags(innerSpan[1]) || undefined : undefined;
+
+  const text = stripTags(block);
+  // در نمای خروج‌از‌حساب، حقوق پشت لینک ورود مخفی است → حقوق نداریم.
+  if (/برای\s+مشاهده\s+حقوق\s+وارد\s+شوید/.test(text)) {
+    return { employment };
+  }
+  // اگر متنی شامل «حقوق» یا «تومان» (و نه لینک ورود) بود، آن را حقوق می‌گیریم.
+  const salaryMatch = /([^<]*?(?:حقوق|تومان)[^<]*)/.exec(
+    stripTags(block.replace(/<span>[\s\S]*?<\/span>/, "")),
+  );
+  const salaryRaw = salaryMatch ? salaryMatch[1].trim() : "";
+  const salary = salaryRaw.length > 0 ? salaryRaw : undefined;
+  return { employment, salary };
+}
+
+/** عبارت «(۳ روز پیش)» / «(امروز)» را تمیز می‌کند → بدون پرانتز. */
+function cleanPostedAt(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const inner = /^\(?\s*([\s\S]*?)\s*\)?$/.exec(raw);
+  const text = (inner ? inner[1] : raw).trim();
+  return text.length > 0 ? text : undefined;
+}
+
+/**
+ * یک کارت آگهی را به `JobListing` نرمال می‌کند. اگر کارت معتبر نباشد (بدون
+ * لینک/شناسه/عنوان) `null` برمی‌گرداند تا برداشت با خطا متوقف نشود.
+ */
+export function parseListingCard(card: string): JobListing | null {
+  // عنوان و URL از لینک عنوان درمی‌آید.
+  const titleLink =
+    /<a[^>]*\bc-jobListView__titleLink\b[^>]*\bhref="([^"]+)"[^>]*>([\s\S]*?)<\/a>/.exec(card) ??
+    /<a[^>]*\bhref="([^"]+)"[^>]*\bc-jobListView__titleLink\b[^>]*>([\s\S]*?)<\/a>/.exec(card);
+  if (!titleLink) return null;
+
+  const url = normalizeUrl(titleLink[1]);
+  if (!url) return null;
+
+  const externalId = extractShortId(url);
+  if (!externalId) return null;
+
+  const title = stripTags(titleLink[2]);
+  if (!title) return null;
+
+  // شرکت: متنِ اولین metaItem (آیکن construction).
+  const company = firstGroup(
+    /c-icon--construction[^>]*><\/i>\s*<span>([\s\S]*?)<\/span>/,
+    card,
+  );
+
+  // شهر: متنِ metaItem با آیکن place.
+  const city = firstGroup(/c-icon--place[^>]*><\/i>\s*<span>([\s\S]*?)<\/span>/, card);
+
+  // نوع همکاری + حقوق: metaItem با آیکن resume.
+  const resumeBlock = /c-icon--resume[^>]*><\/i>\s*<span>([\s\S]*?)<\/span>\s*<\/li>/.exec(card);
+  const { salary } = resumeBlock
+    ? parseEmploymentAndSalary(resumeBlock[1])
+    : { salary: undefined };
+
+  // تاریخ انتشار: «(امروز)» یا «(۳ روز پیش)».
+  const postedAt = cleanPostedAt(
+    firstGroup(/c-jobListView__passedDays">([\s\S]*?)<\/span>/, card),
+  );
+
+  return {
+    id: `jobinja:${externalId}`,
+    board: "jobinja",
+    externalId,
+    title,
+    ...(company ? { company } : {}),
+    ...(city ? { city } : {}),
+    url,
+    ...(salary ? { salary } : {}),
+    ...(postedAt ? { postedAt } : {}),
+  };
+}
+
+/**
+ * کل HTML صفحه‌ی نتایج را پارس می‌کند → آرایه‌ای از `JobListing`، با حذف تکراری‌ها
+ * بر اساس `externalId`. تابعِ خالص و بدون شبکه (هسته‌ی قابل‌تست).
+ */
+export function parseSearchHtml(html: string): JobListing[] {
+  const seen = new Set<string>();
+  const out: JobListing[] = [];
+  for (const card of sliceCards(html)) {
+    const listing = parseListingCard(card);
+    if (!listing) continue;
+    if (seen.has(listing.externalId)) continue;
+    seen.add(listing.externalId);
+    out.push(listing);
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ */
+/* ساختِ URL جست‌وجو از ترجیحات                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * از `JobPreferences` پارامترهای جست‌وجوی جابینجا را می‌سازد:
+ *   • `filters[keywords][0]`     ← اولین عنوان شغلی
+ *   • `filters[locations][]`     ← شهرها
+ *   • صفحه‌بندی با `page`
+ * نام دقیق فیلترها مطابق فرم جست‌وجوی جابینجا است (بخش CONTEXT اسکفولد).
+ */
+export function buildSearchUrl(prefs: JobPreferences, page: number): string {
+  const url = new URL(JOBINJA_JOBS_URL);
+  const params = url.searchParams;
+
+  const keyword = prefs.titles?.find((t) => t && t.trim().length > 0)?.trim();
+  if (keyword) {
+    params.append("filters[keywords][0]", keyword);
+  }
+  for (const city of prefs.cities ?? []) {
+    if (city && city.trim().length > 0) {
+      params.append("filters[locations][]", city.trim());
+    }
+  }
+  if (page > 1) {
+    params.set("page", String(page));
+  }
+  url.search = params.toString();
+  return url.toString();
+}
+
+/* ------------------------------------------------------------------ */
+/* مکث ساده (برای رعایت ادب بین صفحه‌ها)                              */
+/* ------------------------------------------------------------------ */
+
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/* ------------------------------------------------------------------ */
+/* کانکتور                                                            */
+/* ------------------------------------------------------------------ */
+
+export const jobinja: JobBoardConnector & {
+  scrapePublicWith(prefs: JobPreferences, opts: ScrapeOptions): Promise<JobListing[]>;
+} = {
   id: "jobinja",
   displayName: "جابینجا",
+  applyType: "structured",
+  sessionShape: "cookie",
+
+  async scrapePublic(prefs: JobPreferences): Promise<JobListing[]> {
+    return this.scrapePublicWith(prefs, {});
+  },
+
+  /**
+   * نسخه‌ی قابل‌تنظیمِ `scrapePublic` با تزریق fetch/سقف صفحه (برای تست و orchestrator).
+   * بخشی از قرارداد عمومی کانکتور نیست؛ صرفاً افزونه‌ی این پیاده‌سازی است.
+   */
+  async scrapePublicWith(prefs: JobPreferences, opts: ScrapeOptions): Promise<JobListing[]> {
+    const fetchImpl = opts.fetchImpl ?? fetch;
+    const maxPages = Math.max(1, opts.maxPages ?? DEFAULT_MAX_PAGES);
+    const delayMs = opts.delayMs ?? DELAY_BETWEEN_PAGES_MS;
+
+    // بررسیِ robots: اگر صریحاً تزریق شده از همان؛ وگرنه در مسیرِ واقعی (fetchِ پیش‌فرض)
+    // بررسیِ واقعیِ robots با همان UA؛ در تست (fetchِ تزریقی) «همیشه مجاز» تا شبکه/شمارش
+    // fetch دست‌نخورده بماند.
+    const checkAllowed =
+      opts.isAllowed ??
+      (opts.fetchImpl
+        ? async () => true
+        : (url: string) => robotsIsAllowed(url, BROWSER_USER_AGENT));
+
+    const collected: JobListing[] = [];
+    const seen = new Set<string>();
+
+    for (let page = 1; page <= maxPages; page += 1) {
+      if (page > 1) {
+        await sleep(delayMs); // ادب: مکث بین صفحه‌ها (نه قبل از اولین درخواست).
+      }
+
+      const target = buildSearchUrl(prefs, page);
+
+      // ادب: پیش از واکشی، robots.txt را احترام بگذار. اگر این مسیر disallow باشد،
+      // مودبانه رد می‌شویم و برداشت را متوقف می‌کنیم (لاگ می‌زنیم).
+      const allowed = await checkAllowed(target);
+      if (!allowed) {
+        console.warn(`[jobinja] robots.txt واکشیِ ${target} را منع کرد — رد شد.`);
+        break;
+      }
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+      let html: string;
+      try {
+        const res = await fetchImpl(target, {
+          method: "GET",
+          headers: {
+            "User-Agent": BROWSER_USER_AGENT,
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "fa-IR,fa;q=0.9,en;q=0.8",
+          },
+          signal: controller.signal,
+          redirect: "follow",
+        });
+        if (!res.ok) {
+          throw new Error(`jobinja.scrapePublic: HTTP ${res.status} روی ${target}`);
+        }
+        html = await res.text();
+      } finally {
+        clearTimeout(timer);
+      }
+
+      const pageListings = parseSearchHtml(html);
+      if (pageListings.length === 0) {
+        break; // صفحه‌ی خالی یا انتهای نتایج → توقف زودهنگام.
+      }
+
+      let added = 0;
+      for (const listing of pageListings) {
+        if (seen.has(listing.externalId)) continue;
+        seen.add(listing.externalId);
+        collected.push(listing);
+        added += 1;
+      }
+      // اگر این صفحه هیچ آگهی تازه‌ای نداشت، احتمالاً به تکرار رسیده‌ایم.
+      if (added === 0) break;
+    }
+
+    return collected;
+  },
 
   async search(_prefs: JobPreferences): Promise<JobListing[]> {
+    // جست‌وجوی احرازهویت‌شده در فاز افزونه/ورکر پیاده می‌شود.
     throw new Error("jobinja.search: not implemented yet");
   },
 
@@ -27,6 +420,7 @@ export const jobinja: JobBoardConnector = {
     _profile: CandidateProfile,
     _coverLetter: string,
   ): Promise<ApplicationResult> {
+    // ارسال درخواستِ احرازهویت‌شده در فاز افزونه/ورکر پیاده می‌شود.
     throw new Error("jobinja.apply: not implemented yet");
   },
 };

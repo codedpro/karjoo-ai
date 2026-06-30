@@ -64,6 +64,24 @@ export type JobBoardId = "jobvision" | "jobinja" | "e-estekhdam" | "karboom" | "
 export interface JobBoardConnector {
   readonly id: JobBoardId;
   readonly displayName: string;
+  /**
+   * نوع اپلای این سایت:
+   *   • `structured` — فرم/درخواست ساختاریافته (جابینجا، جاب‌ویژن).
+   *   • `contact`    — اپلای = ارسال پیام/تماس از روی متن آگهی (ای‌استخدام و …).
+   */
+  readonly applyType: "structured" | "contact";
+  /**
+   * شکل نشست این سایت:
+   *   • `cookie` — نشست در کوکی است (جابینجا) → `chrome.cookies`.
+   *   • `token`  — توکن در localStorage/IndexedDB است (جاب‌ویژن SPA) → content script.
+   */
+  readonly sessionShape: "cookie" | "token";
+  /**
+   * ingestion عمومی و فقط-خواندنی برای کنترل‌پلین — بدون نیاز به نشست کاربر.
+   * این از `apply()`ِ احرازهویت‌شده جداست: آگهی‌های عمومی را می‌خواند و نرمال می‌کند
+   * تا موتور تطبیق رویشان کار کند. هیچ ریسک حسابی ندارد.
+   */
+  scrapePublic(prefs: JobPreferences): Promise<JobListing[]>;
   /** جست‌وجوی آگهی‌های مرتبط با ترجیحات کاربر. */
   search(prefs: JobPreferences): Promise<JobListing[]>;
   /** ارسال درخواست برای یک آگهی، با رزومه/انگیزه‌نامه‌ی آماده‌شده. */
