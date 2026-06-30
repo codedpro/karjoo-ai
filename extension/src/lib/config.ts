@@ -22,6 +22,24 @@ export const STORAGE_KEYS = {
   sessionToken: "karjoo.sessionToken",
   /** Cached signed-in identity from /api/extension/me (object). */
   identity: "karjoo.identity",
+  /**
+   * Last-known auto-apply settings mirrored from the server (object:
+   * { enabled, minScore }). The SERVER is authoritative — this is only a UI cache
+   * so the popup can render the toggle instantly before the round-trip.
+   */
+  autoApplySettings: "karjoo.autoApply.settings",
+  /**
+   * Status of the most recent background auto-apply tick (object: AutoApplyStatus)
+   * — shown in the popup "last run" view. Non-secret summary only.
+   */
+  autoApplyStatus: "karjoo.autoApply.status",
+  /**
+   * LOCAL, device-only captured session snapshots, keyed by board
+   * (map: board → SessionSnapshot). RAW session material — used by the apply flow
+   * and (premium only) the vault push; NEVER sent anywhere except
+   * /api/session/refresh. Free/Pro: stays here, never leaves the device.
+   */
+  sessionSnapshots: "karjoo.session.snapshots",
 } as const;
 
 /**

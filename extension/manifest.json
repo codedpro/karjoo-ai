@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Karjoo — assisted apply (کارجو)",
   "version": "0.1.0",
-  "description": "AI job-search copilot: pre-fills job applications on Iranian boards; you review and approve every submit. No unattended auto-submit.",
+  "description": "AI job-search copilot for Iranian boards: assisted apply (you review and submit) plus opt-in background auto-apply you explicitly turn on — gated by a daily cap, a match-quality threshold, and a full audit trail. Uses only your own session in your own browser; no detection-evasion.",
   "default_locale": "en",
   "icons": {
     "16": "icons/icon-16.png",
@@ -22,7 +22,7 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["storage", "cookies", "scripting", "activeTab"],
+  "permissions": ["storage", "cookies", "scripting", "activeTab", "tabs", "alarms"],
   "host_permissions": [
     "https://jobinja.ir/*",
     "https://*.jobinja.ir/*",
@@ -37,22 +37,40 @@
   "content_scripts": [
     {
       "matches": ["https://jobinja.ir/*", "https://*.jobinja.ir/*"],
-      "js": ["content/jobinja.js", "content/import/jobinja.js"],
+      "js": [
+        "content/jobinja.js",
+        "content/import/jobinja.js",
+        "content/apply/jobinja.js",
+        "content/session-probe.js"
+      ],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://jobvision.ir/*", "https://*.jobvision.ir/*"],
-      "js": ["content/jobvision.js", "content/import/jobvision.js"],
+      "js": [
+        "content/jobvision.js",
+        "content/import/jobvision.js",
+        "content/apply/jobvision.js",
+        "content/session-probe.js"
+      ],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://e-estekhdam.com/*", "https://*.e-estekhdam.com/*"],
-      "js": ["content/import/eestekhdam.js"],
+      "js": [
+        "content/import/eestekhdam.js",
+        "content/apply/eestekhdam.js",
+        "content/session-probe.js"
+      ],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://irantalent.com/*", "https://*.irantalent.com/*"],
-      "js": ["content/import/irantalent.js"],
+      "js": [
+        "content/import/irantalent.js",
+        "content/apply/irantalent.js",
+        "content/session-probe.js"
+      ],
       "run_at": "document_idle"
     }
   ]

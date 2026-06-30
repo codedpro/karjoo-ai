@@ -24,8 +24,17 @@
  * the SAME no-credentials guard and binds the userId to the session — never the
  * payload (docs §10).
  */
-import type { ConnectPayload, Identity, ApplyQueueItem, ApplyResultReport } from "@ext/lib/types";
+import type {
+  ConnectPayload,
+  Identity,
+  ApplyQueueItem,
+  ApplyResultReport,
+  AutoApplySettings,
+  PlanTier,
+} from "@ext/lib/types";
 import type { ImportPayloadBody } from "@ext/lib/import-payload";
+import type { SessionRefreshBody } from "@ext/lib/session-snapshot";
+import { DEFAULT_AUTO_APPLY_MIN_SCORE } from "@ext/lib/api-contracts";
 
 /* ── server response shapes (control-plane contract) ───────────────────────── */
 
@@ -54,6 +63,18 @@ interface ServerClaimedItem {
 interface ServerClaimResponse {
   count: number;
   items: ServerClaimedItem[];
+  /**
+   * Present only when the auto-apply gate returned an empty queue: the toggle is
+   * OFF ("disabled") or the daily cap is reached ("quota_exceeded"). The runner
+   * uses this to stop the tick without treating it as an error.
+   */
+  reason?: "disabled" | "quota_exceeded";
+}
+
+/** Server shape for GET/PUT /api/auto-apply (control-plane contract). */
+interface ServerAutoApplySettings {
+  enabled?: boolean;
+  minScore?: number;
 }
 
 /**
@@ -128,7 +149,16 @@ export class KarjooApi {
     this.fetchImpl = opts.fetchImpl ?? fetch.bind(globalThis);
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  /**
+   * Low-level request that NEVER throws on a non-2xx — it returns the status +
+   * parsed body so callers can branch on it (e.g. claim's gated `reason`, the
+   * result endpoint's 429 daily-cap, or a 404 "route not deployed yet"). The
+   * higher-level `request` wraps this and throws on !ok for the simple cases.
+   */
+  private async requestRaw(
+    path: string,
+    init: RequestInit = {},
+  ): Promise<{ ok: boolean; status: number; body: unknown }> {
     const headers = new Headers(init.headers);
     headers.set("accept", "application/json");
     if (init.body) headers.set("content-type", "application/json");
@@ -144,12 +174,17 @@ export class KarjooApi {
         body = text;
       }
     }
-    if (!res.ok) {
+    return { ok: res.ok, status: res.status, body };
+  }
+
+  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const { ok, status, body } = await this.requestRaw(path, init);
+    if (!ok) {
       const msg =
         body && typeof body === "object" && "error" in body
           ? String((body as { error: unknown }).error)
-          : `request failed (${res.status})`;
-      throw new ApiError(res.status, msg);
+          : `request failed (${status})`;
+      throw new ApiError(status, msg);
     }
     return body as T;
   }
@@ -183,6 +218,19 @@ export class KarjooApi {
   }
 
   /**
+   * Raw /api/extension/me response, including the connected `boards` metadata
+   * (the background auto-apply tick needs to know which boards are connected).
+   * The boards array is metadata only — never a session/credential.
+   */
+  async meRaw(): Promise<{ user: ServerMeUser; boards: { board: string; status?: string }[] }> {
+    const res = await this.request<ServerMeResponse>("/api/extension/me", { method: "GET" });
+    return {
+      user: res.user,
+      boards: (res.boards as { board: string; status?: string }[]) ?? [],
+    };
+  }
+
+  /**
    * Attest that the user is connected to a board. The metadata-only payload is
    * built by buildConnectPayload() (no-secret invariant). The server's connect
    * schema is `.strict()` and allows ONLY { board, accountLabel? } — so we strip
@@ -205,11 +253,15 @@ export class KarjooApi {
    * Server returns `{ count, items: ClaimedApplyItem[] }`; we map each item onto
    * the extension's ApplyQueueItem render shape.
    */
-  async claimQueue(): Promise<{ items: ApplyQueueItem[] }> {
+  async claimQueue(limit?: number): Promise<{ items: ApplyQueueItem[]; reason?: "disabled" | "quota_exceeded" }> {
     const res = await this.request<ServerClaimResponse>("/api/apply-queue/claim", {
       method: "POST",
+      ...(typeof limit === "number" ? { body: JSON.stringify({ limit }) } : {}),
     });
-    return { items: (res.items ?? []).map(toApplyQueueItem) };
+    return {
+      items: (res.items ?? []).map(toApplyQueueItem),
+      ...(res.reason ? { reason: res.reason } : {}),
+    };
   }
 
   /**
@@ -234,16 +286,122 @@ export class KarjooApi {
    * is in the PATH; the server's result schema is `.strict()` and rejects an `id`
    * in the body — so we send only { status, externalRef?, reason? }.
    */
-  async reportResult(report: ApplyResultReport): Promise<{ ok: boolean }> {
+  async reportResult(report: ApplyResultReport): Promise<{ ok: boolean; status: number }> {
     const body: { status: ApplyResultReport["status"]; externalRef?: string; reason?: string } = {
       status: report.status,
       ...(report.externalRef ? { externalRef: report.externalRef } : {}),
       ...(report.reason ? { reason: report.reason } : {}),
     };
-    await this.request(`/api/apply-queue/${encodeURIComponent(report.id)}/result`, {
+    // Use the raw request so a 429 (daily-cap reached) does NOT throw — the
+    // background runner reads `status` to stop the drain gracefully. Other
+    // non-2xx still surface as an error to the caller.
+    const { ok, status, body: resBody } = await this.requestRaw(
+      `/api/apply-queue/${encodeURIComponent(report.id)}/result`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+    if (!ok && status !== 429) {
+      const msg =
+        resBody && typeof resBody === "object" && "error" in resBody
+          ? String((resBody as { error: unknown }).error)
+          : `request failed (${status})`;
+      throw new ApiError(status, msg);
+    }
+    return { ok, status };
+  }
+
+  /**
+   * Read the user's auto-apply settings (the SERVER is authoritative).
+   * Contract: GET /api/auto-apply → { enabled, minScore }.
+   *
+   * IMPORTANT: that route is authed by the Karjoo WEB SESSION COOKIE
+   * (getCurrentUser), not the extension bearer token. The extension's same-origin
+   * fetch carries that cookie automatically when the user is also signed into
+   * Karjoo on the web in this browser. If the cookie is absent (401) or the route
+   * is missing (404), we fail CLOSED to { enabled:false } so nothing auto-applies
+   * and the user manages consent on the dashboard.
+   */
+  async getAutoApplySettings(): Promise<AutoApplySettings> {
+    const { ok, status, body } = await this.requestRaw("/api/auto-apply", { method: "GET" });
+    if (!ok) {
+      if (status === 401 || status === 404) {
+        return { enabled: false, minScore: DEFAULT_AUTO_APPLY_MIN_SCORE };
+      }
+      throw new ApiError(status, errorOf(body, status));
+    }
+    const s = (body ?? {}) as ServerAutoApplySettings;
+    return {
+      enabled: s.enabled === true,
+      minScore: typeof s.minScore === "number" ? s.minScore : DEFAULT_AUTO_APPLY_MIN_SCORE,
+    };
+  }
+
+  /**
+   * Update the user's auto-apply toggle / threshold (mirrors the popup control).
+   * Contract: PUT /api/auto-apply { enabled?, minScore? } → { enabled, minScore }
+   * (web-cookie authed — same caveat as the GET).
+   */
+  async setAutoApplySettings(
+    next: Partial<AutoApplySettings> & { enabled: boolean },
+  ): Promise<AutoApplySettings> {
+    const body: { enabled: boolean; minScore?: number } = {
+      enabled: next.enabled,
+      ...(typeof next.minScore === "number" ? { minScore: next.minScore } : {}),
+    };
+    const res = await this.request<ServerAutoApplySettings>("/api/auto-apply", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+    return {
+      enabled: res.enabled === true,
+      minScore: typeof res.minScore === "number" ? res.minScore : DEFAULT_AUTO_APPLY_MIN_SCORE,
+    };
+  }
+
+  /**
+   * Read the user's plan tier (to decide whether the vault push is offered —
+   * Max/Max+ only). Contract: GET /api/me/plan → { plan, ... } (web-cookie authed).
+   * Fails CLOSED to 'free' (no vault push, session stays local) on 401/404/error.
+   */
+  async getPlan(): Promise<PlanTier> {
+    try {
+      const { ok, status, body } = await this.requestRaw("/api/me/plan", { method: "GET" });
+      if (!ok) return "free";
+      const plan = (body as { plan?: string } | null)?.plan;
+      return plan === "pro" || plan === "max" || plan === "maxplus" ? plan : "free";
+      void status;
+    } catch {
+      return "free";
+    }
+  }
+
+  /**
+   * Push the user's OWN refreshed session for a board into their OWN encrypted
+   * server vault (premium only). Contract: POST /api/session/refresh (extension
+   * bearer) { board, session, expiresAt? } → { board, sessionShape, lastRefreshed,
+   * expiresAt }. The server encrypts `session` (AES-256-GCM) at rest; it is never
+   * stored or returned in plain.
+   *
+   * THIS IS THE ONLY METHOD THAT TRANSMITS RAW SESSION MATERIAL — and only to the
+   * vault endpoint, only the user's own session. Expected non-2xx are NON-fatal
+   * (the snapshot stays LOCAL): 404 (route missing), 409 (board not connected yet),
+   * 503 (vault not configured). Anything else throws.
+   */
+  async refreshSession(body: SessionRefreshBody): Promise<{ ok: boolean; status: number }> {
+    const { ok, status, body: resBody } = await this.requestRaw("/api/session/refresh", {
       method: "POST",
       body: JSON.stringify(body),
     });
-    return { ok: true };
+    const tolerated = status === 404 || status === 409 || status === 503;
+    if (!ok && !tolerated) {
+      throw new ApiError(status, errorOf(resBody, status));
+    }
+    return { ok, status };
   }
+}
+
+/** Pull a server error message from a parsed body, or a generic fallback. */
+function errorOf(body: unknown, status: number): string {
+  return body && typeof body === "object" && "error" in body
+    ? String((body as { error: unknown }).error)
+    : `request failed (${status})`;
 }

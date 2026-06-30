@@ -17,7 +17,13 @@ import { BOARDS, type BoardId } from "@ext/lib/config";
 import { isPaired, getApiOrigin } from "@ext/lib/storage";
 import { isValidPairingCodeShape, normalizePairingCode } from "@ext/lib/pairing-code";
 import { toQueueCardViews, type QueueCardView } from "@ext/lib/queue-view";
-import type { Identity, ApplyQueueItem } from "@ext/lib/types";
+import { stateLabel, thresholdLabel, lastRunLabel } from "@ext/lib/auto-apply-view";
+import type {
+  Identity,
+  ApplyQueueItem,
+  AutoApplySettings,
+  AutoApplyStatus,
+} from "@ext/lib/types";
 import type { ProbeSessionResult, BoardImportOutcome } from "@ext/lib/messages";
 import { send } from "@ext/popup/messaging";
 
@@ -117,8 +123,76 @@ async function enterMain() {
 
   renderBoards();
   wireImport();
+  wireAutoApply();
   $("refresh-queue").addEventListener("click", () => void loadQueue());
   void loadQueue();
+}
+
+/* ── auto-apply tab (§10 — opt-in, revocable) ──────────────────────────────── */
+function wireAutoApply() {
+  const toggle = $("auto-toggle") as HTMLInputElement;
+  const runNow = $("auto-run-now") as HTMLButtonElement;
+
+  // Mirror the server's current settings into the control.
+  void refreshAutoApplyView();
+
+  toggle.addEventListener("change", async () => {
+    const enabled = toggle.checked;
+    toggle.disabled = true;
+    try {
+      const saved = await send<AutoApplySettings>({ type: "SET_AUTO_APPLY", enabled });
+      renderAutoSettings(saved);
+    } catch (e) {
+      // Revert the checkbox to the truthful (server) state on failure.
+      showGlobalError(errMsg(e));
+      await refreshAutoApplyView();
+    } finally {
+      toggle.disabled = false;
+    }
+  });
+
+  runNow.addEventListener("click", async () => {
+    runNow.disabled = true;
+    const original = runNow.textContent;
+    runNow.textContent = "در حال اجرا…";
+    try {
+      const status = await send<AutoApplyStatus>({ type: "RUN_AUTO_APPLY_NOW" });
+      renderAutoStatus(status);
+    } catch (e) {
+      showGlobalError(errMsg(e));
+    } finally {
+      runNow.disabled = false;
+      runNow.textContent = original;
+    }
+  });
+}
+
+async function refreshAutoApplyView() {
+  try {
+    const settings = await send<AutoApplySettings>({ type: "GET_AUTO_APPLY" });
+    renderAutoSettings(settings);
+  } catch (e) {
+    setText($("auto-state"), "وضعیت نامشخص");
+    showGlobalError(errMsg(e));
+  }
+  try {
+    const status = await send<AutoApplyStatus | null>({ type: "GET_AUTO_APPLY_STATUS" });
+    renderAutoStatus(status);
+  } catch {
+    // Status is best-effort; leave the default text.
+  }
+}
+
+function renderAutoSettings(settings: AutoApplySettings) {
+  (($("auto-toggle") as HTMLInputElement).checked = settings.enabled);
+  setText($("auto-state"), stateLabel(settings));
+  setText($("auto-threshold"), thresholdLabel(settings));
+  // "Run now" is only meaningful when the toggle is on.
+  ($("auto-run-now") as HTMLButtonElement).disabled = !settings.enabled;
+}
+
+function renderAutoStatus(status: AutoApplyStatus | null) {
+  setText($("auto-last-run"), lastRunLabel(status));
 }
 
 function identityLabel(identity: Identity | null): string {

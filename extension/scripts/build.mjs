@@ -36,6 +36,17 @@ const entryPoints = {
   "content/import/jobvision": resolve(root, "src/content/import/jobvision.ts"),
   "content/import/eestekhdam": resolve(root, "src/content/import/eestekhdam.ts"),
   "content/import/irantalent": resolve(root, "src/content/import/irantalent.ts"),
+  // Auto-apply content scripts (one per board) — run the APPLY_SPEC executor when
+  // the background runner sends CONTENT_APPLY (toggle ON + under cap + above
+  // threshold). jobinja best-effort; others scaffold (§10). See src/content/apply/*.
+  "content/apply/jobinja": resolve(root, "src/content/apply/jobinja.ts"),
+  "content/apply/jobvision": resolve(root, "src/content/apply/jobvision.ts"),
+  "content/apply/eestekhdam": resolve(root, "src/content/apply/eestekhdam.ts"),
+  "content/apply/irantalent": resolve(root, "src/content/apply/irantalent.ts"),
+  // Session-storage capture probe (one shared script on every board) — captures
+  // the user's OWN localStorage/sessionStorage for the LOCAL session snapshot
+  // (and premium vault push). See src/content/session-probe.ts.
+  "content/session-probe": resolve(root, "src/content/session-probe.ts"),
 };
 
 /** Static files copied verbatim into dist/. */
@@ -73,6 +84,20 @@ const buildOptions = {
   define: {
     "process.env.KARJOO_API_DEFAULT": JSON.stringify(
       process.env.KARJOO_API ?? "http://localhost:3000",
+    ),
+    // Auto-apply timing (mirrors the control-plane env defaults). Optional
+    // build-time overrides; the server toggle + daily cap remain authoritative.
+    "process.env.KARJOO_AUTO_APPLY_ALARM_MINUTES": JSON.stringify(
+      process.env.KARJOO_AUTO_APPLY_ALARM_MINUTES ?? "15",
+    ),
+    "process.env.KARJOO_AUTO_APPLY_JITTER_MS_MIN": JSON.stringify(
+      process.env.KARJOO_AUTO_APPLY_JITTER_MS_MIN ?? "2000",
+    ),
+    "process.env.KARJOO_AUTO_APPLY_JITTER_MS_MAX": JSON.stringify(
+      process.env.KARJOO_AUTO_APPLY_JITTER_MS_MAX ?? "8000",
+    ),
+    "process.env.KARJOO_SESSION_REFRESH_MINUTES": JSON.stringify(
+      process.env.KARJOO_SESSION_REFRESH_MINUTES ?? "30",
     ),
   },
 };

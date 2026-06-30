@@ -30,13 +30,26 @@ import {
   clearSessionToken,
   setApiOrigin,
   setIdentity,
+  getAutoApplySettings,
+  getAutoApplyStatus,
 } from "@ext/lib/storage";
+import {
+  setupAutoApplyAlarms,
+  registerAutoApplyAlarmListener,
+  runAutoApplyTick,
+} from "@ext/background/auto-apply";
 import type {
   PopupToBackground,
   ProbeSessionResult,
   Result,
 } from "@ext/lib/messages";
-import type { ApplyQueueItem, Identity, ApplyResultReport } from "@ext/lib/types";
+import type {
+  ApplyQueueItem,
+  Identity,
+  ApplyResultReport,
+  AutoApplySettings,
+  AutoApplyStatus,
+} from "@ext/lib/types";
 import type { ScrapeProfileResult, BoardImportOutcome } from "@ext/lib/import-types";
 
 /** Build an authed API client from current storage state. */
@@ -149,7 +162,48 @@ async function handlePrefill(item: ApplyQueueItem): Promise<{ ok: boolean; fille
 /** Report the outcome of a user APPROVED/skipped application. */
 async function handleReportResult(report: ApplyResultReport): Promise<{ ok: boolean }> {
   const api = await apiFromStorage();
-  return api.reportResult(report);
+  const res = await api.reportResult(report);
+  return { ok: res.ok };
+}
+
+/* ── auto-apply (§10): toggle + status, all server-authoritative ───────────── */
+
+/**
+ * Read the auto-apply settings. The SERVER is authoritative; we return the
+ * server's value and refresh the local cache. If the server call fails (e.g.
+ * offline) we fall back to the cached value so the popup still renders.
+ */
+async function handleGetAutoApply(): Promise<AutoApplySettings> {
+  try {
+    const api = await apiFromStorage();
+    const s = await api.getAutoApplySettings();
+    const settings: AutoApplySettings = { enabled: s.enabled, minScore: s.minScore };
+    return settings;
+  } catch {
+    return getAutoApplySettings();
+  }
+}
+
+/**
+ * Set the auto-apply toggle/threshold (explicit user consent in the popup). The
+ * server is the source of truth — we PUT it and, on success, ensure the alarms
+ * exist so a freshly-enabled toggle starts draining on the next tick.
+ */
+async function handleSetAutoApply(enabled: boolean, minScore?: number): Promise<AutoApplySettings> {
+  const api = await apiFromStorage();
+  const saved = await api.setAutoApplySettings({ enabled, ...(minScore !== undefined ? { minScore } : {}) });
+  // Make sure the periodic drain is scheduled (idempotent).
+  setupAutoApplyAlarms();
+  return saved;
+}
+
+async function handleGetAutoApplyStatus(): Promise<AutoApplyStatus | null> {
+  return getAutoApplyStatus();
+}
+
+/** Manual "run now" from the popup → one background tick (still fully gated). */
+async function handleRunAutoApplyNow(): Promise<AutoApplyStatus> {
+  return runAutoApplyTick();
 }
 
 /* ── profile import (DATA only — RULE 1) ───────────────────────────────────
@@ -260,6 +314,14 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
       return { ok: true, data: await handleReportResult(msg.report) };
     case "IMPORT_PROFILES":
       return { ok: true, data: await handleImportProfiles(msg.boards) };
+    case "GET_AUTO_APPLY":
+      return { ok: true, data: await handleGetAutoApply() };
+    case "SET_AUTO_APPLY":
+      return { ok: true, data: await handleSetAutoApply(msg.enabled, msg.minScore) };
+    case "GET_AUTO_APPLY_STATUS":
+      return { ok: true, data: await handleGetAutoApplyStatus() };
+    case "RUN_AUTO_APPLY_NOW":
+      return { ok: true, data: await handleRunAutoApplyNow() };
     default: {
       const _exhaustive: never = msg;
       return { ok: false, error: `unknown message: ${JSON.stringify(_exhaustive)}` };
@@ -277,3 +339,15 @@ chrome.runtime.onMessage.addListener((msg: PopupToBackground, _sender, sendRespo
   // Keep the message channel open for the async response.
   return true;
 });
+
+/* ── auto-apply alarms (§10) ────────────────────────────────────────────────
+ * Register the alarm LISTENER at load (so it survives the SW being respawned to
+ * handle an alarm), and (re)create the alarms on install/startup. The tick itself
+ * does NOTHING unless the server-side toggle is ON — see auto-apply.ts. The
+ * service worker (and thus background apply) runs only while the browser runs;
+ * 24/7 apply is the Max/Max+ worker tier (README). */
+registerAutoApplyAlarmListener();
+chrome.runtime.onInstalled.addListener(() => setupAutoApplyAlarms());
+chrome.runtime.onStartup.addListener(() => setupAutoApplyAlarms());
+// Also ensure on plain load (covers dev-reload where onInstalled may not fire).
+setupAutoApplyAlarms();

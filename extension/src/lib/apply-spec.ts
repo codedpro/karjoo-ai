@@ -1,0 +1,247 @@
+/**
+ * APPLY_SPEC (extension copy) — the declarative per-board apply field/selector
+ * spec that the background apply-runner and the per-board content scripts consume
+ * to fill + submit an application on the board page.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * WHY A COPY (and not an import)?
+ *   This is the MV3 extension package (its own package.json / build). It cannot
+ *   import the control-plane module `src/lib/apply/apply-spec.ts` (different
+ *   package, `server-only`-adjacent, Node deps). Foundation owns the canonical
+ *   spec; this file MIRRORS its shape and selectors FAITHFULLY so both ends agree.
+ *   It is pure data (no DB / network / secret / "server-only").
+ *
+ * §10 (the one firm line): nothing here is detection-evasion — no fingerprint
+ * spoofing, no captcha solving, no identity rotation. These are just the public
+ * form selectors of each board, filled with the USER'S OWN session in the user's
+ * own browser (acting as the authorized user).
+ *
+ * Maturity (mirrors Foundation):
+ *   • jobinja                      → "best-effort" real selectors.
+ *   • jobvision/e-estekhdam/irantalent → "scaffold" with TODO(real-account).
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+import type { BoardId } from "@ext/lib/config";
+
+/** Board ids that have an APPLY_SPEC — same union as the board registry. */
+export type ApplyBoardId = BoardId;
+
+/** A single interactive step kind in an apply flow. */
+export type ApplyStepKind =
+  | "click" // کلیک روی یک سلکتور (دکمه/لینک).
+  | "fill" // پر کردنِ یک فیلدِ ورودی با متن (از valueKey).
+  | "select" // انتخابِ گزینه از منوی کشویی.
+  | "upload" // پیوستِ فایل (رزومه).
+  | "waitFor"; // انتظار تا ظاهرشدنِ یک سلکتور (هم‌گام‌سازیِ SPA/مرحله‌ای).
+
+/**
+ * Where a fill/select/upload step gets its value — a reference into the
+ * executor-injected data (the runner provides the actual cover-letter text etc.;
+ * the spec never carries raw values).
+ */
+export type ApplyValueKey = "coverLetter" | "resumeFile" | "fullName" | "phone" | "email";
+
+/** One declarative step in the apply flow (interpreted by the executor). */
+export interface ApplyStep {
+  kind: ApplyStepKind;
+  /** CSS selector this step targets. */
+  selector: string;
+  /** For fill/select/upload: which value the executor injects. */
+  valueKey?: ApplyValueKey;
+  /** Human note (logs/debug/UI). Never a value. */
+  note?: string;
+  /** Whether a missing selector is an error or an optional step (e.g. cover letter). */
+  optional?: boolean;
+}
+
+/** Full apply spec for one board — the shared contract for extension + worker. */
+export interface BoardApplySpec {
+  board: ApplyBoardId;
+  /**
+   * Maturity:
+   *   • "best-effort" — selectors guessed from the board's real form structure.
+   *   • "scaffold"    — placeholder selectors; must be verified with a real account.
+   */
+  maturity: "best-effort" | "scaffold";
+  /** URL pattern of a job posting page this spec applies to (content-script match). */
+  urlPattern: RegExp;
+  /** The button that STARTS the apply flow on the posting page. */
+  applyButtonSelector: string;
+  /** The cover-letter field (when present) — optional, not all boards have one. */
+  coverLetterFieldSelector?: string;
+  /** The FINAL submit button. */
+  submitSelector: string;
+  /** Success-state selector ("your application was submitted") to confirm outcome. */
+  confirmSelector?: string;
+  /** Ordered steps (executor runs them in order). */
+  steps: ApplyStep[];
+  /** Implementation notes/warnings. */
+  notes?: string[];
+}
+
+/* ──────────────────────────────  jobinja  ──────────────────────────────── */
+/**
+ * jobinja — best-effort real. Server-rendered; "ارسال رزومه" opens a form/modal
+ * with a "توضیحات/انگیزه‌نامه" field and a submit button. Selectors mirror the
+ * Foundation spec (jobinja BEM: c-jobView*, c-applyForm*).
+ */
+const JOBINJA_SPEC: BoardApplySpec = {
+  board: "jobinja",
+  maturity: "best-effort",
+  urlPattern: /^https:\/\/jobinja\.ir\/companies\/[^/]+\/jobs\/[A-Za-z0-9]+/,
+  applyButtonSelector: "a.c-jobView__applyButton, button.c-jobView__applyButton",
+  coverLetterFieldSelector: "textarea[name='application[body]'], textarea.c-applyForm__message",
+  submitSelector: "form.c-applyForm button[type='submit'], button.c-applyForm__submit",
+  confirmSelector: ".c-applyForm__success, .c-flashMessage--success",
+  steps: [
+    {
+      kind: "click",
+      selector: "a.c-jobView__applyButton, button.c-jobView__applyButton",
+      note: "بازکردنِ فرمِ ارسالِ رزومه.",
+    },
+    {
+      kind: "waitFor",
+      selector: "form.c-applyForm",
+      note: "انتظار تا رندرِ فرمِ اپلای.",
+    },
+    {
+      kind: "fill",
+      selector: "textarea[name='application[body]'], textarea.c-applyForm__message",
+      valueKey: "coverLetter",
+      optional: true,
+      note: "انگیزه‌نامه — اگر فیلد موجود بود پر می‌شود.",
+    },
+    {
+      kind: "click",
+      selector: "form.c-applyForm button[type='submit'], button.c-applyForm__submit",
+      note: "ثبتِ نهاییِ اپلای.",
+    },
+    {
+      kind: "waitFor",
+      selector: ".c-applyForm__success, .c-flashMessage--success",
+      note: "تأییدِ ثبتِ موفق.",
+    },
+  ],
+  notes: [
+    "نشستِ کوکیِ خودِ کاربر استفاده می‌شود (sessionShape=cookie).",
+    "سلکتورها best-effort‌اند؛ پیش از انتشار با یک حسابِ واقعیِ jobinja صحت‌سنجی شوند.",
+  ],
+};
+
+/* ──────────────────────────────  jobvision  ─────────────────────────────── */
+/** jobvision — scaffold (TODO(real-account)). SPA; token in localStorage; waitFor needed. */
+const JOBVISION_SPEC: BoardApplySpec = {
+  board: "jobvision",
+  maturity: "scaffold",
+  urlPattern: /^https:\/\/(www\.)?jobvision\.ir\/jobs\/\d+/,
+  // TODO(real-account): سلکتورهای واقعیِ jobvision.
+  applyButtonSelector: "[data-test='apply-button']",
+  coverLetterFieldSelector: "[data-test='cover-letter']",
+  submitSelector: "[data-test='apply-submit']",
+  confirmSelector: "[data-test='apply-success']",
+  steps: [
+    { kind: "click", selector: "[data-test='apply-button']", note: "TODO(real-account): شروعِ اپلای." },
+    { kind: "waitFor", selector: "[data-test='apply-form']", note: "TODO(real-account): انتظار تا فرمِ SPA." },
+    {
+      kind: "fill",
+      selector: "[data-test='cover-letter']",
+      valueKey: "coverLetter",
+      optional: true,
+      note: "TODO(real-account): انگیزه‌نامه.",
+    },
+    { kind: "click", selector: "[data-test='apply-submit']", note: "TODO(real-account): ثبتِ نهایی." },
+    { kind: "waitFor", selector: "[data-test='apply-success']", note: "TODO(real-account): تأیید." },
+  ],
+  notes: [
+    "SPA با توکن در localStorage (sessionShape=token).",
+    "TODO(real-account): همه‌ی سلکتورها با حسابِ واقعیِ jobvision صحت‌سنجی شوند.",
+  ],
+};
+
+/* ────────────────────────────  e-estekhdam  ─────────────────────────────── */
+/** e-estekhdam — scaffold (TODO(real-account)). Many ads are contact-in-text. */
+const E_ESTEKHDAM_SPEC: BoardApplySpec = {
+  board: "e-estekhdam",
+  maturity: "scaffold",
+  urlPattern: /^https:\/\/(www\.)?e-estekhdam\.com\/.+/,
+  // TODO(real-account): سلکتورهای واقعیِ فرمِ e-estekhdam.
+  applyButtonSelector: ".job-apply-btn",
+  coverLetterFieldSelector: "textarea[name='message']",
+  submitSelector: "form.apply-form button[type='submit']",
+  confirmSelector: ".apply-success",
+  steps: [
+    { kind: "click", selector: ".job-apply-btn", note: "TODO(real-account): شروعِ اپلای (آگهیِ ساختاریافته)." },
+    {
+      kind: "fill",
+      selector: "textarea[name='message']",
+      valueKey: "coverLetter",
+      optional: true,
+      note: "TODO(real-account): پیام/انگیزه‌نامه.",
+    },
+    { kind: "click", selector: "form.apply-form button[type='submit']", note: "TODO(real-account): ثبت." },
+    { kind: "waitFor", selector: ".apply-success", note: "TODO(real-account): تأیید." },
+  ],
+  notes: [
+    "بسیاری از آگهی‌ها contact-in-text‌اند و این جریان روی آن‌ها اعمال نمی‌شود.",
+    "TODO(real-account): سلکتورها با حسابِ واقعی صحت‌سنجی شوند.",
+  ],
+};
+
+/* ────────────────────────────  irantalent  ─────────────────────────────── */
+/** irantalent — scaffold (TODO(real-account)). Session/form shape TBD (§7). */
+const IRANTALENT_SPEC: BoardApplySpec = {
+  board: "irantalent",
+  maturity: "scaffold",
+  urlPattern: /^https:\/\/(www\.)?irantalent\.com\/.+/,
+  // TODO(real-account): سلکتورهای واقعیِ فرمِ irantalent.
+  applyButtonSelector: "[data-qa='apply-button']",
+  coverLetterFieldSelector: "[data-qa='cover-letter']",
+  submitSelector: "[data-qa='apply-submit']",
+  confirmSelector: "[data-qa='apply-success']",
+  steps: [
+    { kind: "click", selector: "[data-qa='apply-button']", note: "TODO(real-account): شروعِ اپلای." },
+    { kind: "waitFor", selector: "[data-qa='apply-form']", note: "TODO(real-account): انتظار تا فرم." },
+    {
+      kind: "fill",
+      selector: "[data-qa='cover-letter']",
+      valueKey: "coverLetter",
+      optional: true,
+      note: "TODO(real-account): انگیزه‌نامه.",
+    },
+    { kind: "click", selector: "[data-qa='apply-submit']", note: "TODO(real-account): ثبت." },
+    { kind: "waitFor", selector: "[data-qa='apply-success']", note: "TODO(real-account): تأیید." },
+  ],
+  notes: [
+    "شکلِ نشست/فرم TBD (§۷ سند معماری).",
+    "TODO(real-account): همه‌ی سلکتورها با حسابِ واقعی صحت‌سنجی شوند.",
+  ],
+};
+
+/** The full apply-spec map — source of truth for the extension executor. */
+export const APPLY_SPEC: Record<ApplyBoardId, BoardApplySpec> = {
+  jobinja: JOBINJA_SPEC,
+  jobvision: JOBVISION_SPEC,
+  "e-estekhdam": E_ESTEKHDAM_SPEC,
+  irantalent: IRANTALENT_SPEC,
+};
+
+/** The apply spec for a board, or undefined if unsupported. */
+export function getApplySpec(board: string): BoardApplySpec | undefined {
+  return APPLY_SPEC[board as ApplyBoardId];
+}
+
+/** Does this board have a real "best-effort" spec (vs. only a scaffold)? */
+export function isApplySpecReady(board: string): boolean {
+  return getApplySpec(board)?.maturity === "best-effort";
+}
+
+/**
+ * Which board spec matches this URL (for a content script deciding which spec to
+ * apply to the current page). First match wins.
+ */
+export function matchApplySpecByUrl(url: string): BoardApplySpec | undefined {
+  for (const spec of Object.values(APPLY_SPEC)) {
+    if (spec.urlPattern.test(url)) return spec;
+  }
+  return undefined;
+}
