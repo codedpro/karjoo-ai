@@ -3,13 +3,13 @@ import "server-only";
 /**
  * POST /api/apply-queue/:id/result
  *
- * نتیجه‌ی یک اپلایِ **تأییدشده‌ی کاربر** را در افزونه ثبت می‌کند (channel='extension').
- * با نشستِ افزونه (Bearer) احراز می‌شود. `:id` شناسه‌ی task است.
+ * نتیجه‌ی یک اپلای را در افزونه ثبت می‌کند (channel='extension'). `:id` شناسه‌ی task است.
+ * با نشستِ افزونه (Bearer) احراز می‌شود.
  *
- * قاعده‌ی ۲ (CONTEXT): این تنها راهِ پیشرفتِ یک آیتمِ صف است — هر ارسال به یک اقدامِ
- * تأییدِ صریحِ کاربر در UI افزونه نیاز دارد و افزونه نتیجه را اینجا گزارش می‌کند.
- * هیچ‌جا اپلای به‌صورت خودکار/پس‌زمینه جلو نمی‌رود.
- * قاعده‌ی ۴: task باید به match‌ای از همین کاربر تعلق داشته باشد، وگرنه ۴۰۴.
+ * منبعِ اپلای: یا حالتِ «اپلای خودکار» (افزونه در پس‌زمینه، که در چوک‌پوینتِ claim با
+ * تاگلِ رضایت + سقفِ روزانه + آستانه‌ی امتیاز گیت می‌شود)، یا اپلایِ دستیِ تأییدشده‌ی کاربر.
+ * در هر دو حالت این تنها راهِ پیشرفتِ یک آیتمِ صف است و هر نتیجه یک ردیفِ audit_events
+ * می‌نویسد (قاعده‌ی ۱، §۱۰). قاعده‌ی ۴: task باید به match‌ای از همین کاربر تعلق داشته باشد، وگرنه ۴۰۴.
  *
  * بدنه (JSON): { status: 'submitted'|'skipped'|'failed', externalRef?, reason?, proof? }
  */
@@ -20,6 +20,7 @@ import {
   taskIdParamSchema,
 } from "@/lib/api/extension-schemas";
 import { recordResult } from "@/lib/apply/extension-queue";
+import { recordAutoApplyAudit } from "@/lib/apply/auto-apply";
 import { assertApplyQuotaForUser } from "@/lib/billing/apply-quota-guard";
 import { ApplyQuotaError } from "@/lib/billing/errors";
 
@@ -79,6 +80,26 @@ export async function POST(
 
     if (!result) {
       return json({ error: "apply task not found" }, 404);
+    }
+
+    // قاعده‌ی ۱ (§۱۰): هر تلاشِ اپلای خودکار یک ردیفِ ممیزی می‌نویسد. best-effort —
+    // شکستِ نوشتنِ ممیزی نباید ثبتِ نتیجه را بشکند (در لاگِ سرور دیده می‌شود).
+    try {
+      await recordAutoApplyAudit({
+        userId,
+        eventType:
+          body.status === "skipped" ? "auto_apply_skipped" : "auto_apply_attempted",
+        applicationId: result.application?.id,
+        metadata: {
+          taskId: id,
+          status: body.status,
+          taskStatus: result.taskStatus,
+          ...(body.externalRef ? { externalRef: body.externalRef } : {}),
+          ...(body.reason ? { reason: body.reason } : {}),
+        },
+      });
+    } catch (auditErr) {
+      console.error("[apply-result] audit write failed:", auditErr);
     }
 
     return json(

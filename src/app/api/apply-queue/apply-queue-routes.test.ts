@@ -16,11 +16,27 @@ vi.mock("@/lib/apply/extension-queue", () => ({
 // «عبور» (سهمیه آزاد) است تا تست‌های موجود دست‌نخورده بمانند.
 vi.mock("@/lib/billing/apply-quota-guard", () => ({
   assertApplyQuotaForUser: vi.fn(),
+  readUserPlan: vi.fn(),
 }));
+// گیتِ اپلای خودکار (قاعده‌ی ۱) — چوک‌پوینتِ claim. پیش‌فرضِ تست: «مجاز با آستانه‌ی ۰٫۷»؛
+// تست‌های اختصاصیِ گیت آن را برای حالتِ خاموش/سقف override می‌کنند.
+vi.mock("@/lib/apply/auto-apply", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/apply/auto-apply")>(
+    "@/lib/apply/auto-apply",
+  );
+  return { ...actual, assertAutoApplyAllowed: vi.fn() };
+});
 
 import { requireBearerSession } from "@/lib/api/bearer-auth";
 import { claimUserApplyItems, recordResult } from "@/lib/apply/extension-queue";
-import { assertApplyQuotaForUser } from "@/lib/billing/apply-quota-guard";
+import {
+  assertApplyQuotaForUser,
+  readUserPlan,
+} from "@/lib/billing/apply-quota-guard";
+import {
+  assertAutoApplyAllowed,
+  AutoApplyNotAllowedError,
+} from "@/lib/apply/auto-apply";
 import { ApplyQuotaError } from "@/lib/billing/errors";
 import { HttpError } from "@/lib/api/http";
 import { POST as claimPOST } from "@/app/api/apply-queue/claim/route";
@@ -30,9 +46,17 @@ const authMock = vi.mocked(requireBearerSession);
 const claimMock = vi.mocked(claimUserApplyItems);
 const recordMock = vi.mocked(recordResult);
 const quotaMock = vi.mocked(assertApplyQuotaForUser);
+const planMock = vi.mocked(readUserPlan);
+const autoApplyMock = vi.mocked(assertAutoApplyAllowed);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // پیش‌فرض‌های مسیرِ claim: پلنِ free و گیتِ اپلای خودکار «مجاز با آستانه‌ی ۰٫۷».
+  planMock.mockResolvedValue("free");
+  autoApplyMock.mockResolvedValue({
+    minScore: 0.7,
+    quota: { limit: 100, usedToday: 0, remaining: 100 },
+  });
 });
 
 const VALID_ID = "11111111-1111-4111-8111-111111111111";
@@ -64,7 +88,8 @@ describe("POST /api/apply-queue/claim", () => {
     const body = await res.json();
     expect(body.count).toBe(1);
     expect(body.items[0].taskId).toBe("t1");
-    expect(claimMock).toHaveBeenCalledWith("user-5", 5);
+    // claim با (userId, limit, undefined-db, { minScore }) صدا می‌شود (چوک‌پوینتِ گیت).
+    expect(claimMock).toHaveBeenCalledWith("user-5", 5, undefined, { minScore: 0.7 });
     expect(authMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ requireKind: "extension" }),
@@ -76,14 +101,50 @@ describe("POST /api/apply-queue/claim", () => {
     claimMock.mockResolvedValue([] as never);
     const res = await claimPOST(claimReq());
     expect(res.status).toBe(200);
-    expect(claimMock).toHaveBeenCalledWith("u", 5);
+    expect(claimMock).toHaveBeenCalledWith("u", 5, undefined, { minScore: 0.7 });
   });
 
   it("limit سفارشی رعایت می‌شود", async () => {
     authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
     claimMock.mockResolvedValue([] as never);
     await claimPOST(claimReq({ limit: 3 }));
-    expect(claimMock).toHaveBeenCalledWith("u", 3);
+    expect(claimMock).toHaveBeenCalledWith("u", 3, undefined, { minScore: 0.7 });
+  });
+
+  it("تاگلِ اپلای خودکار خاموش ⇒ صفِ خالی + reason='disabled' (هیچ claim)", async () => {
+    authMock.mockResolvedValue({ userId: "u-off", session: { kind: "extension" } } as never);
+    autoApplyMock.mockRejectedValue(new AutoApplyNotAllowedError({ code: "disabled" }));
+    const res = await claimPOST(claimReq());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.count).toBe(0);
+    expect(body.items).toEqual([]);
+    expect(body.reason).toBe("disabled");
+    expect(claimMock).not.toHaveBeenCalled();
+  });
+
+  it("سقفِ روزانه پر ⇒ صفِ خالی + reason='quota_exceeded' (هیچ claim)", async () => {
+    authMock.mockResolvedValue({ userId: "u-cap", session: { kind: "extension" } } as never);
+    autoApplyMock.mockRejectedValue(
+      new AutoApplyNotAllowedError({ code: "quota_exceeded", usedToday: 100, limit: 100 }),
+    );
+    const res = await claimPOST(claimReq());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.count).toBe(0);
+    expect(body.reason).toBe("quota_exceeded");
+    expect(claimMock).not.toHaveBeenCalled();
+  });
+
+  it("آستانه‌ی کاربر به claim منتقل می‌شود", async () => {
+    authMock.mockResolvedValue({ userId: "u-th", session: { kind: "extension" } } as never);
+    autoApplyMock.mockResolvedValue({
+      minScore: 0.85,
+      quota: { limit: null, usedToday: 0, remaining: null },
+    });
+    claimMock.mockResolvedValue([] as never);
+    await claimPOST(claimReq({ limit: 4 }));
+    expect(claimMock).toHaveBeenCalledWith("u-th", 4, undefined, { minScore: 0.85 });
   });
 
   it("limit نامعتبر → ۴۰۰", async () => {

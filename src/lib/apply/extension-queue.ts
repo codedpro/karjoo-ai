@@ -13,7 +13,7 @@ import "server-only";
  *
  * همه‌ی وابستگی‌ها قابلِ تزریق‌اند (db) تا بدونِ DB/شبکه‌ی زنده تست شوند.
  */
-import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import {
@@ -44,22 +44,40 @@ export interface ClaimedApplyItem {
   };
 }
 
+/** آپشن‌های قابلِ تزریقِ claim — برای گیتِ اپلای خودکار (آستانه). */
+export interface ClaimOptions {
+  /**
+   * آستانه‌ی مؤثرِ امتیازِ تطبیق (قاعده‌ی ۱). اگر داده شود، فقط task‌هایی که match‌شان
+   * score ≥ minScore دارد برگردانده می‌شوند — هر آیتمِ زیرِ آستانه از claim حذف می‌شود.
+   * undefined ⇒ بدونِ فیلترِ آستانه (سازگاریِ عقب‌رو با مسیرِ کمکیِ حاضرِ کاربر).
+   */
+  minScore?: number;
+}
+
 /**
  * آیتم‌های اپلایِ pendingِ همین کاربر را برای اپلایِ کمکیِ حاضرِ کاربر برمی‌گرداند.
  *
- * فقط task‌هایی که: (۱) به match‌های همین `userId` اشاره می‌کنند، (۲) status='pending'
- * و (۳) run_after گذشته است. آن‌ها را به `leased` می‌برد (تا در UI تکراری نشوند) و
- * متادیتای آگهی + انگیزه‌نامه را برای پیش‌پُرکردن برمی‌گرداند.
+ * فقط task‌هایی که: (۱) به match‌های همین `userId` اشاره می‌کنند، (۲) status='pending'،
+ * (۳) run_after گذشته است، و (۴) اگر minScore داده شده باشد، score ≥ minScore (قاعده‌ی ۱).
+ * آن‌ها را به `leased` می‌برد (تا در UI تکراری نشوند) و متادیتای آگهی + انگیزه‌نامه را
+ * برای پیش‌پُرکردن برمی‌گرداند.
  *
  * نکته‌ی ایمنی: این «ارسال» نیست. ارسالِ واقعی پس از تأییدِ صریحِ کاربر در افزونه و با
- * فراخوانیِ `recordResult` ثبت می‌شود (قاعده‌ی ۲).
+ * فراخوانیِ `recordResult` ثبت می‌شود (قاعده‌ی ۲). فیلترِ آستانه تضمین می‌کند آیتمِ زیرِ
+ * آستانه هرگز برای اپلایِ خودکار به افزونه نمی‌رسد.
  */
 export async function claimUserApplyItems(
   userId: string,
   limit: number,
   conn: ExtensionQueueDb = defaultDb,
+  opts: ClaimOptions = {},
 ): Promise<ClaimedApplyItem[]> {
   const safeLimit = Math.max(1, Math.min(Math.floor(limit), 25));
+
+  // شرطِ آستانه (قاعده‌ی ۱): اگر minScore داده شده، فقط match‌های بالای آستانه.
+  // نکته: NULL score هرگز از gte عبور نمی‌کند (آگهیِ امتیازنخورده اپلایِ خودکار نمی‌گیرد).
+  const scoreGate =
+    opts.minScore === undefined ? undefined : gte(matches.score, opts.minScore);
 
   // ۱) task‌های آماده‌ی همین کاربر را با join به match پیدا کن.
   const ready = await conn
@@ -71,6 +89,7 @@ export async function claimUserApplyItems(
         eq(matches.userId, userId),
         eq(tasks.status, "pending"),
         lte(tasks.runAfter, sql`now()`),
+        ...(scoreGate ? [scoreGate] : []),
       ),
     )
     .orderBy(desc(matches.score), tasks.runAfter)
