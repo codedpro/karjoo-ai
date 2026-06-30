@@ -57,6 +57,13 @@
       "when": 1782839984984,
       "tag": "0007_unique_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782843245209,
+      "tag": "0008_mushy_maelstrom",
+      "breakpoints": true
     }
   ]
 }

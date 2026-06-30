@@ -115,6 +115,16 @@ const envSchema = z.object({
   KARJOO_AUTO_APPLY_JITTER_MS_MIN: optionalNonEmpty(z.coerce.number().int().min(0)),
   // سقفِ بازه‌ی jitterِ ادبِ اپلای خودکار، به میلی‌ثانیه (advisory برای افزونه). پیش‌فرض ۸۰۰۰.
   KARJOO_AUTO_APPLY_JITTER_MS_MAX: optionalNonEmpty(z.coerce.number().int().min(0)),
+
+  // ── ناوگانِ کارگر (worker fleet — Max/Max+، قاعده‌های ۱ و ۴) ────────────────
+  // رازِ مشترکِ یک‌بارمصرفِ ثبت‌نام که نودها برای enroll ارائه می‌دهند. اختیاری در بوت:
+  // اگر تنظیم نشده باشد، ثبت‌نام «بسته» است و enrollNode با خطای روشن (۵۰۳) رد می‌شود —
+  // یعنی هیچ نودِ جدیدی نمی‌تواند بدونِ این راز ثبت‌نام کند (fail-closed). حداقل ۱۶ کاراکتر.
+  KARJOO_FLEET_ENROLLMENT_TOKEN: optionalNonEmpty(z.string().min(16)),
+  // مسیرِ اسکریپتی که نودِ کارگر هنگامِ فرمانِ 'update' اجرا می‌کند (pull+restart،
+  // مستقل از روشِ استقرار). فقط advisory است: سرور آن را به نود گزارش می‌کند؛ خودِ
+  // سرور چیزی اجرا نمی‌کند. اختیاری؛ پیش‌فرض './update.sh'.
+  KARJOO_FLEET_UPDATE_SCRIPT: optionalNonEmpty(z.string().min(1)),
 });
 
 /** درصدِ پیش‌فرضِ حاشیه‌ی سود اگر KARJOO_AI_MARGIN_PCT تنظیم نشده باشد. */
@@ -141,6 +151,11 @@ export const DEFAULT_AUTO_APPLY_ALARM_MINUTES = 15;
 export const DEFAULT_AUTO_APPLY_JITTER_MS_MIN = 2_000;
 /** سقفِ پیش‌فرضِ بازه‌ی jitterِ ادبِ اپلای خودکار، به میلی‌ثانیه. */
 export const DEFAULT_AUTO_APPLY_JITTER_MS_MAX = 8_000;
+
+/* ─────────────  پیش‌فرض‌های ناوگانِ کارگر (worker fleet)  ──────────────────── */
+
+/** اسکریپتِ پیش‌فرضِ به‌روزرسانیِ نود (advisory) اگر env تنظیم نشده باشد. */
+export const DEFAULT_FLEET_UPDATE_SCRIPT = "./update.sh";
 
 type Env = z.infer<typeof envSchema>;
 
@@ -281,6 +296,31 @@ export function vaultKeyRaw(): string | null {
 /** آیا کلیدِ خزانه اصلاً تنظیم شده است؟ (برای پاسخِ سریعِ «پیکربندی‌نشده» بدونِ decode). */
 export function isVaultConfigured(): boolean {
   return Boolean(env.KARJOO_VAULT_KEY);
+}
+
+/* ─────────────  حل‌کننده‌های ناوگانِ کارگر (worker fleet)  ─────────────────── */
+
+/**
+ * رازِ ثبت‌نامِ ناوگان (KARJOO_FLEET_ENROLLMENT_TOKEN) را برمی‌گرداند، یا `null` اگر
+ * تنظیم نشده باشد. هرگز throw نمی‌کند. لایه‌ی fleet/enroll اگر null بود، ثبت‌نام را
+ * «بسته» می‌گیرد (FleetEnrollmentClosedError → پاسخِ ۵۰۳) — fail-closed: بدونِ این راز
+ * هیچ نودی ثبت‌نام نمی‌شود. این مقدار را *لاگ نکنید*.
+ */
+export function fleetEnrollmentTokenRaw(): string | null {
+  return env.KARJOO_FLEET_ENROLLMENT_TOKEN ?? null;
+}
+
+/** آیا ثبت‌نامِ ناوگان باز است؟ (آیا رازِ ثبت‌نام تنظیم شده) — برای پاسخِ سریعِ ۵۰۳. */
+export function isFleetEnrollmentOpen(): boolean {
+  return Boolean(env.KARJOO_FLEET_ENROLLMENT_TOKEN);
+}
+
+/**
+ * مسیرِ اسکریپتِ به‌روزرسانیِ نود (advisory) — env یا پیش‌فرضِ './update.sh'. هرگز throw
+ * نمی‌کند. سرور این را صرفاً در payloadِ فرمانِ 'update' به نود گزارش می‌کند؛ خودش اجرا نمی‌کند.
+ */
+export function fleetUpdateScript(): string {
+  return env.KARJOO_FLEET_UPDATE_SCRIPT ?? DEFAULT_FLEET_UPDATE_SCRIPT;
 }
 
 /** فاصله‌ی chrome.alarms اپلای خودکار به دقیقه (env یا پیش‌فرض ۱۵) — advisory. */

@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // افزونه‌ی MV3 پکیج مستقل با lint/build مخصوص خود است.
     "extension/**",
+    // نودِ کارگر (worker fleet) هم پکیج مستقل با tsconfig/build/تست مخصوص خود است.
+    "worker/**",
   ]),
 ]);
 

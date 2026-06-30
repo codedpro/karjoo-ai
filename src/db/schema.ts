@@ -89,6 +89,28 @@ export const workerHealthEnum = pgEnum("worker_health", [
   "offline",
 ]);
 
+/**
+ * فرمانِ سرور به نودِ کارگر (worker_commands) — قاعده‌ی ۴ (به‌روزرسانیِ خودکارِ
+ * فرمان‌محورِ سرور). سرور 'update' (اجرای اسکریپتِ به‌روزرسانی: pull+restart) یا
+ * 'restart' صادر می‌کند؛ نود poll می‌کند، اجرا و ack می‌دهد و agentVersion را گزارش
+ * می‌کند تا سرور وضعیتِ ناوگان را ببیند.
+ */
+export const workerCommandEnum = pgEnum("worker_command", ["update", "restart"]);
+
+/**
+ * وضعیتِ یک فرمانِ کارگر در چرخه‌ی عمرش:
+ *   • pending  — صادر شده، هنوز توسطِ نود برداشته نشده.
+ *   • acked    — نود فرمان را دریافت و شروعِ اجرا را تأیید کرده (ackedAt).
+ *   • done     — اجرا با موفقیت تمام شد (completedAt + result).
+ *   • failed   — اجرا شکست خورد (completedAt + result با خطا).
+ */
+export const workerCommandStatusEnum = pgEnum("worker_command_status", [
+  "pending",
+  "acked",
+  "done",
+  "failed",
+]);
+
 /** نوع رویداد در لاگ ممیزی (append-only). */
 export const auditEventTypeEnum = pgEnum("audit_event_type", [
   "session_captured",
@@ -523,7 +545,16 @@ export const applications = pgTable(
   ],
 );
 
-/** نود کارگر ایرانی — بی‌حالت و فناپذیر؛ فقط متادیتا/سلامت اینجاست. */
+/**
+ * نود کارگر ایرانی — بی‌حالت و فناپذیر؛ فقط متادیتا/سلامت/اعتبارنامه اینجاست
+ * (هرگز نشستِ کاربر؛ نشست فقط در لحظه‌ی dispatch، رمزگشایی‌شده، به نودِ مجاز می‌رود).
+ *
+ * چرخه‌ی عمرِ نود (WF worker-fleet، قاعده‌ی ۱): نود با یک ENROLLMENT TOKENِ یک‌بارمصرف
+ * (از env) ثبت‌نام می‌کند → سرور توکن را راستی‌آزمایی و یک CREDENTIALِ هر-نودی صادر
+ * می‌کند (فقط hashش ذخیره می‌شود، credentialHash) → نود هر فراخوانی را با همان اعتبارنامه
+ * احراز می‌کند؛ heartbeat با health + agentVersion می‌زند. سرور نود را با اعتبارنامه +
+ * IP/region گزارش‌شده «می‌شناسد».
+ */
 export const workerNodes = pgTable(
   "worker_nodes",
   {
@@ -535,12 +566,89 @@ export const workerNodes = pgTable(
     health: workerHealthEnum("health").notNull().default("offline"),
     /** ظرفیت همزمان (تعداد job همزمان). */
     capacity: integer("capacity").notNull().default(1),
+    /**
+     * هشِ اعتبارنامه‌ی هر-نودی (sha256/HMAC با pepperِ سرور) — هرگز اعتبارنامه‌ی خام.
+     * یکتا؛ تا پیش از ثبت‌نام null است (نودِ هنوز ثبت‌نام‌نشده اعتبارنامه ندارد).
+     */
+    credentialHash: text("credential_hash"),
+    /**
+     * هشِ توکنِ ثبت‌نامی که برای صدورِ این اعتبارنامه استفاده شد (برای ممیزی/گردشِ
+     * اعتبارنامه). هرگز توکنِ خام. nullable.
+     */
+    enrollmentTokenHash: text("enrollment_token_hash"),
+    /** نسخه‌ی عاملِ گزارش‌شده در heartbeat (برای دیدِ وضعیتِ ناوگان). */
+    agentVersion: text("agent_version"),
+    /** آخرین IPِ گزارش‌شده‌ی نود (سرور با اعتبارنامه + IP/region نود را «می‌شناسد»). */
+    ipAddress: text("ip_address"),
     lastHeartbeat: timestamp("last_heartbeat", { withTimezone: true }),
+    /** آخرین زمانی که نود دیده شد (ثبت‌نام/heartbeat/poll) — برای تشخیصِ نودِ مرده. */
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("worker_nodes_key_uq").on(t.nodeKey),
+    // اعتبارنامه یکتا — جست‌وجوی نود با هشِ اعتبارنامه (راستی‌آزماییِ هر فراخوانی).
+    // partial: فقط ردیف‌هایی که اعتبارنامه دارند، تا چند نودِ ثبت‌نام‌نشده (NULL) برخورد نکنند.
+    uniqueIndex("worker_nodes_credential_uq")
+      .on(t.credentialHash)
+      .where(sql`credential_hash IS NOT NULL`),
     index("worker_nodes_health_idx").on(t.health),
+  ],
+);
+
+/**
+ * تخصیصِ نودِ کارگر به کاربر (worker_assignments) — قاعده‌ی ۲ (سقفِ IP بر اساسِ پلن).
+ *
+ * «کدام نودها برای کدام کاربر اپلای می‌کنند». یک کاربر حداکثر workerIpLimitFor(plan)
+ * نود می‌تواند داشته باشد (Max=۱، MaxPlus=۵؛ Free/Pro=۰). سقف هنگامِ تخصیص اعمال می‌شود
+ * (src/lib/fleet/assign.ts). جفتِ (userId, nodeId) یکتاست.
+ */
+export const workerAssignments = pgTable(
+  "worker_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    nodeId: uuid("node_id")
+      .notNull()
+      .references(() => workerNodes.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // یک تخصیص به‌ازای هر (کاربر، نود) — جلوگیری از تخصیصِ تکراری.
+    uniqueIndex("worker_assignments_user_node_uq").on(t.userId, t.nodeId),
+    index("worker_assignments_node_idx").on(t.nodeId),
+    index("worker_assignments_user_idx").on(t.userId),
+  ],
+);
+
+/**
+ * فرمانِ سرور به نودِ کارگر (worker_commands) — قاعده‌ی ۴ (به‌روزرسانیِ فرمان‌محور).
+ *
+ * سرور یک فرمانِ 'update'/'restart' صادر می‌کند؛ نود pollش می‌کند، اجرا و ack می‌دهد.
+ * payload جزئیاتِ اختیاریِ فرمان (مثلاً نسخه‌ی هدف)؛ result خروجیِ اجرای نود (خروجی/خطا).
+ */
+export const workerCommands = pgTable(
+  "worker_commands",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    nodeId: uuid("node_id")
+      .notNull()
+      .references(() => workerNodes.id, { onDelete: "cascade" }),
+    command: workerCommandEnum("command").notNull(),
+    /** جزئیاتِ اختیاریِ فرمان (مثلاً { targetVersion }). هرگز راز/نشست. */
+    payload: jsonb("payload").$type<Record<string, unknown>>(),
+    status: workerCommandStatusEnum("status").notNull().default("pending"),
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+    ackedAt: timestamp("acked_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    /** خروجیِ اجرای فرمان توسطِ نود (stdout/exitCode/error). */
+    result: jsonb("result").$type<Record<string, unknown>>(),
+  },
+  (t) => [
+    // فهرستِ poll: فرمان‌های pendingِ یک نود (status را هم در WHERE داریم).
+    index("worker_commands_node_status_idx").on(t.nodeId, t.status),
   ],
 );
 
@@ -959,6 +1067,14 @@ export type ApplicationRow = typeof applications.$inferSelect;
 export type NewApplicationRow = typeof applications.$inferInsert;
 export type WorkerNode = typeof workerNodes.$inferSelect;
 export type NewWorkerNode = typeof workerNodes.$inferInsert;
+export type WorkerAssignment = typeof workerAssignments.$inferSelect;
+export type NewWorkerAssignment = typeof workerAssignments.$inferInsert;
+export type WorkerCommandRow = typeof workerCommands.$inferSelect;
+export type NewWorkerCommandRow = typeof workerCommands.$inferInsert;
+/** نوعِ فرمانِ کارگر به‌صورتِ unionِ نوع‌دار (update|restart). */
+export type WorkerCommand = (typeof workerCommandEnum.enumValues)[number];
+/** وضعیتِ فرمانِ کارگر به‌صورتِ unionِ نوع‌دار. */
+export type WorkerCommandStatus = (typeof workerCommandStatusEnum.enumValues)[number];
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
 export type AuditEvent = typeof auditEvents.$inferSelect;
