@@ -13,12 +13,19 @@
  *   POST /api/board-accounts/connect { board, accountLabel? } (.strict) → { account }
  *   POST /api/apply-queue/claim      { limit? }           → { count, items: ClaimedApplyItem[] }
  *   POST /api/apply-queue/:id/result { status, externalRef?, reason? } (.strict, id in PATH) → { application, taskStatus }
+ *   POST /api/profile/import         { board, payload }    → { import, appliedFields? }
  *
  * The server schemas for connect + result are `.strict()`: any extra field (e.g.
  * the ConnectPayload `status`, or the report `id` which lives in the URL) is a
  * 400. This client therefore sends EXACTLY the allowed fields and nothing else.
+ *
+ * For profile import the body is the DATA-ONLY object built by buildImportPayload
+ * (import-payload.ts), which PROVES no credential rides along. The server applies
+ * the SAME no-credentials guard and binds the userId to the session — never the
+ * payload (docs §10).
  */
 import type { ConnectPayload, Identity, ApplyQueueItem, ApplyResultReport } from "@ext/lib/types";
+import type { ImportPayloadBody } from "@ext/lib/import-payload";
 
 /* ── server response shapes (control-plane contract) ───────────────────────── */
 
@@ -47,6 +54,34 @@ interface ServerClaimedItem {
 interface ServerClaimResponse {
   count: number;
   items: ServerClaimedItem[];
+}
+
+/**
+ * Response from POST /api/profile/import. The endpoint is owned by the API/import
+ * track and returns the FLAT `ApplyImportSummary` shape (src/lib/apply/import-service.ts):
+ *   { importId, board, status, appliedFields, addedSkills, importedApplicationCount }
+ * We model only the non-secret fields we might surface (everything optional and
+ * defensively read so a server-shape tweak does not break the client).
+ */
+interface ServerImportResponse {
+  importId?: string;
+  board?: string;
+  status?: string;
+  /** Field names the server applied to the user's profile (e.g. ["skills","city"]). */
+  appliedFields?: string[];
+  /** Skills newly unioned into the profile by this import. */
+  addedSkills?: string[];
+}
+
+/** Build a short, non-secret, Persian-ish summary line from the import response. */
+function importSummary(res: ServerImportResponse | undefined): string | undefined {
+  const fields = res?.appliedFields;
+  if (Array.isArray(fields) && fields.length > 0) {
+    return `${fields.length} مورد به‌روزرسانی شد`;
+  }
+  // status === "received" means nothing new was merged (already up to date).
+  if (res?.status) return String(res.status);
+  return undefined;
 }
 
 /** Map the server's claimed item onto the extension's render-ready ApplyQueueItem. */
@@ -175,6 +210,23 @@ export class KarjooApi {
       method: "POST",
     });
     return { items: (res.items ?? []).map(toApplyQueueItem) };
+  }
+
+  /**
+   * Import the user's OWN profile DATA from one board into their Karjoo profile.
+   *
+   * The body MUST come from buildImportPayload() (the DATA-only chokepoint) — it
+   * is { board, payload } with no credential-shaped key. We POST it verbatim; the
+   * server normalizes per board, binds it to THIS session's user (never a userId
+   * from the body), and stores an import record. Returns a short, non-secret
+   * summary string for the UI when the server provides one.
+   */
+  async importProfile(body: ImportPayloadBody): Promise<{ ok: boolean; summary?: string }> {
+    const res = await this.request<ServerImportResponse>("/api/profile/import", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return { ok: true, summary: importSummary(res) };
   }
 
   /**

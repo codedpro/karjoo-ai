@@ -18,7 +18,7 @@ import { isPaired, getApiOrigin } from "@ext/lib/storage";
 import { isValidPairingCodeShape, normalizePairingCode } from "@ext/lib/pairing-code";
 import { toQueueCardViews, type QueueCardView } from "@ext/lib/queue-view";
 import type { Identity, ApplyQueueItem } from "@ext/lib/types";
-import type { ProbeSessionResult } from "@ext/lib/messages";
+import type { ProbeSessionResult, BoardImportOutcome } from "@ext/lib/messages";
 import { send } from "@ext/popup/messaging";
 
 /* ── tiny DOM utils ────────────────────────────────────────────────────── */
@@ -116,6 +116,7 @@ async function enterMain() {
   }
 
   renderBoards();
+  wireImport();
   $("refresh-queue").addEventListener("click", () => void loadQueue());
   void loadQueue();
 }
@@ -202,6 +203,45 @@ function boardCard(board: BoardId, displayName: string): HTMLLIElement {
 function setStatus(el: HTMLElement, text: string, cls: "" | "ok" | "warn") {
   el.textContent = text;
   el.className = `status-pill${cls ? " " + cls : ""}`;
+}
+
+/* ── import my profile (DATA only — §10) ───────────────────────────────────
+ * Asks the background to read the user's OWN profile DATA from each connected
+ * board and POST it to Karjoo. The popup never touches a board cookie/token; it
+ * only triggers the action and renders the per-board outcome summary.
+ */
+function wireImport() {
+  const btn = $("import-profiles") as HTMLButtonElement;
+  const resultsEl = $("import-results");
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = "در حال وارد کردن…";
+    resultsEl.innerHTML = "";
+    try {
+      // No `boards` → background imports from all configured boards (those the
+      // user is logged into return data; others report "not found" gracefully).
+      const outcomes = await send<BoardImportOutcome[]>({ type: "IMPORT_PROFILES" });
+      renderImportResults(resultsEl, outcomes);
+    } catch (e) {
+      showGlobalError(errMsg(e));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  });
+}
+
+function renderImportResults(listEl: HTMLElement, outcomes: BoardImportOutcome[]) {
+  listEl.innerHTML = "";
+  for (const o of outcomes) {
+    const li = document.createElement("li");
+    li.className = `import-result ${o.ok ? "ok" : "warn"}`;
+    const name = BOARDS[o.board]?.displayName ?? o.board;
+    const detail = o.ok ? (o.importedSummary ?? "وارد شد") : (o.message ?? "ناموفق");
+    li.innerHTML = `<span class="import-board">${escapeHtml(name)}</span><span class="import-detail">${escapeHtml(detail)}</span>`;
+    listEl.appendChild(li);
+  }
 }
 
 /* ── apply queue ───────────────────────────────────────────────────────── */

@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { KarjooApi, ApiError, type FetchImpl } from "@ext/lib/api-client";
 import { buildConnectPayload } from "@ext/lib/connect-payload";
+import { buildImportPayload } from "@ext/lib/import-payload";
 
 interface Captured {
   url: string;
@@ -126,6 +127,53 @@ describe("KarjooApi authed calls", () => {
     expect(calls[0]!.url).toBe("http://localhost:3000/api/apply-queue/app%201%2Fx/result");
     // Server schema is `.strict()`: the id lives in the URL, never the body.
     expect(calls[0]!.body).toEqual({ status: "submitted" });
+  });
+
+  it("importProfile POSTs exactly { board, payload } and parses the FLAT server summary", async () => {
+    const { fetchImpl, calls } = fakeFetch(() => ({
+      // Server returns the flat ApplyImportSummary (src/lib/apply/import-service.ts).
+      status: 201,
+      body: {
+        importId: "imp-1",
+        board: "jobinja",
+        status: "applied",
+        appliedFields: ["skills", "city"],
+        addedSkills: ["TypeScript"],
+        importedApplicationCount: 0,
+      },
+    }));
+    const api = new KarjooApi({ origin: "http://localhost:3000", token: "t", fetchImpl });
+    const body = buildImportPayload("jobinja", {
+      fullName: "علی رضایی",
+      skills: ["TypeScript", "React"],
+      city: "تهران",
+    });
+    const res = await api.importProfile(body);
+
+    expect(calls[0]!.url).toBe("http://localhost:3000/api/profile/import");
+    expect(calls[0]!.method).toBe("POST");
+    // The body matches the server's profileImportBodySchema EXACTLY: { board, payload }.
+    expect(Object.keys(calls[0]!.body as object).sort()).toEqual(["board", "payload"]);
+    expect((calls[0]!.body as { board: string }).board).toBe("jobinja");
+    // Reads the flat appliedFields array → "2 مورد به‌روزرسانی شد".
+    expect(res.ok).toBe(true);
+    expect(res.summary).toBe("2 مورد به‌روزرسانی شد");
+    // No credential-shaped key on the wire (the §10 DATA-only invariant).
+    const wire = JSON.stringify(calls[0]!.body).toLowerCase();
+    for (const bad of ["cookie", "token", "password", "secret", "jwt", "session", "authorization"]) {
+      expect(wire).not.toContain(bad);
+    }
+  });
+
+  it("importProfile falls back to the server status when nothing was merged (received)", async () => {
+    const { fetchImpl } = fakeFetch(() => ({
+      status: 201,
+      body: { importId: "imp-2", board: "jobinja", status: "received", appliedFields: [], addedSkills: [] },
+    }));
+    const api = new KarjooApi({ origin: "http://localhost:3000", token: "t", fetchImpl });
+    const body = buildImportPayload("jobinja", { fullName: "علی" });
+    const res = await api.importProfile(body);
+    expect(res.summary).toBe("received");
   });
 
   it("throws ApiError with the server message on non-2xx", async () => {

@@ -30,6 +30,12 @@ const entryPoints = {
   popup: resolve(root, "src/popup/popup.ts"),
   "content/jobinja": resolve(root, "src/content/jobinja.ts"),
   "content/jobvision": resolve(root, "src/content/jobvision.ts"),
+  // Profile-import content scripts (one per board) — read the user's OWN profile
+  // DOM and return DATA only (§10). See src/content/import/*.
+  "content/import/jobinja": resolve(root, "src/content/import/jobinja.ts"),
+  "content/import/jobvision": resolve(root, "src/content/import/jobvision.ts"),
+  "content/import/eestekhdam": resolve(root, "src/content/import/eestekhdam.ts"),
+  "content/import/irantalent": resolve(root, "src/content/import/irantalent.ts"),
 };
 
 /** Static files copied verbatim into dist/. */

@@ -8,8 +8,11 @@ import { describe, it, expect } from "vitest";
 import {
   jobinjaLoggedIn,
   jobvisionLoggedIn,
+  eEstekhdamLoggedIn,
+  irantalentLoggedIn,
   sessionCookieNames,
   sessionTokenKeys,
+  sessionShapeOf,
 } from "@ext/lib/board-detect";
 
 describe("jobinjaLoggedIn (cookie-shaped)", () => {
@@ -49,6 +52,29 @@ describe("jobvisionLoggedIn (token-shaped, localStorage key names only)", () => 
   });
 });
 
+describe("eEstekhdamLoggedIn (cookie-shaped)", () => {
+  it("true when a known session cookie is present with a value", () => {
+    expect(eEstekhdamLoggedIn([{ name: "estekhdam_session", value: "abc" }])).toBe(true);
+    expect(eEstekhdamLoggedIn([{ name: "laravel_session", value: "x" }])).toBe(true);
+  });
+  it("false with no session cookie / empty value", () => {
+    expect(eEstekhdamLoggedIn([{ name: "_ga", value: "x" }])).toBe(false);
+    expect(eEstekhdamLoggedIn([{ name: "PHPSESSID", value: "" }])).toBe(false);
+    expect(eEstekhdamLoggedIn([])).toBe(false);
+  });
+});
+
+describe("irantalentLoggedIn (token-shaped, key names only)", () => {
+  it("true when an auth-token key is present (case-insensitive)", () => {
+    expect(irantalentLoggedIn(["id_token"])).toBe(true);
+    expect(irantalentLoggedIn(["ACCESS_TOKEN"])).toBe(true);
+  });
+  it("false when only non-auth keys present", () => {
+    expect(irantalentLoggedIn(["lang", "theme"])).toBe(false);
+    expect(irantalentLoggedIn([])).toBe(false);
+  });
+});
+
 describe("which signals to probe per board", () => {
   it("jobinja → cookie names, no localStorage keys", () => {
     expect(sessionCookieNames("jobinja").length).toBeGreaterThan(0);
@@ -57,5 +83,22 @@ describe("which signals to probe per board", () => {
   it("jobvision → localStorage keys, no cookie names", () => {
     expect(sessionTokenKeys("jobvision").length).toBeGreaterThan(0);
     expect(sessionCookieNames("jobvision")).toEqual([]);
+  });
+  it("e-estekhdam → cookie names (server-rendered)", () => {
+    expect(sessionCookieNames("e-estekhdam").length).toBeGreaterThan(0);
+    expect(sessionTokenKeys("e-estekhdam")).toEqual([]);
+  });
+  it("irantalent → localStorage keys (SPA)", () => {
+    expect(sessionTokenKeys("irantalent").length).toBeGreaterThan(0);
+    expect(sessionCookieNames("irantalent")).toEqual([]);
+  });
+});
+
+describe("sessionShapeOf", () => {
+  it("maps each board to cookie/token", () => {
+    expect(sessionShapeOf("jobinja")).toBe("cookie");
+    expect(sessionShapeOf("e-estekhdam")).toBe("cookie");
+    expect(sessionShapeOf("jobvision")).toBe("token");
+    expect(sessionShapeOf("irantalent")).toBe("token");
   });
 });

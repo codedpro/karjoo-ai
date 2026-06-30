@@ -12,6 +12,7 @@
  */
 import type { BoardId } from "@ext/lib/config";
 import type { ApplyQueueItem, ApplyResultReport } from "@ext/lib/types";
+import type { ScrapeProfileResult, BoardImportOutcome } from "@ext/lib/import-types";
 
 /* ── popup → background ─────────────────────────────────────────────────── */
 
@@ -60,6 +61,18 @@ export interface ReportResultMsg {
   report: ApplyResultReport;
 }
 
+/**
+ * Ask the background worker to import the user's OWN profile DATA from one or
+ * more boards. For each board the worker opens the user's profile page, asks the
+ * content script to scrape DATA (never credentials), builds the DATA-only
+ * payload, and POSTs it to /api/profile/import. (User-present, user-approved.)
+ */
+export interface ImportProfilesMsg {
+  type: "IMPORT_PROFILES";
+  /** Which boards to import from. Omit/empty → all configured boards. */
+  boards?: BoardId[];
+}
+
 /* ── background → content ──────────────────────────────────────────────── */
 
 /** Ask a content script whether the user is logged in on this board, locally. */
@@ -74,6 +87,16 @@ export interface ContentPrefillMsg {
   item: ApplyQueueItem;
 }
 
+/**
+ * Ask a board's import content script to scrape the user's OWN profile DATA from
+ * the current page. The content script replies with a ScrapeProfileResult that
+ * carries DATA only — NEVER a cookie/token/session/credential (RULE 1).
+ */
+export interface ScrapeProfileMsg {
+  type: "SCRAPE_PROFILE";
+  board: BoardId;
+}
+
 export type PopupToBackground =
   | PairMsg
   | GetIdentityMsg
@@ -83,9 +106,13 @@ export type PopupToBackground =
   | ConnectBoardMsg
   | ClaimQueueMsg
   | PrefillMsg
-  | ReportResultMsg;
+  | ReportResultMsg
+  | ImportProfilesMsg;
 
-export type BackgroundToContent = ProbeSessionMsg | ContentPrefillMsg;
+export type BackgroundToContent = ProbeSessionMsg | ContentPrefillMsg | ScrapeProfileMsg;
+
+/** Subset of background→content messages the IMPORT content scripts handle. */
+export type BackgroundToImportContent = ScrapeProfileMsg;
 
 /* ── responses ─────────────────────────────────────────────────────────── */
 
@@ -106,6 +133,9 @@ export interface PrefillResult {
   filledFields: string[];
   message?: string;
 }
+
+/** Re-exported so consumers import message + import contracts from one place. */
+export type { ScrapeProfileResult, BoardImportOutcome };
 
 /** Generic ok/err envelope used by background → popup responses. */
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };

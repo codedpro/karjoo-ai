@@ -240,6 +240,44 @@ body {
   margin-top: 8px;
 }
 
+/* import my profile */
+.import-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.import-results {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.import-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+.import-result.ok {
+  border-color: rgba(34, 197, 94, 0.4);
+}
+.import-result.warn {
+  border-color: rgba(245, 158, 11, 0.4);
+}
+.import-board {
+  font-weight: 700;
+}
+.import-detail {
+  color: var(--muted);
+}
+
 /* queue */
 .queue-toolbar {
   display: flex;

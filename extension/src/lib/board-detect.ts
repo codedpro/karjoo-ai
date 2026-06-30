@@ -28,10 +28,36 @@ const JOBINJA_SESSION_COOKIE_NAMES = [
 ];
 
 /**
+ * e-estekhdam session-cookie name candidates. Also a server-rendered app whose
+ * login is held in a session COOKIE; matched by NAME only (value never read out).
+ */
+const EESTEKHDAM_SESSION_COOKIE_NAMES = [
+  "e-estekhdam_session",
+  "estekhdam_session",
+  "laravel_session",
+  "remember_web",
+  "PHPSESSID",
+  "XSRF-TOKEN",
+];
+
+/**
  * JobVision (SPA) localStorage key candidates that hold the auth JWT. The content
  * script reports the SET OF KEYS present (not values); presence ⇒ logged in.
  */
 const JOBVISION_TOKEN_KEYS = ["token", "access_token", "auth_token", "jv_token", "userToken"];
+
+/**
+ * IranTalent (SPA) localStorage key candidates that hold the auth token. As with
+ * JobVision, a content script reports only WHICH KEYS exist — never the value.
+ */
+const IRANTALENT_TOKEN_KEYS = [
+  "token",
+  "access_token",
+  "auth_token",
+  "id_token",
+  "userToken",
+  "it_token",
+];
 
 /** A cookie as seen by chrome.cookies — we only ever look at `.name`/length here. */
 export interface CookieLike {
@@ -63,12 +89,38 @@ export function jobvisionLoggedIn(localStorageKeys: string[]): boolean {
   return JOBVISION_TOKEN_KEYS.some((k) => lower.includes(k.toLowerCase()));
 }
 
+/** e-estekhdam login = a known session COOKIE name present (value never read out). */
+export function eEstekhdamLoggedIn(cookies: CookieLike[]): boolean {
+  return cookies.some(
+    (c) =>
+      EESTEKHDAM_SESSION_COOKIE_NAMES.some((name) =>
+        c.name.toLowerCase().startsWith(name.toLowerCase()),
+      ) &&
+      (c.value === undefined || c.value.length > 0),
+  );
+}
+
+/** IranTalent login = a known auth-token KEY NAME present in localStorage (value never read). */
+export function irantalentLoggedIn(localStorageKeys: string[]): boolean {
+  const lower = localStorageKeys.map((k) => k.toLowerCase());
+  return IRANTALENT_TOKEN_KEYS.some((k) => lower.includes(k.toLowerCase()));
+}
+
 /** Cookie names the background worker should request from chrome.cookies for a board. */
 export function sessionCookieNames(board: BoardId): string[] {
-  return board === "jobinja" ? [...JOBINJA_SESSION_COOKIE_NAMES] : [];
+  if (board === "jobinja") return [...JOBINJA_SESSION_COOKIE_NAMES];
+  if (board === "e-estekhdam") return [...EESTEKHDAM_SESSION_COOKIE_NAMES];
+  return [];
 }
 
 /** localStorage key candidates a content script should probe for (presence only). */
 export function sessionTokenKeys(board: BoardId): string[] {
-  return board === "jobvision" ? [...JOBVISION_TOKEN_KEYS] : [];
+  if (board === "jobvision") return [...JOBVISION_TOKEN_KEYS];
+  if (board === "irantalent") return [...IRANTALENT_TOKEN_KEYS];
+  return [];
+}
+
+/** Whether a board's login lives in a cookie (server-rendered) or a localStorage token (SPA). */
+export function sessionShapeOf(board: BoardId): "cookie" | "token" {
+  return board === "jobinja" || board === "e-estekhdam" ? "cookie" : "token";
 }

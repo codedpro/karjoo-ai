@@ -28,17 +28,31 @@
     "https://*.jobinja.ir/*",
     "https://jobvision.ir/*",
     "https://*.jobvision.ir/*",
+    "https://e-estekhdam.com/*",
+    "https://*.e-estekhdam.com/*",
+    "https://irantalent.com/*",
+    "https://*.irantalent.com/*",
     "http://localhost:3000/*"
   ],
   "content_scripts": [
     {
       "matches": ["https://jobinja.ir/*", "https://*.jobinja.ir/*"],
-      "js": ["content/jobinja.js"],
+      "js": ["content/jobinja.js", "content/import/jobinja.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://jobvision.ir/*", "https://*.jobvision.ir/*"],
-      "js": ["content/jobvision.js"],
+      "js": ["content/jobvision.js", "content/import/jobvision.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://e-estekhdam.com/*", "https://*.e-estekhdam.com/*"],
+      "js": ["content/import/eestekhdam.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://irantalent.com/*", "https://*.irantalent.com/*"],
+      "js": ["content/import/irantalent.js"],
       "run_at": "document_idle"
     }
   ]

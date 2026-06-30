@@ -24,7 +24,14 @@ export const STORAGE_KEYS = {
   identity: "karjoo.identity",
 } as const;
 
-/** The two boards this extension assists with. */
+/**
+ * The job boards this extension assists with. The `id`s here are the SAME string
+ * values as the control-plane `JobBoardId` union (src/lib/apply/types.ts), so the
+ * extension can POST `{ board }` to the server without any translation.
+ *
+ * `profilePath` is the user's OWN profile/résumé page on each board — where the
+ * import content script reads the user's own data (read-only, user-present).
+ */
 export const BOARDS = {
   jobinja: {
     id: "jobinja" as const,
@@ -32,6 +39,8 @@ export const BOARDS = {
     origin: "https://jobinja.ir",
     /** Jobinja keeps auth in a session COOKIE → detectable via chrome.cookies. */
     sessionShape: "cookie" as const,
+    /** The signed-in user's own résumé/profile page (panel). */
+    profilePath: "/user/resumes",
   },
   jobvision: {
     id: "jobvision" as const,
@@ -39,7 +48,30 @@ export const BOARDS = {
     origin: "https://jobvision.ir",
     /** JobVision is an SPA: auth is a JWT in localStorage → needs a content-script probe. */
     sessionShape: "token" as const,
+    /** The signed-in user's own résumé/profile page in the SPA. */
+    profilePath: "/resume",
+  },
+  "e-estekhdam": {
+    id: "e-estekhdam" as const,
+    displayName: "ای‌استخدام",
+    origin: "https://www.e-estekhdam.com",
+    /** e-estekhdam is server-rendered; auth lives in a session COOKIE. */
+    sessionShape: "cookie" as const,
+    /** The signed-in user's own profile page. */
+    profilePath: "/karfarmas/profile",
+  },
+  irantalent: {
+    id: "irantalent" as const,
+    displayName: "ایران‌تلنت",
+    origin: "https://www.irantalent.com",
+    /** IranTalent is an SPA; auth is a token in localStorage (TBD per docs §7). */
+    sessionShape: "token" as const,
+    /** The signed-in user's own profile/CV page. */
+    profilePath: "/profile",
   },
 } as const;
 
 export type BoardId = keyof typeof BOARDS;
+
+/** The board ids, as a runtime array (ordered) — handy for iteration in the popup/bg. */
+export const BOARD_IDS = Object.keys(BOARDS) as BoardId[];
