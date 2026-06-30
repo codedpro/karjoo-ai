@@ -42,8 +42,18 @@ describe("assertCanUsePaidAi", () => {
     expect(out.plan).toBe("premium");
   });
 
-  it("پلنِ free ⇒ همیشه InsufficientBalanceError (حتی با موجودی)", async () => {
-    const err = await assertCanUsePaidAi("u1", deps("free", 9999)).catch((e) => e);
+  it("پلنِ pro با موجودیِ مثبت ⇒ مجاز", async () => {
+    const out = await assertCanUsePaidAi("u1", deps("pro", 50_000));
+    expect(out).toEqual({ plan: "pro", balanceToman: 50_000 });
+  });
+
+  it("پلنِ free با موجودیِ مثبت ⇒ مجاز (گیت روی موجودی است، نه پلن)", async () => {
+    const out = await assertCanUsePaidAi("u1", deps("free", 9999));
+    expect(out).toEqual({ plan: "free", balanceToman: 9999 });
+  });
+
+  it("پلنِ free با موجودیِ صفر ⇒ InsufficientBalanceError", async () => {
+    const err = await assertCanUsePaidAi("u1", deps("free", 0)).catch((e) => e);
     expect(err).toBeInstanceOf(InsufficientBalanceError);
     expect((err as InsufficientBalanceError).plan).toBe("free");
   });

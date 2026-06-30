@@ -15,7 +15,7 @@ import {
   inMemoryMeteringStore,
   type MeteringOptions,
 } from "@/lib/billing/metering";
-import { InsufficientBalanceError } from "@/lib/billing/errors";
+import { AiMaintenanceError, InsufficientBalanceError } from "@/lib/billing/errors";
 import type { FetchLike, GatewayConfig } from "@/lib/ai/gateway";
 import type { ModelPrice } from "@/lib/billing/pricing";
 
@@ -57,6 +57,8 @@ function baseOpts(over: Partial<MeteringOptions> = {}): MeteringOptions {
     resolveModel: async () => ({ modelId: "gpt-4o-mini", provider: "openai" }),
     priceFor: async () => PRICE,
     entitlement: { readPlan: async () => "payg", readBalance: async () => 5000 },
+    // گاردِ بودجه‌ی سراسری را در دسترس فرض می‌کنیم (تستِ نگه‌داری جداست).
+    assertAiAvailable: async () => {},
     ...over,
   };
 }
@@ -127,7 +129,7 @@ describe("meteredChat — گیتِ بیلینگ", () => {
     expect(store.usage).toHaveLength(0); // هیچ کسری/رکوردی.
   });
 
-  it("پلنِ free ⇒ InsufficientBalanceError و هیچ فراخوانی", async () => {
+  it("پلنِ free با موجودیِ صفر ⇒ InsufficientBalanceError و هیچ فراخوانی", async () => {
     const fetchImpl = fetchReturning("x", { prompt_tokens: 1 });
     const err = await meteredChat(
       "u1",
@@ -135,11 +137,31 @@ describe("meteredChat — گیتِ بیلینگ", () => {
       { messages: [{ role: "user", content: "hi" }] },
       baseOpts({
         gateway: { config: CONFIG, fetchImpl },
-        entitlement: { readPlan: async () => "free", readBalance: async () => 9999 },
+        entitlement: { readPlan: async () => "free", readBalance: async () => 0 },
       }),
     ).catch((e) => e);
     expect(err).toBeInstanceOf(InsufficientBalanceError);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("پلنِ free با موجودیِ مثبت ⇒ مجاز (گیت روی موجودی است، نه پلن)", async () => {
+    const store = inMemoryMeteringStore({ u1: 5000 });
+    const fetchImpl = fetchReturning(JSON.stringify({ ok: true }), {
+      prompt_tokens: 1000,
+      completion_tokens: 0,
+    });
+    const out = await meteredChat(
+      "u1",
+      "match",
+      { messages: [{ role: "user", content: "hi" }] },
+      baseOpts({
+        store,
+        gateway: { config: CONFIG, fetchImpl },
+        entitlement: { readPlan: async () => "free", readBalance: async () => 5000 },
+      }),
+    );
+    expect(out.charge.costToman).toBeGreaterThan(0);
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 });
 
@@ -158,6 +180,33 @@ describe("meteredChat — خطای گیت‌وی ⇒ بدونِ کسر", () => {
     expect(err).toBeDefined();
     expect(store.usage).toHaveLength(0);
     expect(store.balances.get("u1")).toBe(5000); // دست‌نخورده.
+  });
+});
+
+describe("meteredChat — حالتِ نگه‌داریِ بودجه‌ی سراسری", () => {
+  it("اگر AiMaintenanceError ⇒ هیچ فراخوانیِ گیت‌وی و هیچ کسری", async () => {
+    const store = inMemoryMeteringStore({ u1: 5000 });
+    const fetchImpl = fetchReturning("نباید صدا شود", { prompt_tokens: 1 });
+
+    const err = await meteredChat(
+      "u1",
+      "match",
+      { messages: [{ role: "user", content: "hi" }] },
+      baseOpts({
+        store,
+        gateway: { config: CONFIG, fetchImpl },
+        // گاردِ بودجه نگه‌داری را اعلام می‌کند (سقفِ ماهانه رسیده).
+        assertAiAvailable: async () => {
+          throw new AiMaintenanceError({ manual: false });
+        },
+      }),
+    ).catch((e) => e);
+
+    expect(err).toBeInstanceOf(AiMaintenanceError);
+    expect((err as AiMaintenanceError).code).toBe("ai_maintenance");
+    expect(fetchImpl).not.toHaveBeenCalled(); // پیش از فراخوانی بلاک شد.
+    expect(store.usage).toHaveLength(0); // هیچ رکورد/کسری.
+    expect(store.balances.get("u1")).toBe(5000);
   });
 });
 
@@ -182,6 +231,7 @@ describe("resolveModel — مدلِ صریح", () => {
           outputPer1kToman: 2500,
         }),
         entitlement: { readPlan: async () => "premium", readBalance: async () => 100_000 },
+        assertAiAvailable: async () => {},
         store,
         gateway: { config: CONFIG, fetchImpl },
       },

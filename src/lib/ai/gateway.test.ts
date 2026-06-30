@@ -141,6 +141,46 @@ describe("chatComplete", () => {
     expect(err.code).toBe("invalid_response");
   });
 
+  it("گاردریل: اگر maxTokens داده نشده باشد، سقفِ پیش‌فرض را اعمال می‌کند", async () => {
+    const { fetchImpl, calls } = mockFetch(openAiBody("ok"));
+    await chatComplete(
+      { messages: [{ role: "user", content: "x" }] },
+      { config: CONFIG, fetchImpl, maxOutputTokens: 777 },
+    );
+    const body = JSON.parse(calls[0].init!.body as string);
+    expect(body.max_tokens).toBe(777);
+  });
+
+  it("گاردریل: maxTokensِ صریحِ فراخواننده را بازنویسی نمی‌کند", async () => {
+    const { fetchImpl, calls } = mockFetch(openAiBody("ok"));
+    await chatComplete(
+      { messages: [{ role: "user", content: "x" }], maxTokens: 42 },
+      { config: CONFIG, fetchImpl, maxOutputTokens: 777 },
+    );
+    const body = JSON.parse(calls[0].init!.body as string);
+    expect(body.max_tokens).toBe(42);
+  });
+
+  it("گاردریل: تایم‌اوت ⇒ AbortController و خطای network_error", async () => {
+    // fetchِ کند که فقط با لغوِ signal رد می‌شود (شبیه‌سازیِ تایم‌اوت).
+    const fetchImpl: FetchLike = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        const signal = (init as RequestInit | undefined)?.signal;
+        signal?.addEventListener("abort", () => {
+          const e = new Error("aborted");
+          e.name = "AbortError";
+          reject(e);
+        });
+      });
+    const err = await chatComplete(
+      { messages: [{ role: "user", content: "x" }] },
+      { config: CONFIG, fetchImpl, timeoutMs: 5 },
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(GatewayError);
+    expect(err.code).toBe("network_error");
+    expect(err.message).toMatch(/تایم‌اوت/);
+  });
+
   it("درز آداپتور: پروتکل قابل تعویض است", async () => {
     const customAdapter: ChatAdapter = {
       buildRequest: (cfg, req) => ({

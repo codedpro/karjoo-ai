@@ -38,6 +38,7 @@ import {
 } from "@/lib/ai/gateway";
 import { resolveMarginPct } from "@/lib/env";
 import { assertCanUsePaidAi, type EntitlementDeps } from "@/lib/billing/entitlement";
+import { assertAiAvailable, incrementMonthUpstream } from "@/lib/billing/ai-budget";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
 import { computeCostFromPrice, priceFor, type ModelPrice } from "@/lib/billing/pricing";
 import { providerFromModelId } from "@/lib/billing/provider";
@@ -92,6 +93,10 @@ export function drizzleMeteringStore(db: MeteringDb): MeteringStore {
   return {
     async settle(args) {
       return db.transaction(async (tx) => {
+        // ۰) گاردریلِ بودجه‌ی سراسری: شمارنده‌ی هزینه‌ی بالادستِ ماه را *داخلِ همین
+        //    تراکنش* افزایش بده (اتمیک با usage_record + debit). no-op اگر upstream ≤ ۰.
+        await incrementMonthUpstream(args.upstreamCostToman, tx, args.now);
+
         // ۱) usage_record — همیشه ثبت می‌شود (حتی هزینه‌ی صفر، برای حسابرسی).
         const [usage] = await tx
           .insert(usageRecords)
@@ -241,6 +246,11 @@ export interface MeteringOptions {
   gateway?: GatewayOptions;
   /** وابستگی‌های گیتِ استحقاق (برای تست). */
   entitlement?: EntitlementDeps;
+  /**
+   * گاردِ در دسترس بودنِ هوش مصنوعی (حالتِ نگه‌داریِ بودجه‌ی سراسری). پیش‌فرض
+   * assertAiAvailable(db) از ai-budget. تزریقی برای تست (تا بدونِ DB اجرا شود).
+   */
+  assertAiAvailable?: (db: MeteringDb) => Promise<void>;
   /** storeِ تسویه — پیش‌فرض drizzleMeteringStore(db). تزریقی برای تست. */
   store?: MeteringStore;
   /** خواننده‌ی مدل/قیمت — تزریقی برای تست (وگرنه از کاتالوگ). */
@@ -277,6 +287,12 @@ async function meter<T>(
 
   // ۳) گیتِ استحقاق — *پیش از* فراخوانیِ گیت‌وی (هرگز بی‌سروصدا هزینه‌ی بالادست خرج نشود).
   await assertCanUsePaidAi(userId, opts.entitlement ?? { db });
+
+  // ۳٫۵) گاردریلِ بودجه‌ی سراسری — اگر اپ در حالتِ نگه‌داریِ هوش مصنوعی باشد (سقفِ ماهانه
+  //      رسیده یا پرچمِ دستی روشن)، AiMaintenanceError و *هیچ فراخوانیِ گیت‌وی*. این هم
+  //      پیش از فراخوانی است تا هزینه‌ی بالادست خرج نشود.
+  const checkAiAvailable = opts.assertAiAvailable ?? ((d: MeteringDb) => assertAiAvailable(d));
+  await checkAiAvailable(db);
 
   // ۴) فراخوانیِ گیت‌وی. اگر اینجا خطا بدهد، propagate می‌شود و *هیچ کسری* انجام نمی‌شود.
   const { result, usage } = await call(modelId);

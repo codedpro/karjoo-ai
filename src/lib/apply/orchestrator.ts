@@ -31,6 +31,7 @@ import {
 // این کار رفتارِ زمان‌اجرا را تغییر نمی‌دهد، فقط ترتیبِ ارزیابیِ ماژول‌ها را امن می‌کند.
 import { meteredScoreAndDraft } from "@/lib/apply/metered-scoring";
 import { getConnector } from "@/lib/apply/registry";
+import { orchestratorRunCap } from "@/lib/env";
 import { enqueue as defaultEnqueue } from "@/lib/queue";
 import type {
   CandidateProfile,
@@ -134,9 +135,13 @@ export async function runJobinjaIngest(input: IngestRunInput): Promise<IngestRun
     scoringErrors: 0,
   };
 
-  // سقفِ اختیاری برای جلوگیری از انفجارِ تعداد فراخوانیِ مدل در یک اجرا.
-  const toProcess =
-    typeof input.limit === "number" ? listings.slice(0, Math.max(0, input.limit)) : listings;
+  // سقفِ runaway: همیشه حداکثر orchestratorRunCap() آگهی در یک اجرا پردازش می‌شود تا
+  // یک اجرا نتواند بی‌حدومرز فراخوانیِ مدل بزند. limitِ صریحِ فراخواننده فقط می‌تواند این
+  // سقف را *کمتر* کند، نه بیشتر.
+  const runCap = orchestratorRunCap();
+  const effectiveLimit =
+    typeof input.limit === "number" ? Math.min(Math.max(0, input.limit), runCap) : runCap;
+  const toProcess = listings.slice(0, effectiveLimit);
 
   for (const listing of toProcess) {
     // ۳) نرمال‌سازی/ذخیره‌ی آگهی + ضبط خام.
@@ -345,6 +350,11 @@ export interface RunAutoApplyOptions {
   db?: OrchestratorDb;
   /** تابعِ enqueue — پیش‌فرض از @/lib/queue. */
   enqueueFn?: EnqueueFn;
+  /**
+   * سقفِ تعدادِ آگهیِ پردازش‌شده در هر سایت در این اجرا (گاردریلِ runaway). پیش‌فرض
+   * orchestratorRunCap() از env (۲۵). آگهی‌های بیشتر از این در همان اجرا نادیده می‌مانند.
+   */
+  perRunListingCap?: number;
 }
 
 /** خلاصه‌ی نتیجه‌ی یک اجرای runAutoApply — برای داشبورد/لاگ. */
@@ -460,6 +470,7 @@ export async function runAutoApply(
     dailyCap = DEFAULT_DAILY_CAP,
     db: conn = db,
     enqueueFn = defaultEnqueue,
+    perRunListingCap = orchestratorRunCap(),
   } = options;
 
   // مسیرِ تولید: اگر scoreFn تزریق نشده، نسخه‌ی *مترشده* مقید به userId استفاده می‌شود
@@ -504,7 +515,10 @@ export async function runAutoApply(
     }
     report.ingested += listings.length;
 
-    for (const job of listings) {
+    // سقفِ runaway: حداکثر perRunListingCap آگهی در هر سایت در این اجرا پردازش می‌شود.
+    const capped = listings.slice(0, Math.max(0, perRunListingCap));
+
+    for (const job of capped) {
       // ۲) پایدارسازیِ آگهی (upsert + ضبطِ خام) روی هندلِ تزریق‌شده.
       let listingRow: JobListingRow;
       try {

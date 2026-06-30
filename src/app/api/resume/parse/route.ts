@@ -20,7 +20,7 @@ import { resumeParseSchema } from "@/lib/resume/api-schemas";
 import { ResumeParseError } from "@/lib/resume/parse";
 import { meteredParseResumeText } from "@/lib/resume/metered-parse";
 import { GatewayError } from "@/lib/ai/gateway";
-import { InsufficientBalanceError } from "@/lib/billing/errors";
+import { AiMaintenanceError, InsufficientBalanceError } from "@/lib/billing/errors";
 import {
   getResumeFileOwned,
   persistParsedFields,
@@ -93,15 +93,41 @@ export async function POST(request: Request): Promise<Response> {
 /**
  * خطای لایه‌ی AI را به پاسخِ تمیزِ کاربری نگاشت می‌کند (بدونِ نشتِ جزئیاتِ داخلی).
  *   • موجودیِ ناکافی → ۴۰۲ (نیازمندِ شارژِ کیف‌پول).
+ *   • حالتِ نگه‌داریِ هوش مصنوعی → ۵۰۳ + code='ai_maintenance' (سقفِ ماهانه یا پرچمِ دستی).
  *   • گیت‌وی پیکربندی‌نشده → ۵۰۳ (سرویس موقتاً در دسترس نیست).
  *   • خطای مدل/پاسخِ نامعتبر → ۵۰۲ (سرویسِ بالادست بد پاسخ داد).
+ *
+ * نکته: metered-parse خطاهای ناشناخته را در ResumeParseError می‌پیچد؛ پس برای
+ * AiMaintenanceError هم مستقیم و هم cause را بررسی می‌کنیم تا نوعِ آن گم نشود.
  */
 function mapAiError(err: unknown): Response {
-  // گیتِ بیلینگ: پیش از هر فراخوانی پرتاب می‌شود؛ هرگز هزینه‌ی بالادست خرج نشده.
-  if (err instanceof InsufficientBalanceError) {
-    return errorJson(err.message, 402);
-  }
   const cause = err instanceof ResumeParseError ? err.cause : err;
+
+  // گیتِ بیلینگ: پیش از هر فراخوانی پرتاب می‌شود؛ هرگز هزینه‌ی بالادست خرج نشده.
+  if (err instanceof InsufficientBalanceError || cause instanceof InsufficientBalanceError) {
+    const e = err instanceof InsufficientBalanceError ? err : (cause as InsufficientBalanceError);
+    return errorJson(e.message, 402);
+  }
+
+  // گاردریلِ بودجه‌ی سراسری: حالتِ نگه‌داری → ۵۰۳ با پیامِ فارسیِ روشن. کد و علت در
+  // سطحِ بالای بدنه می‌آیند تا UI بتواند بنرِ نگه‌داری را دقیق تشخیص دهد (بدونِ نشتِ رقمِ بودجه).
+  const maintenance =
+    err instanceof AiMaintenanceError
+      ? err
+      : cause instanceof AiMaintenanceError
+        ? cause
+        : null;
+  if (maintenance) {
+    return json(
+      {
+        error: maintenance.message,
+        code: "ai_maintenance",
+        reason: maintenance.manual ? "manual" : "cap",
+      },
+      503,
+    );
+  }
+
   if (cause instanceof GatewayError && cause.code === "not_configured") {
     return errorJson("سرویسِ هوش مصنوعی پیکربندی نشده است.", 503);
   }

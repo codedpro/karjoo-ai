@@ -246,6 +246,42 @@ describe("POST /api/resume/parse", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("حالتِ نگه‌داریِ هوش مصنوعی (AiMaintenanceError مستقیم) → ۵۰۳ + code=ai_maintenance", async () => {
+    const { AiMaintenanceError } = await import("@/lib/billing/errors");
+    getCurrentUserMock.mockResolvedValue(USER);
+    getOwnedMock.mockResolvedValue({ id: ID, extractedText: "متنِ رزومه" } as never);
+    parseResumeTextMock.mockRejectedValue(new AiMaintenanceError({ manual: false }));
+
+    const res = await parsePOST(
+      jsonReq("https://k.app/api/resume/parse", "POST", { resumeFileId: ID }),
+    );
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.code).toBe("ai_maintenance");
+    expect(body.reason).toBe("cap");
+    expect(body.error).toContain("سرویس هوش مصنوعی");
+    expect(persistMock).not.toHaveBeenCalled();
+  });
+
+  it("نگه‌داریِ پیچیده‌شده در ResumeParseError → همچنان ۵۰۳ با reason='manual'", async () => {
+    const { AiMaintenanceError } = await import("@/lib/billing/errors");
+    const { ResumeParseError } = await import("@/lib/resume/parse");
+    getCurrentUserMock.mockResolvedValue(USER);
+    getOwnedMock.mockResolvedValue({ id: ID, extractedText: "متنِ رزومه" } as never);
+    // metered-parse خطاهای ناشناخته را در ResumeParseError می‌پیچد؛ نوعِ نگه‌داری نباید گم شود.
+    parseResumeTextMock.mockRejectedValue(
+      new ResumeParseError("wrapped", new AiMaintenanceError({ manual: true })),
+    );
+
+    const res = await parsePOST(
+      jsonReq("https://k.app/api/resume/parse", "POST", { resumeFileId: ID }),
+    );
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.code).toBe("ai_maintenance");
+    expect(body.reason).toBe("manual");
+  });
 });
 
 /* ────────────────────────────── profile (ویرایش/ذخیره) ────────────────────────────── */

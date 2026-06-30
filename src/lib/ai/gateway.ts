@@ -17,7 +17,7 @@ import "server-only";
  * `response_format: { type: "json_object" }` به درخواست افزوده می‌شود و پاسخ به‌صورت
  * JSON پارس می‌شود. اعتبارسنجی شکل نهایی با zod، در فراخواننده (scoring/ai) انجام می‌گیرد.
  */
-import { requireOneXai } from "@/lib/env";
+import { aiMaxOutputTokens, aiTimeoutMs, requireOneXai } from "@/lib/env";
 
 /** نقش‌های استاندارد پیام چت (سازگار با OpenAI). */
 export type ChatRole = "system" | "user" | "assistant";
@@ -85,6 +85,16 @@ export interface GatewayOptions {
   fetchImpl?: FetchLike;
   /** override آداپتور پروتکل (پیش‌فرض: OpenAI-compatible). */
   adapter?: ChatAdapter;
+  /**
+   * سقفِ توکنِ خروجی که اگر درخواست خودش maxTokens نداده باشد اعمال می‌شود
+   * (گاردریلِ runaway). پیش‌فرض aiMaxOutputTokens() از env (۱۲۰۰).
+   */
+  maxOutputTokens?: number;
+  /**
+   * تایم‌اوتِ درخواست به میلی‌ثانیه (AbortController). پیش‌فرض aiTimeoutMs() از env
+   * (۶۰۰۰۰). ۰/منفی ⇒ بدونِ تایم‌اوت. تجاوز ⇒ GatewayError('network_error').
+   */
+  timeoutMs?: number;
 }
 
 /** کدهای خطای پایدارِ این لایه — برای مدیریت دقیق در فراخواننده. */
@@ -206,17 +216,43 @@ export async function chatComplete(
   const adapter = opts.adapter ?? openAiChatAdapter;
   const doFetch = (opts.fetchImpl ?? (globalThis.fetch as unknown as FetchLike)) satisfies FetchLike;
 
-  const { url, init } = adapter.buildRequest(config, req);
+  // گاردریلِ runaway: اگر فراخواننده maxTokens نداده باشد، سقفِ پیش‌فرض را اعمال کن تا
+  // هیچ فراخوانیِ مدلی بی‌حدومرز توکنِ خروجی تولید نکند.
+  const cappedReq: ChatCompletionRequest =
+    typeof req.maxTokens === "number"
+      ? req
+      : { ...req, maxTokens: opts.maxOutputTokens ?? aiMaxOutputTokens() };
+
+  const { url, init } = adapter.buildRequest(config, cappedReq);
+
+  // گاردریلِ تایم‌اوت: یک درخواستِ معلق نباید فرایند را قفل کند یا هزینه‌ی بازِ نامحدود
+  // بسازد. AbortController پس از timeoutMs درخواست را لغو می‌کند. ۰/منفی ⇒ بدونِ تایم‌اوت.
+  const timeoutMs = opts.timeoutMs ?? aiTimeoutMs();
+  const controller = timeoutMs > 0 ? new AbortController() : undefined;
+  const timer =
+    controller !== undefined
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : undefined;
+  const initWithSignal: RequestInit = controller
+    ? { ...init, signal: controller.signal }
+    : init;
 
   let res: { ok: boolean; status: number; text(): Promise<string> };
   try {
-    res = await doFetch(url, init);
+    res = await doFetch(url, initWithSignal);
   } catch (cause) {
+    const aborted =
+      cause instanceof Error &&
+      (cause.name === "AbortError" || controller?.signal.aborted === true);
     throw new GatewayError(
       "network_error",
-      "اتصال به گیت‌وی 1xai ناموفق بود (شبکه/تایم‌اوت).",
+      aborted
+        ? `اتصال به گیت‌وی 1xai به دلیلِ تایم‌اوت (${timeoutMs}ms) لغو شد.`
+        : "اتصال به گیت‌وی 1xai ناموفق بود (شبکه/تایم‌اوت).",
       { cause },
     );
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 
   const bodyText = await res.text();

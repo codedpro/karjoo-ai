@@ -12,9 +12,16 @@ vi.mock("@/lib/apply/extension-queue", () => ({
   claimUserApplyItems: vi.fn(),
   recordResult: vi.fn(),
 }));
+// گاردِ سهمیه‌ی اپلای (Track B) را mock می‌کنیم تا تستِ روت بدونِ DB اجرا شود؛ پیش‌فرض
+// «عبور» (سهمیه آزاد) است تا تست‌های موجود دست‌نخورده بمانند.
+vi.mock("@/lib/billing/apply-quota-guard", () => ({
+  assertApplyQuotaForUser: vi.fn(),
+}));
 
 import { requireBearerSession } from "@/lib/api/bearer-auth";
 import { claimUserApplyItems, recordResult } from "@/lib/apply/extension-queue";
+import { assertApplyQuotaForUser } from "@/lib/billing/apply-quota-guard";
+import { ApplyQuotaError } from "@/lib/billing/errors";
 import { HttpError } from "@/lib/api/http";
 import { POST as claimPOST } from "@/app/api/apply-queue/claim/route";
 import { POST as resultPOST } from "@/app/api/apply-queue/[id]/result/route";
@@ -22,6 +29,7 @@ import { POST as resultPOST } from "@/app/api/apply-queue/[id]/result/route";
 const authMock = vi.mocked(requireBearerSession);
 const claimMock = vi.mocked(claimUserApplyItems);
 const recordMock = vi.mocked(recordResult);
+const quotaMock = vi.mocked(assertApplyQuotaForUser);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -157,5 +165,64 @@ describe("POST /api/apply-queue/:id/result — قاعده‌ی ۲ (تأییدِ 
       params: params(),
     });
     expect(res.status).toBe(401);
+  });
+
+  it("سقفِ اپلای روزانه (submitted) → ۴۲۹ + code=apply_quota_exceeded، بدونِ ثبت", async () => {
+    authMock.mockResolvedValue({
+      userId: "user-free",
+      session: { kind: "extension" },
+    } as never);
+    // گارد سقف را رد می‌کند (کاربرِ free به ۱۰۰/روز رسیده).
+    quotaMock.mockRejectedValue(new ApplyQuotaError({ usedToday: 100, limit: 100 }));
+
+    const res = await resultPOST(resultReq({ status: "submitted" }), {
+      params: params(),
+    });
+    expect(res.status).toBe(429);
+    const body = await res.json();
+    expect(body.code).toBe("apply_quota_exceeded");
+    expect(body.limit).toBe(100);
+    expect(body.usedToday).toBe(100);
+    // مهم: وقتی سقف پر است، اپلای ثبت نمی‌شود (recordResult صدا زده نمی‌شود).
+    expect(recordMock).not.toHaveBeenCalled();
+    // گارد با همان userIdِ نشست صدا زده شده (قاعده‌ی ۴).
+    expect(quotaMock).toHaveBeenCalledWith("user-free");
+  });
+
+  it("گزارشِ skipped → گاردِ سهمیه صدا زده نمی‌شود (فقط submitted سهمیه می‌سوزاند)", async () => {
+    authMock.mockResolvedValue({
+      userId: "user-9",
+      session: { kind: "extension" },
+    } as never);
+    recordMock.mockResolvedValue({
+      application: { id: "app-2", status: "skipped", channel: "extension" },
+      taskStatus: "succeeded",
+    } as never);
+
+    const res = await resultPOST(resultReq({ status: "skipped", reason: "off-topic" }), {
+      params: params(),
+    });
+    expect(res.status).toBe(200);
+    expect(quotaMock).not.toHaveBeenCalled();
+    expect(recordMock).toHaveBeenCalled();
+  });
+
+  it("submitted در سهمیه → گارد عبور می‌کند و اپلای ثبت می‌شود", async () => {
+    authMock.mockResolvedValue({
+      userId: "user-ok",
+      session: { kind: "extension" },
+    } as never);
+    quotaMock.mockResolvedValue({ limit: 100, usedToday: 3, remaining: 97 });
+    recordMock.mockResolvedValue({
+      application: { id: "app-3", status: "submitted", channel: "extension" },
+      taskStatus: "succeeded",
+    } as never);
+
+    const res = await resultPOST(resultReq({ status: "submitted" }), {
+      params: params(),
+    });
+    expect(res.status).toBe(200);
+    expect(quotaMock).toHaveBeenCalledWith("user-ok");
+    expect(recordMock).toHaveBeenCalled();
   });
 });
