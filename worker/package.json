@@ -1,0 +1,31 @@
+{
+  "name": "karjoo-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Karjoo (کارجو) — Iranian worker-fleet node: enrolls, heartbeats, claims auto-apply jobs for its ASSIGNED users (Max/Max+), injects the user's OWN session into a headful Playwright context, fills+submits via the shared apply-spec, reports the result, then discards the session. NO detection-evasion.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "karjoo-worker": "./dist/main.js"
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "playwright-core": "^1.49.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsx": "^4.20.6",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.4"
+  }
+}
