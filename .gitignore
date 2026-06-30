@@ -20,6 +20,9 @@
 # production
 /build
 
+# resume uploads (WF1) — local file storage, never committed
+/uploads
+
 # misc
 .DS_Store
 *.pem
