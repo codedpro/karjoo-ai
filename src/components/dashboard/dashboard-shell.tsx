@@ -11,17 +11,24 @@ import { site } from "@/lib/site";
 
 import { signOut } from "./actions";
 
-type NavKey = "home" | "matches" | "applications";
+type NavKey = "home" | "matches" | "applications" | "interests" | "resume";
 
 const NAV: { key: NavKey; href: string; label: string; icon: string }[] = [
   { key: "home", href: "/dashboard", label: "خانه", icon: "🏠" },
   { key: "matches", href: "/dashboard/matches", label: "تطبیق‌ها", icon: "🎯" },
+  {
+    key: "interests",
+    href: "/dashboard/interests",
+    label: "علاقه‌مندی‌ها",
+    icon: "⭐",
+  },
   {
     key: "applications",
     href: "/dashboard/applications",
     label: "اپلای‌ها",
     icon: "📨",
   },
+  { key: "resume", href: "/dashboard/resume", label: "رزومه", icon: "📄" },
 ];
 
 export function DashboardShell({
