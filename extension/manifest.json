@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "Karjoo — assisted apply (کارجو)",
+  "version": "0.1.0",
+  "description": "AI job-search copilot: pre-fills job applications on Iranian boards; you review and approve every submit. No unattended auto-submit.",
+  "default_locale": "en",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Karjoo",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "cookies", "scripting", "activeTab"],
+  "host_permissions": [
+    "https://jobinja.ir/*",
+    "https://*.jobinja.ir/*",
+    "https://jobvision.ir/*",
+    "https://*.jobvision.ir/*",
+    "http://localhost:3000/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://jobinja.ir/*", "https://*.jobinja.ir/*"],
+      "js": ["content/jobinja.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://jobvision.ir/*", "https://*.jobvision.ir/*"],
+      "js": ["content/jobvision.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

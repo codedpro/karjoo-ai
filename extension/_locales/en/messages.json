@@ -1,0 +1,10 @@
+{
+  "appName": {
+    "message": "Karjoo — assisted apply",
+    "description": "Extension name shown in the browser."
+  },
+  "appDescription": {
+    "message": "AI job-search copilot: pre-fills job applications on Iranian boards; you review and approve every submit. No unattended auto-submit.",
+    "description": "Extension description shown in the browser."
+  }
+}

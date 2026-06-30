@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>کارجو</title>
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">کارجو</span>
+        <span class="brand-sub">دستیار اپلای</span>
+      </div>
+      <button id="signout" class="link-btn" hidden>خروج</button>
+    </header>
+
+    <!-- View: not paired → onboarding/pairing -->
+    <section id="view-pair" class="view" hidden>
+      <h1 class="view-title">اتصال افزونه</h1>
+      <p class="hint">
+        کد اتصال را از داشبورد کارجو کپی کنید و اینجا بچسبانید. این افزونه به حساب
+        موجود شما متصل می‌شود؛ نیازی به ورود دوباره با کد پیامکی نیست.
+      </p>
+      <label class="field-label" for="pair-code">کد اتصال</label>
+      <input id="pair-code" class="input" type="text" placeholder="مثلاً: 8sKd2…" autocomplete="off" />
+
+      <details class="advanced">
+        <summary>تنظیمات پیشرفته (آدرس سرور)</summary>
+        <label class="field-label" for="api-origin">آدرس API کارجو</label>
+        <input id="api-origin" class="input" type="text" placeholder="http://localhost:3000" />
+        <button id="save-origin" class="btn btn-ghost">ذخیره آدرس</button>
+      </details>
+
+      <button id="pair-submit" class="btn btn-primary">اتصال</button>
+      <p id="pair-error" class="error" hidden></p>
+    </section>
+
+    <!-- View: paired → main -->
+    <section id="view-main" class="view" hidden>
+      <div class="identity-row">
+        <span class="identity-dot"></span>
+        <span id="identity-label">در حال بررسی…</span>
+      </div>
+
+      <nav class="tabs" role="tablist">
+        <button class="tab" data-tab="boards" role="tab">اتصال سایت‌ها</button>
+        <button class="tab" data-tab="queue" role="tab">صف اپلای</button>
+      </nav>
+
+      <!-- Tab: connect boards -->
+      <div class="tab-panel" data-panel="boards">
+        <p class="hint">
+          وضعیت ورود شما به هر سایت <strong>فقط در مرورگر خودتان</strong> بررسی می‌شود.
+          هیچ کوکی یا توکنی به سرور کارجو ارسال نمی‌شود — تنها وضعیت «متصل».
+        </p>
+        <ul id="boards-list" class="boards-list"></ul>
+      </div>
+
+      <!-- Tab: apply queue -->
+      <div class="tab-panel" data-panel="queue" hidden>
+        <div class="queue-toolbar">
+          <button id="refresh-queue" class="btn btn-ghost">به‌روزرسانی صف</button>
+        </div>
+        <p class="hint">
+          هر اپلای را بررسی کنید. فرم به‌صورت خودکار پر می‌شود، اما
+          <strong>ارسال نهایی فقط با تأیید شما</strong> انجام می‌شود.
+        </p>
+        <div id="queue-list" class="queue-list"></div>
+        <p id="queue-empty" class="empty" hidden>صف اپلای خالی است.</p>
+      </div>
+    </section>
+
+    <p id="global-error" class="error global" hidden></p>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
