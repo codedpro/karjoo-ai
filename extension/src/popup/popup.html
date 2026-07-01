@@ -15,6 +15,22 @@
       <button id="signout" class="link-btn" hidden>خروج</button>
     </header>
 
+    <!-- Update-available banner (BUG 5): shown only when the control plane
+         reports a newer version. Hidden by default; network failure = stays hidden. -->
+    <div id="update-banner" class="update-banner" hidden>
+      <div class="update-banner-text">
+        <strong>نسخه‌ی جدید موجود است</strong>
+        <span id="update-banner-notes" class="update-banner-notes"></span>
+        <span class="update-banner-hint">
+          فایل جدید را دانلود کنید و از صفحه‌ی افزونه، آن را دوباره بارگذاری کنید.
+        </span>
+      </div>
+      <div class="update-banner-actions">
+        <a id="update-download" class="btn btn-primary btn-sm" href="#" target="_blank" rel="noopener">دانلود نسخه‌ی جدید</a>
+        <a id="update-steps" class="link-btn" href="#" target="_blank" rel="noopener">راهنمای بارگذاری</a>
+      </div>
+    </div>
+
     <!-- View: not paired → onboarding/pairing -->
     <section id="view-pair" class="view" hidden>
       <h1 class="view-title">اتصال افزونه</h1>
@@ -24,13 +40,6 @@
       </p>
       <label class="field-label" for="pair-code">کد اتصال</label>
       <input id="pair-code" class="input" type="text" placeholder="مثلاً: 8sKd2…" autocomplete="off" />
-
-      <details class="advanced">
-        <summary>تنظیمات پیشرفته (آدرس سرور)</summary>
-        <label class="field-label" for="api-origin">آدرس API کارجو</label>
-        <input id="api-origin" class="input" type="text" placeholder="http://localhost:3000" />
-        <button id="save-origin" class="btn btn-ghost">ذخیره آدرس</button>
-      </details>
 
       <button id="pair-submit" class="btn btn-primary">اتصال</button>
       <p id="pair-error" class="error" hidden></p>

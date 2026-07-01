@@ -147,13 +147,39 @@ body {
   border-top: 1px solid var(--border);
 }
 
-.advanced {
-  margin-top: 12px;
-  font-size: 12px;
-  color: var(--muted);
+/* ── update-available banner (BUG 5) ─────────────────────────────────────── */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: rgba(59, 130, 246, 0.12);
+  border-bottom: 1px solid var(--primary);
 }
-.advanced summary {
-  cursor: pointer;
+.update-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.update-banner-text strong {
+  color: var(--text);
+  font-size: 13px;
+}
+.update-banner-notes {
+  color: var(--text);
+}
+.update-banner-hint {
+  color: var(--muted);
+  font-size: 11px;
+}
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
 }
 
 /* identity */

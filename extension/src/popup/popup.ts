@@ -18,6 +18,7 @@ import { isPaired, getApiOrigin } from "@ext/lib/storage";
 import { isValidPairingCodeShape, normalizePairingCode } from "@ext/lib/pairing-code";
 import { toQueueCardViews, type QueueCardView } from "@ext/lib/queue-view";
 import { stateLabel, thresholdLabel, lastRunLabel } from "@ext/lib/auto-apply-view";
+import { checkForUpdate, type UpdateCheckResult } from "@ext/lib/update-check";
 import type {
   Identity,
   ApplyQueueItem,
@@ -33,77 +34,156 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
   if (!el) throw new Error(`missing element #${id}`);
   return el as T;
 };
+/** Null-tolerant lookup: used where a missing element must NOT throw and blank the popup. */
+const $opt = <T extends HTMLElement = HTMLElement>(id: string): T | null =>
+  document.getElementById(id) as T | null;
 const show = (el: HTMLElement, on = true) => (el.hidden = !on);
 const setText = (el: HTMLElement, text: string) => (el.textContent = text);
 
 function showGlobalError(message: string) {
-  const el = $("global-error");
+  const el = $opt("global-error");
+  if (!el) return;
   setText(el, message);
   show(el, true);
 }
-function clearGlobalError() {
-  show($("global-error"), false);
-}
 
-/* ── boot ──────────────────────────────────────────────────────────────── */
-async function boot() {
-  // Prefill API origin field for the advanced section.
-  ($("api-origin") as HTMLInputElement).value = await getApiOrigin();
-
-  if (await isPaired()) {
-    await enterMain();
-  } else {
-    show($("view-pair"), true);
-  }
+/* ── boot (RENDER-FIRST — must never blank the popup, BUG 3) ─────────────────
+ * The popup previously awaited getApiOrigin()/isPaired()/a cold-SW round-trip at
+ * the top of boot(); if any of those threw or hung, the popup painted nothing and
+ * the user had to toggle devtools until it appeared. Now boot() paints a visible
+ * shell SYNCHRONOUSLY (choose a view + wire the always-safe handlers), then loads
+ * async state in a separate, fully guarded phase. No await runs before the first
+ * paint, and every async call is try/caught so a rejection can't leave a blank UI.
+ */
+function boot() {
+  // Wiring is pure DOM (no await, no messaging) → always safe, paints instantly.
   wirePairing();
   wireSignOut();
+
+  // Kick off the async phase WITHOUT awaiting it here — the shell is already up.
+  void bootAsync();
+
+  // Update check is best-effort and fully isolated; never blocks or blanks.
+  void maybeShowUpdateBanner();
+}
+
+/**
+ * Async boot phase: decide paired vs. pairing view and hydrate main. Guarded so
+ * a slow/asleep service worker or a storage hiccup shows a view + error, never a
+ * blank popup.
+ */
+async function bootAsync() {
+  let paired = false;
+  try {
+    paired = await isPaired();
+  } catch (e) {
+    // Storage unreadable → fall back to the pairing view so the popup is usable.
+    showGlobalError(errMsg(e));
+  }
+
+  if (paired) {
+    try {
+      await enterMain();
+    } catch (e) {
+      // enterMain hydrates the main view; a structural/DOM failure here must not
+      // leave a blank popup — surface it and still show whatever painted.
+      showGlobalError(errMsg(e));
+    }
+  } else {
+    const view = $opt("view-pair");
+    if (view) show(view, true);
+  }
 }
 
 /* ── pairing view ──────────────────────────────────────────────────────── */
 function wirePairing() {
-  $("save-origin").addEventListener("click", async () => {
-    const origin = ($("api-origin") as HTMLInputElement).value;
-    try {
-      await send({ type: "SET_API_ORIGIN", origin });
-      clearGlobalError();
-    } catch (e) {
-      showGlobalError(errMsg(e));
-    }
-  });
-
-  $("pair-submit").addEventListener("click", async () => {
-    const errEl = $("pair-error");
-    show(errEl, false);
-    const raw = ($("pair-code") as HTMLInputElement).value;
-    const code = normalizePairingCode(raw);
+  const submit = $opt("pair-submit");
+  if (!submit) return;
+  submit.addEventListener("click", async () => {
+    const errEl = $opt("pair-error");
+    if (errEl) show(errEl, false);
+    const codeInput = $opt<HTMLInputElement>("pair-code");
+    const code = normalizePairingCode(codeInput?.value ?? "");
     if (!isValidPairingCodeShape(code)) {
-      setText(errEl, "کد اتصال نامعتبر است. دوباره از داشبورد کپی کنید.");
-      show(errEl, true);
+      if (errEl) {
+        setText(errEl, "کد اتصال نامعتبر است. دوباره از داشبورد کپی کنید.");
+        show(errEl, true);
+      }
       return;
     }
-    const btn = $("pair-submit") as HTMLButtonElement;
+    const btn = submit as HTMLButtonElement;
     btn.disabled = true;
     try {
-      // First persist any edited origin so /link hits the right server.
-      const origin = ($("api-origin") as HTMLInputElement).value;
-      if (origin) await send({ type: "SET_API_ORIGIN", origin });
+      // The control-plane origin is LOCKED at build time (getApiOrigin), so /link
+      // always hits the production plane — no per-user origin to persist first.
       await send<Identity | null>({ type: "PAIR", code });
-      show($("view-pair"), false);
+      const view = $opt("view-pair");
+      if (view) show(view, false);
       await enterMain();
     } catch (e) {
-      setText(errEl, errMsg(e));
-      show(errEl, true);
+      if (errEl) {
+        setText(errEl, errMsg(e));
+        show(errEl, true);
+      }
     } finally {
       btn.disabled = false;
     }
   });
 }
 
+/* ── update banner (BUG 5 — notify + one-click re-download) ───────────────────
+ * Compares this build's manifest version to the control plane's latest. On a
+ * newer server version, reveals the banner linking to the zip + reload steps.
+ * Fully best-effort: any network/parse failure leaves the banner hidden and the
+ * popup unaffected (never blocks, never throws).
+ */
+async function maybeShowUpdateBanner() {
+  try {
+    const current = chrome.runtime.getManifest().version;
+    const origin = await getApiOrigin();
+    const result = await checkForUpdate(origin, current);
+    renderUpdateBanner(result, origin);
+  } catch {
+    // Any failure → no banner. The popup is already rendered regardless.
+  }
+}
+
+function renderUpdateBanner(result: UpdateCheckResult, origin: string) {
+  if (!result.updateAvailable) return;
+  const banner = $opt("update-banner");
+  if (!banner) return;
+
+  const download = $opt<HTMLAnchorElement>("update-download");
+  if (download && result.downloadUrl) download.href = result.downloadUrl;
+
+  const steps = $opt<HTMLAnchorElement>("update-steps");
+  if (steps) steps.href = `${origin.replace(/\/+$/, "")}/dashboard/extension`;
+
+  const notes = $opt("update-banner-notes");
+  if (notes) {
+    if (result.notes) {
+      setText(notes, result.notes);
+      show(notes, true);
+    } else {
+      show(notes, false);
+    }
+  }
+
+  show(banner, true);
+}
+
 function wireSignOut() {
-  const btn = $("signout");
+  const btn = $opt("signout");
+  if (!btn) return;
   btn.addEventListener("click", async () => {
-    await send({ type: "SIGN_OUT" });
-    location.reload();
+    try {
+      await send({ type: "SIGN_OUT" });
+    } catch (e) {
+      // Best-effort: even if the SW is asleep/unreachable, reload to a clean state.
+      showGlobalError(errMsg(e));
+    } finally {
+      location.reload();
+    }
   });
 }
 
@@ -426,4 +506,24 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-void boot().catch((e) => showGlobalError(errMsg(e)));
+/* ── entry (RENDER-FIRST) ──────────────────────────────────────────────────
+ * Run boot() once the DOM exists (so element lookups resolve and the shell can
+ * paint on the very first click of the toolbar icon). boot() is synchronous and
+ * only wires DOM + kicks off guarded async work, so nothing here can hang or
+ * blank the popup; a defensive try/catch turns any unexpected synchronous throw
+ * into a visible error instead of an empty window.
+ */
+function start() {
+  try {
+    boot();
+  } catch (e) {
+    showGlobalError(errMsg(e));
+  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", start, { once: true });
+} else {
+  // The document already parsed (module script at end of <body>) → boot now.
+  start();
+}

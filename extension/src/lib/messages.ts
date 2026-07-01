@@ -37,11 +37,6 @@ export interface SignOutMsg {
   type: "SIGN_OUT";
 }
 
-export interface SetApiOriginMsg {
-  type: "SET_API_ORIGIN";
-  origin: string;
-}
-
 export interface DetectBoardMsg {
   type: "DETECT_BOARD";
   board: BoardId;
@@ -155,7 +150,6 @@ export type PopupToBackground =
   | PairMsg
   | GetIdentityMsg
   | SignOutMsg
-  | SetApiOriginMsg
   | DetectBoardMsg
   | ConnectBoardMsg
   | ClaimQueueMsg

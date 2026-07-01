@@ -28,7 +28,6 @@ import {
   getSessionToken,
   setSessionToken,
   clearSessionToken,
-  setApiOrigin,
   setIdentity,
   getAutoApplySettings,
   getAutoApplyStatus,
@@ -299,9 +298,6 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
     case "SIGN_OUT":
       await clearSessionToken();
       return { ok: true, data: { signedOut: true } };
-    case "SET_API_ORIGIN":
-      await setApiOrigin(msg.origin);
-      return { ok: true, data: { origin: msg.origin } };
     case "DETECT_BOARD":
       return { ok: true, data: await probeBoardSession(msg.board) };
     case "CONNECT_BOARD":
