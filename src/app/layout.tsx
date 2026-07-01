@@ -4,6 +4,7 @@ import Script from "next/script";
 
 import { headTagsFromConfig, type HeadTags } from "@itmaster/sdk/next";
 
+import { AnalyticsProvider } from "@/components/providers/analytics-provider";
 import { itmaster } from "@/lib/itmaster";
 import { site } from "@/lib/site";
 import "./globals.css";
@@ -62,7 +63,7 @@ export default async function RootLayout({
         ))}
       </head>
       <body className="min-h-full flex flex-col">
-        {children}
+        <AnalyticsProvider>{children}</AnalyticsProvider>
         {head?.scripts.map((s, i) =>
           s.src ? (
             <Script key={`s${i}`} src={s.src} strategy={(s.strategy as Strategy) ?? "afterInteractive"} />
