@@ -60,6 +60,12 @@ function boot() {
   wirePairing();
   wireSignOut();
 
+  // Paint a VISIBLE view synchronously so the popup is never blank while bootAsync
+  // resolves the paired state. Default to the pairing view; bootAsync swaps to the
+  // main view if already paired (isPaired reads local storage — sub-millisecond).
+  const pair = $opt("view-pair");
+  if (pair) show(pair, true);
+
   // Kick off the async phase WITHOUT awaiting it here — the shell is already up.
   void bootAsync();
 
@@ -82,6 +88,9 @@ async function bootAsync() {
   }
 
   if (paired) {
+    // We optimistically painted the pairing view in boot(); hide it, show main.
+    const pair = $opt("view-pair");
+    if (pair) show(pair, false);
     try {
       await enterMain();
     } catch (e) {
@@ -89,10 +98,8 @@ async function bootAsync() {
       // leave a blank popup — surface it and still show whatever painted.
       showGlobalError(errMsg(e));
     }
-  } else {
-    const view = $opt("view-pair");
-    if (view) show(view, true);
   }
+  // Not paired → the pairing view is already visible (painted synchronously in boot()).
 }
 
 /* ── pairing view ──────────────────────────────────────────────────────── */
@@ -193,19 +200,31 @@ async function enterMain() {
   show($("signout"), true);
   wireTabs();
 
-  try {
-    const identity = await send<Identity | null>({ type: "GET_IDENTITY" });
-    setText($("identity-label"), identityLabel(identity));
-  } catch (e) {
-    setText($("identity-label"), "وارد شده");
-    showGlobalError(errMsg(e));
-  }
-
+  // RENDER-FIRST (BUG: blank until tab-switch). Everything below is synchronous DOM
+  // wiring — it paints the full main view (tabs + board cards + panels) instantly.
+  // The old code `await send(GET_IDENTITY)` BEFORE renderBoards(), so a cold/asleep
+  // service worker (up to the 8s send timeout) left the board list empty until the
+  // user switched tabs and woke the worker. Now nothing awaited blocks the paint.
   renderBoards();
   wireImport();
   wireAutoApply();
   $("refresh-queue").addEventListener("click", () => void loadQueue());
+
+  // Async state loads WITHOUT blocking the render; each is independently guarded so a
+  // slow/asleep worker only delays a label, never the whole UI.
+  void hydrateIdentity();
   void loadQueue();
+}
+
+/** Load the signed-in identity label without blocking the main-view render. */
+async function hydrateIdentity() {
+  try {
+    const identity = await send<Identity | null>({ type: "GET_IDENTITY" });
+    setText($("identity-label"), identityLabel(identity));
+  } catch {
+    // Never blank/annoy on a cold worker — show a neutral label, no global error.
+    setText($("identity-label"), "وارد شده");
+  }
 }
 
 /* ── auto-apply tab (§10 — opt-in, revocable) ──────────────────────────────── */
@@ -310,49 +329,50 @@ function boardCard(board: BoardId, displayName: string): HTMLLIElement {
     </div>
     <input class="input board-label-input" data-label placeholder="برچسب حساب (اختیاری)" autocomplete="off" />
     <div class="board-actions">
-      <button class="btn btn-ghost btn-sm" data-detect>بررسی ورود</button>
       <button class="btn btn-primary btn-sm" data-connect>اتصال</button>
     </div>
   `;
   const statusEl = li.querySelector<HTMLElement>("[data-status]")!;
   const connectBtn = li.querySelector<HTMLButtonElement>("[data-connect]")!;
-  const detectBtn = li.querySelector<HTMLButtonElement>("[data-detect]")!;
   const labelInput = li.querySelector<HTMLInputElement>("[data-label]")!;
 
-  // تشخیصِ ورود «مشورتی» است، نه دروازه‌بان: هرگز دکمه‌ی «اتصال» را غیرفعال نمی‌کند.
-  // خودِ کاربر می‌داند وارد شده یا نه؛ و «اتصال» فقط متادیتای {board} را ذخیره می‌کند
-  // (هیچ کوکی/توکنی فرستاده نمی‌شود). پس تشخیصِ ناموفق نباید کاربر را قفل کند.
+  // یک دکمه‌ی اصلی در هر کارت: «اتصال». تشخیصِ ورود «مشورتی» است و خودکار روی باز شدنِ
+  // پاپ‌آپ اجرا می‌شود (نتیجه در برچسبِ وضعیت) — هرگز «اتصال» را قفل نمی‌کند. «اتصال» فقط
+  // متادیتای {board} را ذخیره می‌کند (هیچ کوکی/توکنی فرستاده نمی‌شود).
   const detect = async () => {
     setStatus(statusEl, "در حال بررسی…", "");
-    detectBtn.disabled = true;
     try {
       const res = await send<ProbeSessionResult>({ type: "DETECT_BOARD", board });
-      if (res.loggedIn) {
-        setStatus(statusEl, "وارد شده در مرورگر شما", "ok");
-      } else {
-        setStatus(statusEl, "ورود تشخیص داده نشد — اگر واردید، «اتصال» را بزنید", "warn");
-      }
+      setStatus(
+        statusEl,
+        res.loggedIn ? "وارد شده در مرورگر شما" : "ورود تشخیص داده نشد — «اتصال» را بزنید",
+        res.loggedIn ? "ok" : "warn",
+      );
     } catch {
-      setStatus(statusEl, "بررسی ناموفق بود — می‌توانید دستی «اتصال» بزنید", "warn");
-    } finally {
-      detectBtn.disabled = false;
+      setStatus(statusEl, "بررسیِ ورود انجام نشد — می‌توانید «اتصال» بزنید", "warn");
     }
   };
 
-  detectBtn.addEventListener("click", () => void detect());
   connectBtn.addEventListener("click", async () => {
     connectBtn.disabled = true;
+    const original = connectBtn.textContent ?? "اتصال";
+    connectBtn.textContent = "در حال اتصال…";
     try {
       // accountLabel is the ONLY user-provided string sent; it is NOT a credential.
       await send({ type: "CONNECT_BOARD", board, accountLabel: labelInput.value || undefined });
-      setStatus(statusEl, "متصل شد", "ok");
+      // بازخوردِ روشن و ماندگار (باگ: «می‌گوید متصل شد ولی چیزی دیده نمی‌شود»): کارت به
+      // حالتِ «متصل» می‌رود و دکمه همان‌جا می‌ماند تا وضعیت دیده شود.
+      li.classList.add("board-card--connected");
+      setStatus(statusEl, "متصل شد ✓", "ok");
+      connectBtn.textContent = "متصل شد ✓";
     } catch (e) {
       showGlobalError(errMsg(e));
+      connectBtn.textContent = original;
       connectBtn.disabled = false;
     }
   });
 
-  // Auto-detect on render for convenience.
+  // Auto-detect on render for convenience (advisory only).
   void detect();
   return li;
 }

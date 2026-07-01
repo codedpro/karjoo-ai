@@ -16,7 +16,7 @@
  */
 
 /** نسخه‌ی جاریِ افزونه (semver «MAJOR.MINOR.PATCH»). = extension/manifest.json#version */
-export const KARJOO_EXTENSION_VERSION = "0.2.3";
+export const KARJOO_EXTENSION_VERSION = "0.2.4";
 
 /** مسیرِ دانلودِ ZIPِ افزونه (نسبی به ریشه‌ی سایت؛ در public سرو می‌شود). */
 export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
@@ -26,4 +26,4 @@ export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
  * اگر خالی بماند، `notes` در پاسخِ مسیر حذف می‌شود.
  */
 export const KARJOO_EXTENSION_RELEASE_NOTES =
-  "جابینجا: تشخیصِ ورود با کوکی‌های واقعی (JSESSID/remember) درست شد و «وارد کردنِ رزومه» به صفحه‌ی درستِ رزومه (cv-builder) می‌رود.";
+  "پاپ‌آپ دیگر خالی/کند باز نمی‌شود، هر سایت یک دکمه‌ی «اتصال» دارد، و پس از اتصال «متصل شد ✓» ماندگار می‌ماند.";
