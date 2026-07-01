@@ -25,6 +25,7 @@ import {
   getResumeFileOwned,
   persistParsedFields,
 } from "@/lib/resume/service";
+import { toApiProfile } from "@/lib/resume/profile-view";
 
 // به DB و گیت‌وی هوش مصنوعی دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -76,16 +77,11 @@ export async function POST(request: Request): Promise<Response> {
     // ۶) ذخیره‌ی فیلدها + upsertِ پروفایل (به نشست مقید).
     const { profile } = await persistParsedFields(user.id, record.id, parsed);
 
+    // پروفایلِ کاملِ به‌روزشده را برمی‌گردانیم تا فرمِ کلاینت همه‌ی فیلدها را نشان دهد.
     return json({
       resumeFileId: record.id,
       parsed,
-      profile: {
-        fullName: profile.fullName,
-        headline: profile.headline,
-        city: profile.city,
-        yearsExperience: profile.yearsExperience,
-        skills: profile.skills,
-      },
+      profile: toApiProfile(profile),
     });
   });
 }

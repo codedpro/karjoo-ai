@@ -33,32 +33,66 @@ vi.mock("@/lib/resume/service", () => ({
   createResumeFileRecord: vi.fn(),
   getResumeFileOwned: vi.fn(),
   persistParsedFields: vi.fn(),
-  saveProfileFields: vi.fn(),
 }));
+// مسیرِ ذخیره/فایلِ پروفایل اکنون از profile-service (Track C) استفاده می‌کند.
+vi.mock("@/lib/resume/profile-service", () => ({
+  saveFullProfile: vi.fn(),
+  setPrimaryResumeFile: vi.fn(),
+  deleteResumeFile: vi.fn(),
+  getResumeFileForDownload: vi.fn(),
+}));
+vi.mock("@/lib/resume/storage", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/resume/storage")>(
+    "@/lib/resume/storage",
+  );
+  return {
+    ...actual,
+    saveResumeFile: vi.fn(),
+    readResumeFile: vi.fn(),
+    deleteStoredResumeFile: vi.fn(),
+  };
+});
 
 import { getCurrentUser } from "@/lib/auth/http";
 import { extractText } from "@/lib/resume/pdf";
 import { meteredParseResumeText } from "@/lib/resume/metered-parse";
-import { saveResumeFile } from "@/lib/resume/storage";
+import {
+  saveResumeFile,
+  readResumeFile,
+  deleteStoredResumeFile,
+} from "@/lib/resume/storage";
 import {
   createResumeFileRecord,
   getResumeFileOwned,
   persistParsedFields,
-  saveProfileFields,
 } from "@/lib/resume/service";
+import {
+  saveFullProfile,
+  setPrimaryResumeFile,
+  deleteResumeFile,
+  getResumeFileForDownload,
+} from "@/lib/resume/profile-service";
 
 import { POST as uploadPOST } from "@/app/api/resume/upload/route";
 import { POST as parsePOST } from "@/app/api/resume/parse/route";
 import { PATCH as profilePATCH } from "@/app/api/resume/profile/route";
+import { POST as primaryPOST } from "@/app/api/resume/primary/route";
+import { DELETE as fileDELETE } from "@/app/api/resume/file/route";
+import { GET as downloadGET } from "@/app/api/resume/download/route";
 
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const extractTextMock = vi.mocked(extractText);
 const parseResumeTextMock = vi.mocked(meteredParseResumeText);
 const saveResumeFileMock = vi.mocked(saveResumeFile);
+const readResumeFileMock = vi.mocked(readResumeFile);
+const deleteStoredMock = vi.mocked(deleteStoredResumeFile);
 const createRecordMock = vi.mocked(createResumeFileRecord);
 const getOwnedMock = vi.mocked(getResumeFileOwned);
 const persistMock = vi.mocked(persistParsedFields);
-const saveProfileMock = vi.mocked(saveProfileFields);
+const saveFullProfileMock = vi.mocked(saveFullProfile);
+const setPrimaryMock = vi.mocked(setPrimaryResumeFile);
+const deleteFileMock = vi.mocked(deleteResumeFile);
+const getForDownloadMock = vi.mocked(getResumeFileForDownload);
 
 const USER = { id: "user-1", phone: "0912", isActive: true } as never;
 
@@ -219,9 +253,17 @@ describe("POST /api/resume/parse", () => {
       profile: {
         fullName: "سارا احمدی",
         headline: null,
+        summary: null,
         city: "تهران",
+        phone: null,
+        avatarUrl: null,
+        expectedSalary: null,
         yearsExperience: 4,
         skills: ["React"],
+        workExperience: [],
+        education: [],
+        languages: [],
+        links: [],
       },
     } as never);
 
@@ -234,6 +276,9 @@ describe("POST /api/resume/parse", () => {
     expect(body.parsed.fullName).toBe("سارا احمدی");
     expect(body.profile.city).toBe("تهران");
     expect(body.profile.skills).toEqual(["React"]);
+    // پروفایلِ کامل برمی‌گردد (آرایه‌های خالی هم حاضرند).
+    expect(body.profile.workExperience).toEqual([]);
+    expect(body.profile.languages).toEqual([]);
     // ذخیره به نشست مقید است (userId اول، resumeFileId دوم).
     expect(persistMock.mock.calls[0][0]).toBe("user-1");
     expect(persistMock.mock.calls[0][1]).toBe(ID);
@@ -287,6 +332,22 @@ describe("POST /api/resume/parse", () => {
 /* ────────────────────────────── profile (ویرایش/ذخیره) ────────────────────────────── */
 
 describe("PATCH /api/resume/profile", () => {
+  const fullProfileRow = {
+    fullName: "سارا احمدی",
+    headline: "فرانت‌اند",
+    summary: "خلاصه",
+    city: "تهران",
+    phone: "0912",
+    avatarUrl: null,
+    expectedSalary: "توافقی",
+    yearsExperience: 5,
+    skills: ["React", "TypeScript"],
+    workExperience: [{ company: "شرکتِ الف", title: "توسعه‌دهنده" }],
+    education: [{ institution: "دانشگاهِ ب", degree: "کارشناسی" }],
+    languages: [{ name: "انگلیسی", level: "مسلط" }],
+    links: [{ url: "https://example.com", label: "سایت" }],
+  };
+
   it("بدونِ نشست → ۴۰۱", async () => {
     getCurrentUserMock.mockResolvedValue(null);
     const res = await profilePATCH(
@@ -295,31 +356,41 @@ describe("PATCH /api/resume/profile", () => {
     expect(res.status).toBe(401);
   });
 
-  it("فیلدهای ویرایش‌شده‌ی کاربر را روی پروفایلِ خودش ذخیره می‌کند", async () => {
+  it("همه‌ی فیلدهای پروفایلِ جامعِ ویرایش‌شده را روی پروفایلِ خودِ کاربر ذخیره می‌کند", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
-    saveProfileMock.mockResolvedValue({
-      fullName: "سارا احمدی",
-      headline: "فرانت‌اند",
-      city: "تهران",
-      yearsExperience: 5,
-      skills: ["React", "TypeScript"],
-    } as never);
+    saveFullProfileMock.mockResolvedValue(fullProfileRow as never);
 
     const res = await profilePATCH(
       jsonReq("https://k.app/api/resume/profile", "PATCH", {
         fullName: "سارا احمدی",
         headline: "فرانت‌اند",
+        summary: "خلاصه",
         city: "تهران",
+        phone: "0912",
+        expectedSalary: "توافقی",
         yearsExperience: 5,
         skills: ["React", "TypeScript"],
+        workExperience: [{ company: "شرکتِ الف", title: "توسعه‌دهنده" }],
+        education: [{ institution: "دانشگاهِ ب", degree: "کارشناسی" }],
+        languages: [{ name: "انگلیسی", level: "مسلط" }],
+        links: [{ url: "https://example.com", label: "سایت" }],
       }),
     );
 
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.profile.fullName).toBe("سارا احمدی");
-    // به نشست مقید.
-    expect(saveProfileMock.mock.calls[0][0]).toBe("user-1");
+    expect(body.profile.summary).toBe("خلاصه");
+    expect(body.profile.workExperience).toEqual([
+      { company: "شرکتِ الف", title: "توسعه‌دهنده" },
+    ]);
+    expect(body.profile.languages).toEqual([{ name: "انگلیسی", level: "مسلط" }]);
+    // به نشست مقید (userId اول).
+    expect(saveFullProfileMock.mock.calls[0][0]).toBe("user-1");
+    // آرایه‌ها به سرویس رسیده‌اند.
+    expect(saveFullProfileMock.mock.calls[0][1].education).toEqual([
+      { institution: "دانشگاهِ ب", degree: "کارشناسی" },
+    ]);
   });
 
   it("نامِ خالی → ۴۰۰ (اعتبارسنجی)", async () => {
@@ -328,6 +399,166 @@ describe("PATCH /api/resume/profile", () => {
       jsonReq("https://k.app/api/resume/profile", "PATCH", { fullName: "  " }),
     );
     expect(res.status).toBe(400);
-    expect(saveProfileMock).not.toHaveBeenCalled();
+    expect(saveFullProfileMock).not.toHaveBeenCalled();
+  });
+
+  it("زبانِ بی‌نام (name خالی) → ۴۰۰ (اعتبارسنجی آرایه)", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    const res = await profilePATCH(
+      jsonReq("https://k.app/api/resume/profile", "PATCH", {
+        fullName: "سارا",
+        languages: [{ name: "" }],
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(saveFullProfileMock).not.toHaveBeenCalled();
+  });
+});
+
+/* ────────────────────────────── primary (رزومه‌ی اصلی — رایگان) ────────────────────────────── */
+
+describe("POST /api/resume/primary", () => {
+  const ID = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+
+  it("بدونِ نشست → ۴۰۱", async () => {
+    getCurrentUserMock.mockResolvedValue(null);
+    const res = await primaryPOST(
+      jsonReq("https://k.app/api/resume/primary", "POST", { resumeFileId: ID }),
+    );
+    expect(res.status).toBe(401);
+    expect(setPrimaryMock).not.toHaveBeenCalled();
+  });
+
+  it("فایلِ خودِ کاربر را اصلی می‌کند (به نشست مقید)", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    setPrimaryMock.mockResolvedValue(true);
+    const res = await primaryPOST(
+      jsonReq("https://k.app/api/resume/primary", "POST", { resumeFileId: ID }),
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(setPrimaryMock).toHaveBeenCalledWith("user-1", ID);
+  });
+
+  it("فایلِ ناموجود/متعلق به دیگری → ۴۰۴", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    setPrimaryMock.mockResolvedValue(false);
+    const res = await primaryPOST(
+      jsonReq("https://k.app/api/resume/primary", "POST", { resumeFileId: ID }),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("id غیر-UUID → ۴۰۰", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    const res = await primaryPOST(
+      jsonReq("https://k.app/api/resume/primary", "POST", { resumeFileId: "nope" }),
+    );
+    expect(res.status).toBe(400);
+    expect(setPrimaryMock).not.toHaveBeenCalled();
+  });
+});
+
+/* ────────────────────────────── file DELETE ────────────────────────────── */
+
+describe("DELETE /api/resume/file", () => {
+  const ID = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+
+  it("بدونِ نشست → ۴۰۱", async () => {
+    getCurrentUserMock.mockResolvedValue(null);
+    const res = await fileDELETE(
+      jsonReq("https://k.app/api/resume/file", "DELETE", { resumeFileId: ID }),
+    );
+    expect(res.status).toBe(401);
+    expect(deleteFileMock).not.toHaveBeenCalled();
+  });
+
+  it("رکورد + فایلِ دیسک را حذف می‌کند (به نشست مقید)", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    deleteFileMock.mockResolvedValue({ deleted: true, storagePath: "user-1/x.pdf" });
+    deleteStoredMock.mockResolvedValue(undefined);
+
+    const res = await fileDELETE(
+      jsonReq("https://k.app/api/resume/file", "DELETE", { resumeFileId: ID }),
+    );
+    expect(res.status).toBe(200);
+    expect(deleteFileMock).toHaveBeenCalledWith("user-1", ID);
+    expect(deleteStoredMock).toHaveBeenCalledWith("user-1/x.pdf");
+  });
+
+  it("فایلِ ناموجود → ۴۰۴ و دیسک لمس نمی‌شود", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    deleteFileMock.mockResolvedValue({ deleted: false, storagePath: null });
+    const res = await fileDELETE(
+      jsonReq("https://k.app/api/resume/file", "DELETE", { resumeFileId: ID }),
+    );
+    expect(res.status).toBe(404);
+    expect(deleteStoredMock).not.toHaveBeenCalled();
+  });
+
+  it("شکستِ حذفِ دیسک موفقیتِ حذفِ رکورد را باطل نمی‌کند (۲۰۰)", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    deleteFileMock.mockResolvedValue({ deleted: true, storagePath: "user-1/x.pdf" });
+    deleteStoredMock.mockRejectedValue(new Error("disk gone"));
+    const res = await fileDELETE(
+      jsonReq("https://k.app/api/resume/file", "DELETE", { resumeFileId: ID }),
+    );
+    expect(res.status).toBe(200);
+  });
+});
+
+/* ────────────────────────────── download ────────────────────────────── */
+
+describe("GET /api/resume/download", () => {
+  const ID = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+
+  it("بدونِ نشست → ۴۰۱", async () => {
+    getCurrentUserMock.mockResolvedValue(null);
+    const res = await downloadGET(
+      new Request(`https://k.app/api/resume/download?id=${ID}`),
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("id غیر-UUID → ۴۰۰", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    const res = await downloadGET(
+      new Request("https://k.app/api/resume/download?id=nope"),
+    );
+    expect(res.status).toBe(400);
+    expect(getForDownloadMock).not.toHaveBeenCalled();
+  });
+
+  it("فایلِ ناموجود/متعلق به دیگری → ۴۰۴", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    getForDownloadMock.mockResolvedValue(null);
+    const res = await downloadGET(
+      new Request(`https://k.app/api/resume/download?id=${ID}`),
+    );
+    expect(res.status).toBe(404);
+    expect(getForDownloadMock).toHaveBeenCalledWith("user-1", ID);
+  });
+
+  it("مسیرِ موفق → بایت‌های PDF با هدرِ دانلود", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    getForDownloadMock.mockResolvedValue({
+      storagePath: "user-1/x.pdf",
+      fileName: "رزومه.pdf",
+      mimeType: "application/pdf",
+      byteSize: 4,
+    });
+    readResumeFileMock.mockResolvedValue(Buffer.from("%PDF"));
+
+    const res = await downloadGET(
+      new Request(`https://k.app/api/resume/download?id=${ID}`),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    expect(res.headers.get("content-disposition")).toContain("attachment");
+    // نامِ یونیکد در filename* کدگذاری شده.
+    expect(res.headers.get("content-disposition")).toContain("filename*=UTF-8''");
+    const buf = Buffer.from(await res.arrayBuffer());
+    expect(buf.toString()).toBe("%PDF");
   });
 });

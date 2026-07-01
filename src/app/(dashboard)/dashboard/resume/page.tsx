@@ -1,42 +1,34 @@
 /**
- * صفحه‌ی «رزومه» (Server component) — gate شده با نشست.
+ * صفحه‌ی «رزومه و پروفایل» (Server component) — gate شده با نشست.
  *
- * کاربر: PDF آپلود می‌کند → متن استخراج می‌شود → با هوش مصنوعی فیلدها ساخته می‌شوند →
- * فیلدها را ویرایش و ذخیره می‌کند (روی پروفایلِ کارجو). فرمِ تعاملی یک client component
- * (ResumeManager) است؛ پروفایلِ اولیه و فهرستِ فایل‌ها در سرور (RSC) خوانده می‌شوند.
+ * کاربر: PDF آپلود می‌کند → یا آن را «رزومه‌ی اصلی» می‌کند (رایگان، بی‌AI) یا با هوش
+ * مصنوعی فیلدهایش را استخراج می‌کند (پولی) → پروفایلِ جامع را ویرایش و ذخیره می‌کند.
+ * تعاملْ در ResumeWorkspace (client) است؛ پروفایلِ اولیه و فهرستِ فایل‌ها در سرور (RSC).
  *
- * الگوی Next 16 (پوسته‌ی فوری): پوسته/هدر در `dashboard/layout.tsx` استاتیک است؛ این صفحه فقط
- * محتوا می‌دهد و هدرِ استاتیکِ خودش را با `PageHeader` بی‌درنگ می‌آورد. هر بخشِ وابسته به DB داخلِ
- * `<Suspense>` با اسکلتِ هم‌شکلِ محتوا استریم می‌شود. همه مقید به نشست (قاعده‌ی ۴). فارسی/RTL.
+ * الگوی Next 16 (پوسته‌ی فوری): پوسته/هدر در `dashboard/layout.tsx` استاتیک است؛ این صفحه
+ * فقط محتوا می‌دهد و هدرِ استاتیکِ خودش را با `PageHeader` بی‌درنگ می‌آورد. بخشِ وابسته به DB
+ * داخلِ `<Suspense>` با اسکلتِ هم‌شکلِ محتوا استریم می‌شود. مقید به نشست (قاعده‌ی ۴). فارسی/RTL.
  */
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
-import { ResumeManager } from "@/components/dashboard/resume-manager";
 import {
   actionEstimate,
   getUserAiCostContext,
 } from "@/components/dashboard/billing-data";
-import {
-  getResumeFiles,
-  getResumeProfile,
-} from "@/components/dashboard/resume-data";
 import { getDashboardUser } from "@/components/dashboard/session";
-import { IconDoc } from "@/components/dashboard/track-icons";
-import {
-  Card,
-  PageHeader,
-  Skeleton,
-  SkeletonText,
-  toFaDigits,
-} from "@/components/dashboard/ui";
+import { ResumeWorkspace } from "@/components/dashboard/resume/resume-workspace";
+import type { ClientResumeFile } from "@/components/dashboard/resume/profile-types";
+import { PageHeader, Skeleton, SkeletonText } from "@/components/dashboard/ui";
+
+import { getFullResumeProfile, getResumeFileList } from "./data";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (بدونِ force-dynamic؛ استریم با Suspense).
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "رزومه",
+  title: "رزومه و پروفایل",
   robots: { index: false, follow: false },
 };
 
@@ -44,180 +36,116 @@ export default async function ResumePage() {
   const user = await getDashboardUser();
   if (!user) redirect("/login");
 
-  const userId = user.userId;
-
   return (
     <div className="space-y-8">
       <PageHeader
-        title="رزومه‌ی شما"
-        subtitle="فایلِ PDF رزومه‌تان را آپلود کنید تا هوش مصنوعی فیلدهای آن (مهارت‌ها، سابقه، شهر و …) را استخراج کند و پروفایلِ شما را کامل کند."
+        title="رزومه و پروفایل"
+        subtitle="پروفایلِ خود را کامل کنید تا هوش مصنوعی بهتر برایتان کار پیدا کند. رزومه‌ی PDF را آپلود کنید و یا با هوش مصنوعی فیلدها را استخراج کنید، یا فایل را مستقیم رزومه‌ی اصلی‌تان کنید."
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Suspense fallback={<ManagerSkeleton />}>
-            <ResumeManagerSection userId={userId} />
-          </Suspense>
-        </div>
-
-        <aside className="space-y-6">
-          <Suspense fallback={<FilesSkeleton />}>
-            <UploadedFiles userId={userId} />
-          </Suspense>
-        </aside>
-      </div>
+      <Suspense fallback={<WorkspaceSkeleton />}>
+        <WorkspaceSection userId={user.userId} />
+      </Suspense>
     </div>
   );
 }
 
-/* ───────────────────────── بخش‌های async (Suspense) ───────────────────────── */
+/* ───────────────────────── بخشِ async (Suspense) ───────────────────────── */
 
-async function ResumeManagerSection({ userId }: { userId: string }) {
-  const [profile, costCtx] = await Promise.all([
-    getResumeProfile(userId),
+async function WorkspaceSection({ userId }: { userId: string }) {
+  const [profile, files, costCtx] = await Promise.all([
+    getFullResumeProfile(userId),
+    getResumeFileList(userId),
     getUserAiCostContext(userId),
   ]);
-  // پردازشِ AIِ رزومه یک کنشِ پولی است (resume_parse) → تخمینِ هزینه را به فرم می‌دهیم.
+
+  // فایل‌ها را به شکلِ سریال‌پذیرِ کلاینت تبدیل می‌کنیم (createdAt به ISO string).
+  const clientFiles: ClientResumeFile[] = files.map((f) => ({
+    id: f.id,
+    fileName: f.fileName,
+    byteSize: f.byteSize,
+    hasText: f.hasText,
+    isParsed: f.isParsed,
+    isPrimary: f.isPrimary,
+    createdAt: f.createdAt.toISOString(),
+  }));
+
   return (
-    <ResumeManager
+    <ResumeWorkspace
       initialProfile={profile}
+      files={clientFiles}
+      // استخراجِ AIِ رزومه یک کنشِ پولی است (resume_parse) → تخمینِ هزینه به UI.
       parseCostEstimate={actionEstimate(costCtx, "resume_parse")}
       balanceToman={costCtx.balanceToman}
     />
   );
 }
 
-async function UploadedFiles({ userId }: { userId: string }) {
-  const files = await getResumeFiles(userId);
+/* ─────────────────────────────── اسکلت ────────────────────────────────── */
 
+/** اسکلتِ هم‌شکلِ ResumeWorkspace — دو ستون: فرمِ پروفایل + پنلِ فایل‌ها. */
+function WorkspaceSkeleton() {
   return (
-    <Card padded>
-      <div className="flex items-center gap-3">
-        <span
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"
-          aria-hidden
-        >
-          <IconDoc className="h-5 w-5" />
-        </span>
-        <div className="min-w-0">
-          <h2 className="text-balance text-base font-bold leading-tight">
-            فایل‌های آپلودشده
-          </h2>
-          <p className="mt-0.5 text-pretty text-xs leading-5 text-muted">
-            تاریخچه‌ی رزومه‌هایی که آپلود کرده‌اید.
-          </p>
-        </div>
-      </div>
-
-      {files.length === 0 ? (
-        <p className="mt-5 text-pretty rounded-xl border border-dashed border-border bg-surface/60 px-4 py-5 text-center text-xs leading-6 text-muted">
-          هنوز فایلی آپلود نشده است.
-        </p>
-      ) : (
-        <ul className="mt-4 space-y-2.5">
-          {files.map((f) => (
-            <li
-              key={f.id}
-              className="rounded-xl border border-border bg-surface/40 px-3.5 py-2.5"
-            >
-              <div className="truncate text-sm font-medium" title={f.fileName}>
-                {f.fileName}
-              </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-                <span className="ltr-nums whitespace-nowrap">
-                  {formatBytes(f.byteSize)}
-                </span>
-                <span aria-hidden>·</span>
-                <span className="whitespace-nowrap">
-                  {f.hasText ? "متن استخراج‌شده" : "بدون متن"}
-                </span>
-                {f.isParsed ? (
-                  <>
-                    <span aria-hidden>·</span>
-                    <span className="whitespace-nowrap font-medium text-brand">
-                      پردازش‌شده
-                    </span>
-                  </>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
-  );
-}
-
-/* ─────────────────────────────── اجزای کوچک ────────────────────────────────── */
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${toFaDigits(bytes)} بایت`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${toFaDigits(Math.round(kb))} کیلوبایت`;
-  return `${toFaDigits((kb / 1024).toFixed(1))} مگابایت`;
-}
-
-/** اسکلتِ هم‌شکلِ ResumeManager — کارتِ آپلود + کارتِ فرمِ ویرایش. */
-function ManagerSkeleton() {
-  return (
-    <div className="space-y-6" aria-hidden>
-      {/* کارتِ گامِ ۱ و ۲ */}
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
-        <div className="flex items-center justify-between gap-2">
-          <Skeleton className="h-5 w-40" />
-          <Skeleton className="h-6 w-16 rounded-full" />
-        </div>
-        <SkeletonText lines={2} className="mt-3" />
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Skeleton className="h-11 w-40 rounded-full" />
-          <Skeleton className="h-11 w-48 rounded-full" />
-        </div>
-      </div>
-      {/* کارتِ گامِ ۳ (فرم) */}
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
-        <Skeleton className="h-5 w-52" />
-        <SkeletonText lines={1} className="mt-3" />
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="space-y-2">
-              <Skeleton className="h-3.5 w-28" />
-              <Skeleton className="h-11 w-full rounded-xl" />
-            </div>
-          ))}
-        </div>
-        <div className="mt-5 space-y-2">
-          <Skeleton className="h-3.5 w-24" />
-          <Skeleton className="h-11 w-full rounded-xl" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** اسکلتِ هم‌شکلِ فهرستِ فایل‌ها — سرسطر + چند ردیفِ فایل. */
-function FilesSkeleton() {
-  return (
-    <div
-      className="rounded-2xl border border-border bg-card p-6 shadow-xs"
-      aria-hidden
-    >
-      <div className="flex items-center gap-3">
-        <Skeleton className="h-9 w-9 shrink-0 rounded-xl" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-3 w-40" />
-        </div>
-      </div>
-      <div className="mt-4 space-y-2.5">
-        {Array.from({ length: 3 }).map((_, i) => (
+    <div className="grid gap-6 lg:grid-cols-5" aria-hidden>
+      {/* ستونِ فرمِ پروفایل */}
+      <div className="space-y-6 lg:col-span-3">
+        {Array.from({ length: 3 }).map((_, c) => (
           <div
-            key={i}
-            className="space-y-2 rounded-xl border border-border px-3.5 py-2.5"
+            key={c}
+            className="rounded-2xl border border-border bg-card p-6 shadow-xs"
           >
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-3 w-1/2" />
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-9 w-9 shrink-0 rounded-xl" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-56" />
+              </div>
+            </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <Skeleton className="h-3.5 w-24" />
+                  <Skeleton className="h-11 w-full rounded-xl" />
+                </div>
+              ))}
+            </div>
           </div>
         ))}
+      </div>
+
+      {/* ستونِ فایل‌ها */}
+      <div className="space-y-6 lg:col-span-2">
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-9 w-9 shrink-0 rounded-xl" />
+            <Skeleton className="h-4 w-40" />
+          </div>
+          <Skeleton className="mt-4 h-32 w-full rounded-2xl" />
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-9 w-9 shrink-0 rounded-xl" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-3 w-48" />
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div
+                key={i}
+                className="space-y-3 rounded-2xl border border-border p-4"
+              >
+                <Skeleton className="h-4 w-3/4" />
+                <SkeletonText lines={1} />
+                <div className="flex gap-2">
+                  <Skeleton className="h-8 w-32 rounded-full" />
+                  <Skeleton className="h-8 w-24 rounded-full" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

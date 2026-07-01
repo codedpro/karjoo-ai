@@ -10,7 +10,9 @@
  * نشان می‌دهند. محاسبه‌ی تخمین در src/lib/billing/ui.ts (خالص) انجام می‌شود.
  */
 import type { ReactNode } from "react";
+import { Info } from "lucide-react";
 
+import { IconCheck, IconWallet } from "./icons";
 import {
   formatCostHint,
   formatToman,
@@ -35,7 +37,7 @@ export function CostHint({
       className={`inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400 ${className}`}
       title={`تخمین بر اساس مدلِ ${estimate.displayName} — هزینه‌ی واقعی پس از پردازش از مصرفِ واقعی محاسبه می‌شود.`}
     >
-      <span aria-hidden>💳</span>
+      <IconWallet className="h-3.5 w-3.5" />
       {formatCostHint(estimate)}
     </span>
   );
@@ -47,7 +49,7 @@ export function FreeBadge({ className = "" }: { className?: string }) {
     <span
       className={`inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 ${className}`}
     >
-      <span aria-hidden>✓</span>
+      <IconCheck className="h-3.5 w-3.5" />
       رایگان
     </span>
   );
@@ -79,8 +81,11 @@ export function TopupPrompt({
       className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"
     >
       <div className="flex items-start gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-xl">
-          💳
+        <span
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          aria-hidden
+        >
+          <IconWallet className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
           <h4 className="text-sm font-bold text-amber-800 dark:text-amber-300">
@@ -151,7 +156,7 @@ export function PaidActionNote({
 }) {
   return (
     <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-      <span aria-hidden>ℹ️</span>
+      <Info strokeWidth={1.75} className="h-3.5 w-3.5 shrink-0" aria-hidden />
       <span>
         {description ?? "این کنش از هوش مصنوعی استفاده می‌کند و پولی است."}
       </span>
