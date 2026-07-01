@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 /**
  * پیکربندیِ Next.js — کارجو.
@@ -25,4 +26,30 @@ const nextConfig: NextConfig = {
   // cacheComponents: true, // ← عمداً خاموش؛ توضیح بالا. UX از راهِ static-shell + Suspense.
 };
 
-export default nextConfig;
+/**
+ * پوششِ Sentry (@sentry/nextjs) روی پیکربندی — کارجو (تک‌مستأجر: tenant=karjoo).
+ *
+ * آپلودِ source-map عمداً *خاموش* است: هیچ authTokenِ معتبری نداریم، پس نه آن را
+ * ست می‌کنیم و نه تلاش به آپلود می‌شود. این تضمین می‌کند build بدونِ توکنِ Sentry هم
+ * سبز بماند. `silent: true` لاگ‌های ابزارِ Sentry را در build خاموش می‌کند.
+ *   • org/project: sentry / karjoo (ثابت؛ پروژه در هاب از قبل ساخته شده).
+ *   • url: از SENTRY_URL خوانده می‌شود (هاب داخلی روی 10.10.0.165).
+ *   • tunnelRoute: مسیرِ tunnel تا رویداد/replay از سدِ ad-blockerها رد شود.
+ * رازها هرگز اینجا hardcode نمی‌شوند — همه از process.env خوانده می‌شوند.
+ */
+export default withSentryConfig(nextConfig, {
+  org: "sentry",
+  project: "karjoo",
+  sentryUrl: process.env.SENTRY_URL,
+  // آپلودِ source-map خاموش: توکن نداریم ⇒ authToken=undefined ⇒ تلاشِ آپلود انجام نمی‌شود.
+  authToken: undefined,
+  sourcemaps: {
+    disable: true,
+  },
+  silent: true,
+  // یادداشت: `disableLogger` (تری‌شیکِ لاگِ دیباگ) با Turbopack پشتیبانی نمی‌شود و
+  // deprecated است؛ حذف شد تا هشدارِ deprecation در build نداشته باشیم. `silent`
+  // خروجیِ ابزارِ Sentry را در build خاموش نگه می‌دارد.
+  widenClientFileUpload: true,
+  tunnelRoute: "/monitoring",
+});
