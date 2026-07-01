@@ -70,52 +70,103 @@ async function copyStatics() {
   }
 }
 
-const buildOptions = {
-  entryPoints,
+/**
+ * Split esbuild output format by entry path.
+ *
+ * Content scripts are injected via `manifest.content_scripts` and run in the page
+ * as CLASSIC scripts — a top-level `export {}` is a SyntaxError there ("Unexpected
+ * token 'export'"). So EVERY entry under `content/` (the per-board main scripts,
+ * `apply/*`, `import/*`, and the shared `session-probe`) MUST be emitted as an
+ * IIFE with all deps inlined (bundle:true, external:[]) so no top-level ESM
+ * syntax survives.
+ *
+ * `background` and `popup` load as MODULES (manifest `background.type:"module"`,
+ * and popup.html uses `<script type="module">`), so they stay `format:"esm"`.
+ */
+function isContentEntry(name) {
+  return name === "content" || name.startsWith("content/");
+}
+
+const sharedDefine = {
+  // Inline the PRODUCTION control-plane origin at build time. This is the ONLY
+  // source of the API origin — the extension does NOT let the user repoint it
+  // (see src/lib/config.ts + src/lib/storage.ts getApiOrigin, which is locked to
+  // this compile-time constant). Override only for local dev builds via KARJOO_API.
+  "process.env.KARJOO_API_DEFAULT": JSON.stringify(
+    process.env.KARJOO_API ?? "https://karjooai.itmaster.uk",
+  ),
+  // Auto-apply timing (mirrors the control-plane env defaults). Optional
+  // build-time overrides; the server toggle + daily cap remain authoritative.
+  "process.env.KARJOO_AUTO_APPLY_ALARM_MINUTES": JSON.stringify(
+    process.env.KARJOO_AUTO_APPLY_ALARM_MINUTES ?? "15",
+  ),
+  "process.env.KARJOO_AUTO_APPLY_JITTER_MS_MIN": JSON.stringify(
+    process.env.KARJOO_AUTO_APPLY_JITTER_MS_MIN ?? "2000",
+  ),
+  "process.env.KARJOO_AUTO_APPLY_JITTER_MS_MAX": JSON.stringify(
+    process.env.KARJOO_AUTO_APPLY_JITTER_MS_MAX ?? "8000",
+  ),
+  "process.env.KARJOO_SESSION_REFRESH_MINUTES": JSON.stringify(
+    process.env.KARJOO_SESSION_REFRESH_MINUTES ?? "30",
+  ),
+};
+
+// Split the entry points into two groups by output format (see isContentEntry).
+const contentEntries = {};
+const moduleEntries = {};
+for (const [name, entry] of Object.entries(entryPoints)) {
+  if (isContentEntry(name)) contentEntries[name] = entry;
+  else moduleEntries[name] = entry;
+}
+
+const commonOptions = {
   outdir,
-  bundle: true,
-  format: "esm",
   target: ["chrome110"],
   platform: "browser",
   sourcemap: true,
   logLevel: "info",
-  // Inline a build-time API origin so the bundle has a sane default; the user
-  // can still override it at runtime via the popup (stored in chrome.storage).
-  define: {
-    "process.env.KARJOO_API_DEFAULT": JSON.stringify(
-      process.env.KARJOO_API ?? "http://localhost:3000",
-    ),
-    // Auto-apply timing (mirrors the control-plane env defaults). Optional
-    // build-time overrides; the server toggle + daily cap remain authoritative.
-    "process.env.KARJOO_AUTO_APPLY_ALARM_MINUTES": JSON.stringify(
-      process.env.KARJOO_AUTO_APPLY_ALARM_MINUTES ?? "15",
-    ),
-    "process.env.KARJOO_AUTO_APPLY_JITTER_MS_MIN": JSON.stringify(
-      process.env.KARJOO_AUTO_APPLY_JITTER_MS_MIN ?? "2000",
-    ),
-    "process.env.KARJOO_AUTO_APPLY_JITTER_MS_MAX": JSON.stringify(
-      process.env.KARJOO_AUTO_APPLY_JITTER_MS_MAX ?? "8000",
-    ),
-    "process.env.KARJOO_SESSION_REFRESH_MINUTES": JSON.stringify(
-      process.env.KARJOO_SESSION_REFRESH_MINUTES ?? "30",
-    ),
-  },
+  define: sharedDefine,
 };
+
+/** background + popup → ES modules (loaded via type:"module" / <script type=module>). */
+const moduleBuildOptions = {
+  ...commonOptions,
+  entryPoints: moduleEntries,
+  bundle: true,
+  format: "esm",
+};
+
+/**
+ * content/** → classic IIFE with ALL deps inlined. Injected content scripts are
+ * classic scripts; a surviving top-level `export` throws at load. `external:[]`
+ * forces every import to be bundled in so nothing ESM leaks to the top level.
+ */
+const contentBuildOptions = {
+  ...commonOptions,
+  entryPoints: contentEntries,
+  bundle: true,
+  format: "iife",
+  external: [],
+};
+
+const allBuildOptions = [moduleBuildOptions, contentBuildOptions];
 
 async function run() {
   await rm(outdir, { recursive: true, force: true });
   await mkdir(outdir, { recursive: true });
 
   if (watch) {
-    const ctx = await context(buildOptions);
-    await ctx.watch();
+    for (const opts of allBuildOptions) {
+      const ctx = await context(opts);
+      await ctx.watch();
+    }
     await copyStatics();
     // eslint-disable-next-line no-console
     console.log("[karjoo-ext] watching for changes…");
     return;
   }
 
-  await build(buildOptions);
+  await Promise.all(allBuildOptions.map((opts) => build(opts)));
   await copyStatics();
   // eslint-disable-next-line no-console
   console.log("[karjoo-ext] build complete → dist/");

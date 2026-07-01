@@ -1,10 +1,12 @@
 /**
  * Runtime configuration for the Karjoo extension.
  *
- * The Karjoo API origin can be set at build time (`KARJOO_API` env → inlined as
- * `process.env.KARJOO_API_DEFAULT`) and overridden at runtime by the user via
- * the popup (persisted in chrome.storage). This keeps a single source of truth
- * for "where is the control plane" without hard-coding it.
+ * The Karjoo API origin is fixed at BUILD time (`KARJOO_API` env → inlined as
+ * `process.env.KARJOO_API_DEFAULT`, defaulting to the production control plane).
+ * It is NOT user-overridable: `getApiOrigin()` in storage.ts always returns this
+ * compile-time constant, so a user can never repoint the extension at a rogue
+ * control plane. This is the single source of truth for "where is the control
+ * plane".
  */
 
 /** Build-time default; esbuild's `define` replaces this literal. */
@@ -12,12 +14,13 @@ declare const process: { env: { KARJOO_API_DEFAULT?: string } };
 
 export const DEFAULT_API_ORIGIN: string =
   (typeof process !== "undefined" && process.env?.KARJOO_API_DEFAULT) ||
-  "http://localhost:3000";
+  "https://karjooai.itmaster.uk";
 
 /** chrome.storage keys — centralized so every module agrees on the names. */
 export const STORAGE_KEYS = {
-  /** The Karjoo API origin (string). */
-  apiOrigin: "karjoo.apiOrigin",
+  // NOTE: the API origin is intentionally NOT a storage key. It is locked to the
+  // compile-time DEFAULT_API_ORIGIN and can't be overridden at runtime, so there
+  // is nothing to persist. See getApiOrigin() in storage.ts.
   /** The extension session token returned by /api/extension/link (string). */
   sessionToken: "karjoo.sessionToken",
   /** Cached signed-in identity from /api/extension/me (object). */

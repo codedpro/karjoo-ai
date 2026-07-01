@@ -11,7 +11,6 @@ import {
   clearSessionToken,
   isPaired,
   getApiOrigin,
-  setApiOrigin,
   normalizeOrigin,
   getIdentity,
   setIdentity,
@@ -76,19 +75,29 @@ describe("session token storage (pairing lifecycle)", () => {
   });
 });
 
-describe("API origin", () => {
+describe("API origin (LOCKED — not user-overridable)", () => {
   let area: ReturnType<typeof makeFakeArea>;
   beforeEach(() => {
     area = makeFakeArea();
   });
 
-  it("falls back to the default when unset", async () => {
+  it("always returns the compile-time default", async () => {
     expect(await getApiOrigin(area)).toBe(DEFAULT_API_ORIGIN);
   });
 
-  it("persists and normalizes a custom origin (strips trailing slash)", async () => {
-    await setApiOrigin("https://api.karjoo.ai/", area);
-    expect(await getApiOrigin(area)).toBe("https://api.karjoo.ai");
+  it("defaults to the production control-plane origin", () => {
+    // Locked to prod so a user can never repoint the extension at a rogue plane.
+    expect(DEFAULT_API_ORIGIN).toBe("https://karjooai.itmaster.uk");
+  });
+
+  it("ignores any origin value present in storage (cannot be overridden)", async () => {
+    // Even if a value somehow lands under the old key, getApiOrigin never reads it.
+    await area.set({ "karjoo.apiOrigin": "https://evil.example/" });
+    expect(await getApiOrigin(area)).toBe(DEFAULT_API_ORIGIN);
+  });
+
+  it("returns the default with no area passed", async () => {
+    expect(await getApiOrigin()).toBe(DEFAULT_API_ORIGIN);
   });
 
   it("normalizeOrigin rejects non-http(s) protocols", () => {

@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Karjoo — assisted apply (کارجو)",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI job-search copilot for Iranian boards: assisted apply (you review and submit) plus opt-in background auto-apply you explicitly turn on — gated by a daily cap, a match-quality threshold, and a full audit trail. Uses only your own session in your own browser; no detection-evasion.",
   "default_locale": "en",
   "icons": {
     "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
@@ -14,6 +15,7 @@
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
     }
@@ -32,8 +34,7 @@
     "https://*.e-estekhdam.com/*",
     "https://irantalent.com/*",
     "https://*.irantalent.com/*",
-    "https://karjooai.itmaster.uk/*",
-    "http://localhost:3000/*"
+    "https://karjooai.itmaster.uk/*"
   ],
   "content_scripts": [
     {

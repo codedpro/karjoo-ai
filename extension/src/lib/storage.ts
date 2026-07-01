@@ -56,16 +56,20 @@ export async function isPaired(area: StorageArea = defaultArea()): Promise<boole
   return (await getSessionToken(area)) !== null;
 }
 
-/* ── API origin ────────────────────────────────────────────────────────── */
+/* ── API origin (LOCKED) ─────────────────────────────────────────────────
+ * The control-plane origin is fixed at build time (DEFAULT_API_ORIGIN, inlined
+ * by esbuild from KARJOO_API / the production default). It is deliberately NOT
+ * user-overridable: getApiOrigin() ALWAYS returns the compile-time constant and
+ * NEVER reads chrome.storage, so a user can't repoint the extension at a rogue
+ * control plane.
+ *
+ * The `_area` parameter is accepted (and ignored) only to preserve the injectable
+ * call signature used elsewhere; it has no effect on the returned value.
+ */
 
-export async function getApiOrigin(area: StorageArea = defaultArea()): Promise<string> {
-  const out = await area.get(STORAGE_KEYS.apiOrigin);
-  const v = out[STORAGE_KEYS.apiOrigin];
-  return typeof v === "string" && v.length > 0 ? normalizeOrigin(v) : DEFAULT_API_ORIGIN;
-}
-
-export async function setApiOrigin(origin: string, area: StorageArea = defaultArea()): Promise<void> {
-  await area.set({ [STORAGE_KEYS.apiOrigin]: normalizeOrigin(origin) });
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function getApiOrigin(_area?: StorageArea): Promise<string> {
+  return DEFAULT_API_ORIGIN;
 }
 
 /** Strip a trailing slash and validate it is a real http(s) origin. */
