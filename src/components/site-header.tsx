@@ -30,13 +30,13 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-2">
           <Link
-            href="#cta"
+            href="/login"
             className="hidden rounded-full px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/5 sm:inline-block"
           >
             ورود
           </Link>
           <Link
-            href="#cta"
+            href="/login"
             className="rounded-full bg-gradient-to-l from-brand to-brand-2 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-brand/30 transition-transform hover:-translate-y-0.5"
           >
             شروع رایگان

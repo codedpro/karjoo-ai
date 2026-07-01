@@ -106,7 +106,7 @@ export default function Home() {
 
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link
-                href="#cta"
+                href="/login"
                 className="w-full rounded-full bg-gradient-to-l from-brand to-brand-2 px-8 py-3.5 text-base font-bold text-white shadow-lg shadow-brand/30 transition-transform hover:-translate-y-0.5 sm:w-auto"
               >
                 رایگان شروع کن
@@ -239,7 +239,7 @@ export default function Home() {
             </p>
             <div className="relative mt-8">
               <Link
-                href="#"
+                href="/login"
                 className="inline-block rounded-full bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition-transform hover:-translate-y-0.5"
               >
                 ساخت حساب رایگان
