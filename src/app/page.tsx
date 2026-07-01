@@ -105,7 +105,7 @@ export default function Home() {
           <div className="mx-auto max-w-6xl px-5 pb-20 pt-16 text-center sm:pt-24">
             {/* نشانِ برند — لنگرِ هویتِ کارجو در بالای هیرو */}
             <Logo
-              size={30}
+              size={52}
               title="کارجو"
               className="mx-auto mb-8 text-foreground"
             />
@@ -287,7 +287,7 @@ export default function Home() {
                   <div className="rounded-[calc(1rem-1px)] bg-background p-5">
                     {/* هدرِ پاپ‌آپ افزونه */}
                     <div className="flex items-center justify-between border-b border-border/70 pb-4">
-                      <Logo variant="mark" size={26} className="text-foreground" />
+                      <Logo variant="mark" size={34} className="text-foreground" />
                       <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">
                         <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                         متصل

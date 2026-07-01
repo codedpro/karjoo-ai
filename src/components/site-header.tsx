@@ -18,7 +18,7 @@ export function SiteHeader() {
           className="focus-ring flex items-center rounded-lg"
           aria-label="کارجو — خانه"
         >
-          <Logo size={22} title="" className="text-foreground" />
+          <Logo size={34} title="" className="text-foreground" />
         </Link>
 
         <nav className="hidden items-center gap-7 text-sm text-muted md:flex">

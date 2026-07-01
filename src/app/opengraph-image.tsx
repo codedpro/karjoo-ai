@@ -51,31 +51,27 @@ async function loadVazirmatn(): Promise<ArrayBuffer | null> {
   }
 }
 
-/** نشانِ KafSpark به‌صورتِ SVGِ درون‌خطی — رنگ‌های ثابتِ برند (Satori از CSS var نمی‌خواند). */
+/** نشانِ K به‌صورتِ SVGِ درون‌خطی — بَجِ سفید + Kِ گرادیانی (روی زمینه‌ی گرادیانِ برند). */
 function MarkSvg({ dim }: { dim: number }) {
   return (
-    <svg width={dim} height={dim} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+    <svg width={dim} height={dim} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="og-body" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#ffffff" />
-          <stop offset="1" stopColor="#e9e2ff" />
-        </linearGradient>
-        <linearGradient id="og-bolt" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#06b6d4" />
-          <stop offset="1" stopColor="#67e8f9" />
+        <linearGradient id="og-k" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#5b3df5" />
+          <stop offset="1" stopColor="#8b5cf6" />
         </linearGradient>
       </defs>
+      <rect x="4" y="4" width="56" height="56" rx="18" fill="#ffffff" />
+      <path d="M23 15V49" stroke="url(#og-k)" strokeWidth="6.5" strokeLinecap="round" />
       <path
-        d="M24 4C12.954 4 4 12.954 4 24s8.954 20 20 20 20-8.954 20-20a19.9 19.9 0 0 0-1.06-6.44l-7.9 5.2A11.98 11.98 0 1 1 24 12c1.61 0 3.15.32 4.56.9l4.7-6.35A19.9 19.9 0 0 0 24 4Z"
-        fill="url(#og-body)"
-      />
-      <path
-        d="M25 15 21 26h5l-3 9 13-15h-6l6-8-11 3Z"
-        fill="url(#og-bolt)"
-        stroke="#5b3df5"
-        strokeWidth="0.75"
+        d="M43.5 15 27.5 32 43.5 49"
+        fill="none"
+        stroke="url(#og-k)"
+        strokeWidth="6.5"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
+      <circle cx="45.5" cy="13.5" r="4.6" fill="#06b6d4" />
     </svg>
   );
 }

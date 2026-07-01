@@ -8,7 +8,7 @@ export function SiteFooter() {
     <footer className="mt-auto border-t border-border/70 bg-background">
       <div className="mx-auto grid max-w-6xl gap-8 px-5 py-12 md:grid-cols-4">
         <div className="md:col-span-2">
-          <Logo size={22} className="text-foreground" />
+          <Logo size={30} className="text-foreground" />
           <p className="mt-3 max-w-sm text-sm leading-7 text-muted">{site.description}</p>
         </div>
 

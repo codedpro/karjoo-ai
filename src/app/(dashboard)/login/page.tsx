@@ -12,10 +12,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { Logo } from "@/components/brand/logo";
 import { IconArrowStart } from "@/components/dashboard/icons";
 import { loginErrorMessage } from "@/components/dashboard/login-error";
 import { getDashboardUser } from "@/components/dashboard/session";
-import { site } from "@/lib/site";
 
 // به DB دست می‌زند (راستی‌آزماییِ نشست) → اجرای Node.
 export const runtime = "nodejs";
@@ -43,11 +43,12 @@ export default async function LoginPage({
     <main className="grid min-h-dvh place-items-center px-5 py-12">
       <div className="w-full max-w-sm">
         {/* لوگو */}
-        <Link href="/" className="mx-auto flex w-fit items-center gap-2 text-xl font-bold">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white">
-            ک
-          </span>
-          <span>{site.name}</span>
+        <Link
+          href="/"
+          className="focus-ring mx-auto flex w-fit items-center rounded-lg"
+          aria-label="کارجو — خانه"
+        >
+          <Logo size={40} title="کارجو" className="text-foreground" />
         </Link>
 
         <div className="mt-8 rounded-3xl border border-border bg-card p-7 shadow-sm sm:p-8">

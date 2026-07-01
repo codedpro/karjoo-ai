@@ -42,10 +42,10 @@ export default function DashboardLayout({
           >
             {/* روی موبایل فقط نشان؛ روی sm به‌بالا قفلِ کامل. */}
             <span className="sm:hidden">
-              <Logo variant="mark" size={30} title="" className="text-foreground" />
+              <Logo variant="mark" size={36} title="" className="text-foreground" />
             </span>
             <span className="hidden sm:inline-flex">
-              <Logo size={20} title="" className="text-foreground" />
+              <Logo size={32} title="" className="text-foreground" />
             </span>
             <span className="hidden rounded-full bg-foreground/5 px-2 py-0.5 text-xs font-medium text-muted md:inline">
               داشبورد
