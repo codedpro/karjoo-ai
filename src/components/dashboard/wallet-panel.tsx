@@ -43,11 +43,16 @@ export function WalletPanel({
     setError(null);
     setNotice(null);
     setBusy(true);
+    // Bound the request so a slow/cold edge can never leave the button stuck on
+    // «در حال شارژ…» forever: abort after 20s and show a clear, retryable error.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20_000);
     try {
       const res = await fetch("/api/wallet/topup", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ amountToman: amount }),
+        signal: controller.signal,
       });
       const data: {
         error?: string;
@@ -67,9 +72,14 @@ export function WalletPanel({
       );
       // RSCها (دفتر/تاریخچه‌ی مصرف) را با داده‌ی تازه دوباره بخوان.
       router.refresh();
-    } catch {
-      setError("اتصال به سرور برقرار نشد.");
+    } catch (e) {
+      setError(
+        e instanceof DOMException && e.name === "AbortError"
+          ? "شارژ بیش از حد طول کشید؛ لطفاً دوباره تلاش کنید."
+          : "اتصال به سرور برقرار نشد.",
+      );
     } finally {
+      clearTimeout(timer);
       setBusy(false);
     }
   }
