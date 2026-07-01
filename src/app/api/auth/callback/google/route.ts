@@ -36,9 +36,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** ساختِ یک پاسخِ 302 به یک مسیرِ محلی (نسبت به مبدأِ درخواست). */
-function redirect(request: Request, path: string): Response {
-  const url = new URL(path, request.url);
-  return new Response(null, { status: 302, headers: { Location: url.toString() } });
+function redirect(path: string): Response {
+  // Location نسبی است: مرورگر آن را نسبت به دامنه‌ای که کاربر واقعاً از آن آمده حل می‌کند.
+  // پشتِ reverse-proxy، request.url آدرسِ داخلیِ localhost:3030 است و نباید مبنای redirect شود.
+  return new Response(null, { status: 302, headers: { Location: path } });
 }
 
 /**
@@ -58,7 +59,7 @@ function timingSafeEqualStr(a: string, b: string): boolean {
 export async function GET(request: Request): Promise<Response> {
   // ۱) پیکربندی‌نشده → پاسخِ سریعِ روشن.
   if (!isGoogleOAuthConfigured()) {
-    return redirect(request, "/login?error=oauth_unconfigured");
+    return redirect("/login?error=oauth_unconfigured");
   }
 
   const { searchParams } = new URL(request.url);
@@ -72,13 +73,13 @@ export async function GET(request: Request): Promise<Response> {
 
   // ۳) راستی‌آزماییِ state (CSRF): باید موجود و برابرِ کوکی باشد.
   if (!state || !cookieState || !timingSafeEqualStr(state, cookieState)) {
-    return redirect(request, "/login?error=state");
+    return redirect("/login?error=state");
   }
 
   // ۲) نبودِ code → خطای عمومیِ OAuth (مثلاً کاربر رضایت را رد کرده و Google
   //    با ?error=access_denied برگشته).
   if (!code) {
-    return redirect(request, "/login?error=oauth");
+    return redirect("/login?error=oauth");
   }
 
   try {
@@ -94,7 +95,7 @@ export async function GET(request: Request): Promise<Response> {
     // ایمیلِ تأییدنشده را نمی‌پذیریم: جلوگیری از account-linking با ایمیلی که کاربر
     // مالکش نیست (fallbackِ پیدا/ساخت بر اساسِ ایمیل نباید با ایمیلِ تأییدنشده رخ دهد).
     if (profile.emailVerified === false) {
-      return redirect(request, "/login?error=email_unverified");
+      return redirect("/login?error=email_unverified");
     }
 
     const user = await findOrCreateUserByGoogle({
@@ -109,14 +110,14 @@ export async function GET(request: Request): Promise<Response> {
     const { token } = await issueSession(user.id, "web", { userAgent });
     await setSessionCookie(token, WEB_SESSION_TTL_MS);
 
-    return redirect(request, "/dashboard");
+    return redirect("/dashboard");
   } catch (err) {
     // خطای نوع‌دارِ OAuth (تبادلِ توکن/userinfo/هویتِ ناقص) → پاسخِ عمومی، بدونِ نشت.
     if (err instanceof GoogleOAuthError) {
-      return redirect(request, "/login?error=oauth");
+      return redirect("/login?error=oauth");
     }
     // خطای غیرمنتظره: در لاگِ سرور ثبت شود (بدونِ code/توکن)، به کاربر پاسخِ عمومی.
     console.error("[auth/callback/google] unexpected error:", err);
-    return redirect(request, "/login?error=oauth");
+    return redirect("/login?error=oauth");
   }
 }

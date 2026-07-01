@@ -35,21 +35,21 @@ export const OAUTH_STATE_COOKIE = "karjoo_oauth_state";
 export const OAUTH_STATE_MAX_AGE_S = 10 * 60;
 
 /** مقصدِ نهاییِ خطا (صفحه‌ی ورود). */
-function loginRedirect(request: Request, error: string): Response {
-  const url = new URL(`/login?error=${error}`, request.url);
-  return new Response(null, { status: 302, headers: { Location: url.toString() } });
+function loginRedirect(error: string): Response {
+  // Location نسبی — پشتِ reverse-proxy از request.url (که localhost:3030 است) استفاده نکن.
+  return new Response(null, { status: 302, headers: { Location: `/login?error=${error}` } });
 }
 
 export async function GET(request: Request): Promise<Response> {
   // ۱) محدودسازیِ نرخِ سبک per-IP — جلوگیری از اسپمِ redirectِ OAuth.
   const ip = clientIp(request);
   if (!checkOtpRateLimit(`oauth-start-ip:${ip}`)) {
-    return loginRedirect(request, "rate_limited");
+    return loginRedirect("rate_limited");
   }
 
   // ۲) پیکربندی‌نشده → پاسخِ سریعِ روشن (بدونِ throw/نشتِ جزئیات).
   if (!isGoogleOAuthConfigured()) {
-    return loginRedirect(request, "oauth_unconfigured");
+    return loginRedirect("oauth_unconfigured");
   }
 
   // اعتبارنامه + redirectUriِ حل‌شده (همان مقدار در callback هم استفاده می‌شود).
