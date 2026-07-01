@@ -20,10 +20,15 @@ import type { BoardId } from "@ext/lib/config";
  * Laravel-style app, so the framework session cookie indicates a logged-in
  * session. We match by name only.
  */
+// Verified live (2026-07-01) against a real logged-in Jobinja session: the auth
+// cookies are `JSESSID` (Laravel session), `remember_<hash>` (remember-me), and
+// `user_mode`. `startsWith` (see jobinjaLoggedIn) handles the hashed remember-me name.
 const JOBINJA_SESSION_COOKIE_NAMES = [
+  "JSESSID",
+  "remember_",
+  "user_mode",
   "jobinja_session",
   "laravel_session",
-  "remember_web",
   "PHPSESSID",
 ];
 

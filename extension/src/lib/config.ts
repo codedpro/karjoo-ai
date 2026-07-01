@@ -60,8 +60,8 @@ export const BOARDS = {
     origin: "https://jobinja.ir",
     /** Jobinja keeps auth in a session COOKIE → detectable via chrome.cookies. */
     sessionShape: "cookie" as const,
-    /** The signed-in user's own résumé/profile page (panel). */
-    profilePath: "/user/resumes",
+    /** The signed-in user's own CV editor (verified live 2026-07-01). */
+    profilePath: "/app/cv-builder",
   },
   jobvision: {
     id: "jobvision" as const,

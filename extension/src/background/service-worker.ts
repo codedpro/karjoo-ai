@@ -234,15 +234,12 @@ async function handleImportProfiles(boards?: BoardId[]): Promise<BoardImportOutc
 /** Import one board: open profile page → scrape DATA → DATA-only POST. */
 async function importOneBoard(api: KarjooApi, board: BoardId): Promise<BoardImportOutcome> {
   const cfg = BOARDS[board];
+  const profileUrl = `${cfg.origin}${cfg.profilePath}`;
 
-  // نشانیِ عمیقِ صفحه‌ی رزومه بین سایت‌ها فرق دارد و ممکن است ۴۰۴ شود؛ پس هرگز کاربر را
-  // روی یک لینکِ حدسیِ ۴۰۴ نمی‌فرستیم. اگر تبی از همین سایت باز است (به‌احتمالِ زیاد صفحه‌ی
-  // خودِ کاربر)، همان را به کار می‌بریم؛ وگرنه خانه‌ی سایت (صفحه‌ی معتبر) را باز می‌کنیم و
-  // اسکرپر از همان صفحه می‌خواند.
-  const openTabs = await chrome.tabs.query({ url: `${cfg.origin}/*` });
-  const tab = openTabs[0] ?? (await chrome.tabs.create({ url: cfg.origin, active: true }));
-  if (!tab?.id) return { board, ok: false, message: "نتوانستم صفحه‌ی سایت را باز کنم." };
-  await chrome.tabs.update(tab.id, { active: true });
+  // صفحه‌ی رزومه‌ی خودِ کاربر را باز (یا فوکوس) می‌کنیم — جابینجا: /app/cv-builder (راستی‌آزمایی‌شده).
+  // اگر نشانیِ بردِ دیگری هنوز درست نباشد، اسکرپر «رزومه پیدا نشد» را با پیامِ راهنما برمی‌گرداند.
+  const tab = await ensureTab(profileUrl, cfg.origin);
+  if (!tab?.id) return { board, ok: false, message: "نتوانستم صفحه‌ی رزومه را باز کنم." };
 
   // Ask the import content script to read the user's OWN profile DOM (DATA only).
   let scraped: ScrapeProfileResult | undefined;
