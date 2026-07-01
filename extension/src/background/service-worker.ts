@@ -12,7 +12,7 @@
  * It is a thin message router; all decision logic lives in the tested pure libs.
  */
 import { BOARDS, BOARD_IDS, type BoardId } from "@ext/lib/config";
-import { KarjooApi } from "@ext/lib/api-client";
+import { ApiError, KarjooApi } from "@ext/lib/api-client";
 import { buildConnectPayload } from "@ext/lib/connect-payload";
 import { buildImportPayload } from "@ext/lib/import-payload";
 import {
@@ -335,7 +335,19 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
 chrome.runtime.onMessage.addListener((msg: PopupToBackground, _sender, sendResponse) => {
   route(msg)
     .then(sendResponse)
-    .catch((err: unknown) => {
+    .catch(async (err: unknown) => {
+      // A 401 from the control plane means our extension session is dead (expired or
+      // revoked). Clear the stored token so the popup drops back to the pairing view
+      // instead of a "logged-in but everything fails" limbo — and return an error the
+      // popup recognizes as an auth failure (not a cold-worker timeout).
+      if (err instanceof ApiError && err.status === 401) {
+        await clearSessionToken().catch(() => {});
+        sendResponse({
+          ok: false,
+          error: "401 نشستِ افزونه منقضی شده؛ دوباره از داشبورد متصل شوید.",
+        } satisfies Result<never>);
+        return;
+      }
       const error = err instanceof Error ? err.message : String(err);
       sendResponse({ ok: false, error } satisfies Result<never>);
     });

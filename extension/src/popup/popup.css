@@ -481,3 +481,51 @@ body {
 [hidden] {
   display: none !important;
 }
+
+/* ── onboarding + guidance (v0.2.5) ──────────────────────────────────────── */
+.header-actions { display: flex; align-items: center; gap: 12px; }
+.header-actions a.link-btn { text-decoration: none; }
+
+.notice {
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--warn);
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--text);
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.onboarding {
+  margin: 0 0 12px;
+  padding: 12px 28px 12px 12px;
+  list-style: decimal;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.95;
+}
+.onboarding li { margin: 2px 0; }
+.onboarding a,
+.empty a,
+.import-section a,
+#pair-get-code { color: var(--primary); text-decoration: none; }
+.onboarding a:hover,
+.empty a:hover,
+.import-section a:hover { text-decoration: underline; }
+
+#pair-get-code { display: inline-block; margin-bottom: 12px; }
+
+.empty { color: var(--muted); font-size: 13px; padding: 6px 2px; }
+.empty p { margin: 4px 0; }
+.empty p strong { color: var(--text); }
+.empty-steps { margin: 8px 22px 10px 0; padding: 0; line-height: 1.95; }
+.empty-steps li { margin: 3px 0; }
+
+.board-card--connected {
+  border-color: var(--ok);
+  background: rgba(34, 197, 94, 0.08);
+}

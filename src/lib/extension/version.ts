@@ -16,7 +16,7 @@
  */
 
 /** نسخه‌ی جاریِ افزونه (semver «MAJOR.MINOR.PATCH»). = extension/manifest.json#version */
-export const KARJOO_EXTENSION_VERSION = "0.2.4";
+export const KARJOO_EXTENSION_VERSION = "0.2.5";
 
 /** مسیرِ دانلودِ ZIPِ افزونه (نسبی به ریشه‌ی سایت؛ در public سرو می‌شود). */
 export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
@@ -26,4 +26,4 @@ export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
  * اگر خالی بماند، `notes` در پاسخِ مسیر حذف می‌شود.
  */
 export const KARJOO_EXTENSION_RELEASE_NOTES =
-  "پاپ‌آپ دیگر خالی/کند باز نمی‌شود، هر سایت یک دکمه‌ی «اتصال» دارد، و پس از اتصال «متصل شد ✓» ماندگار می‌ماند.";
+  "راهنمای شروع + لینک‌های داشبورد در افزونه، مدیریتِ نشستِ منقضی (بازگشت به «اتصال»)، صفِ اپلای با توضیحِ روشن، و خوانشِ رزومه‌ی جابینجا از API.";

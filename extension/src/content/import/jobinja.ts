@@ -37,6 +37,7 @@ import type {
   ScrapedExperience,
   ScrapedApplication,
 } from "@ext/lib/import-types";
+import { scrapeJobinjaViaApi } from "@ext/content/import/jobinja-api";
 
 /**
  * PURE: map a Jobinja résumé-page DOM subtree → ScrapedProfile.
@@ -203,8 +204,21 @@ if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
 export function registerJobinjaImportHandler(): void {
   chrome.runtime.onMessage.addListener((msg: BackgroundToImportContent, _sender, sendResponse) => {
     if (msg.type === "SCRAPE_PROFILE" && msg.board === "jobinja") {
-      sendResponse(toScrapeResult(scrapeJobinjaProfile(document)));
-      return true;
+      // Prefer Jobinja's own API (the cv-builder is a JS app → the DOM is empty
+      // before hydration). Fall back to DOM scraping if the API yields nothing.
+      void (async () => {
+        try {
+          const apiProfile = await scrapeJobinjaViaApi();
+          if (apiProfile) {
+            sendResponse({ ok: true, profile: apiProfile });
+            return;
+          }
+        } catch {
+          /* fall through to DOM scraping */
+        }
+        sendResponse(toScrapeResult(scrapeJobinjaProfile(document)));
+      })();
+      return true; // async response — channel kept open above
     }
     return undefined;
   });

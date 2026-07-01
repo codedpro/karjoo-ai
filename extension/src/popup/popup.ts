@@ -59,6 +59,8 @@ function boot() {
   // Wiring is pure DOM (no await, no messaging) → always safe, paints instantly.
   wirePairing();
   wireSignOut();
+  // Point every «↗ داشبورد …» link at the locked control-plane origin (onboarding).
+  void wireDashboardLinks();
 
   // Paint a VISIBLE view synchronously so the popup is never blank while bootAsync
   // resolves the paired state. Default to the pairing view; bootAsync swaps to the
@@ -194,10 +196,63 @@ function wireSignOut() {
   });
 }
 
+/* ── onboarding: dashboard deep-links ─────────────────────────────────────
+ * Every «↗» link points at the LOCKED control-plane origin so the user is never
+ * stranded — they can jump straight to "get a pairing code", "set up your
+ * résumé", or "the dashboard" instead of a dead/empty popup.
+ */
+async function wireDashboardLinks() {
+  let origin = "";
+  try {
+    origin = (await getApiOrigin()).replace(/\/+$/, "");
+  } catch {
+    return;
+  }
+  const set = (id: string, path: string) => {
+    const a = $opt<HTMLAnchorElement>(id);
+    if (a) a.href = origin + path;
+  };
+  set("dash-link", "/dashboard");
+  set("pair-get-code", "/dashboard/extension");
+  set("ob-resume", "/dashboard/resume");
+  set("import-resume", "/dashboard/resume");
+  set("qe-resume", "/dashboard/resume");
+  set("qe-dash", "/dashboard");
+}
+
+/**
+ * Session expired/invalid (server said 401): the token is still in storage but the
+ * server rejects it — so clear it and drop the user back on the pairing view with a
+ * clear note, instead of a "logged-in but everything fails" limbo.
+ */
+async function handleSessionExpired() {
+  try {
+    await send({ type: "SIGN_OUT" });
+  } catch {
+    /* SIGN_OUT clears the token in the background; ignore failures. */
+  }
+  for (const id of ["view-main", "signout", "dash-link"]) {
+    const el = $opt(id);
+    if (el) show(el, false);
+  }
+  const note = $opt("pair-note");
+  if (note) show(note, true);
+  const pair = $opt("view-pair");
+  if (pair) show(pair, true);
+}
+
+/** True when an error from the background looks like an auth/session failure. */
+function isAuthError(e: unknown): boolean {
+  const m = e instanceof Error ? e.message : String(e);
+  return /401|unauthor|احراز|نشست|session/i.test(m);
+}
+
 /* ── main view ─────────────────────────────────────────────────────────── */
 async function enterMain() {
   show($("view-main"), true);
   show($("signout"), true);
+  const dash = $opt("dash-link");
+  if (dash) show(dash, true);
   wireTabs();
 
   // RENDER-FIRST (BUG: blank until tab-switch). Everything below is synchronous DOM
@@ -221,8 +276,14 @@ async function hydrateIdentity() {
   try {
     const identity = await send<Identity | null>({ type: "GET_IDENTITY" });
     setText($("identity-label"), identityLabel(identity));
-  } catch {
-    // Never blank/annoy on a cold worker — show a neutral label, no global error.
+  } catch (e) {
+    // If the server rejected our session (401 → expired/revoked), drop back to the
+    // pairing view so the user re-pairs. A mere cold/asleep worker (send timeout) is
+    // NOT an auth failure — keep the neutral label in that case.
+    if (isAuthError(e)) {
+      void handleSessionExpired();
+      return;
+    }
     setText($("identity-label"), "وارد شده");
   }
 }

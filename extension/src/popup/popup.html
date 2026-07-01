@@ -12,7 +12,10 @@
         <span class="brand-mark">کارجو</span>
         <span class="brand-sub">دستیار اپلای</span>
       </div>
-      <button id="signout" class="link-btn" hidden>خروج</button>
+      <div class="header-actions">
+        <a id="dash-link" class="link-btn" href="#" target="_blank" rel="noopener" hidden>داشبورد ↗</a>
+        <button id="signout" class="link-btn" hidden>خروج</button>
+      </div>
     </header>
 
     <!-- Update-available banner (BUG 5): shown only when the control plane
@@ -34,10 +37,16 @@
     <!-- View: not paired → onboarding/pairing -->
     <section id="view-pair" class="view" hidden>
       <h1 class="view-title">اتصال افزونه</h1>
+      <p id="pair-note" class="notice" hidden>
+        نشستِ افزونه منقضی شد. برای ادامه، دوباره از داشبورد کد بگیرید و متصل شوید.
+      </p>
       <p class="hint">
         کد اتصال را از داشبورد کارجو کپی کنید و اینجا بچسبانید. این افزونه به حساب
         موجود شما متصل می‌شود؛ نیازی به ورود دوباره با کد پیامکی نیست.
       </p>
+      <a id="pair-get-code" class="btn btn-ghost btn-sm" href="#" target="_blank" rel="noopener">
+        دریافت کد از داشبورد ↗
+      </a>
       <label class="field-label" for="pair-code">کد اتصال</label>
       <input id="pair-code" class="input" type="text" placeholder="مثلاً: 8sKd2…" autocomplete="off" />
 
@@ -60,6 +69,16 @@
 
       <!-- Tab: connect boards -->
       <div class="tab-panel" data-panel="boards">
+        <!-- Onboarding checklist — what to do to actually get jobs. -->
+        <ol class="onboarding">
+          <li>
+            رزومه‌ات را در داشبورد کامل کن —
+            <a id="ob-resume" href="#" target="_blank" rel="noopener">رزومه در داشبورد ↗</a>
+          </li>
+          <li>سایتِ کاریابی‌ات (مثل جابینجا) را همین پایین وصل کن.</li>
+          <li>«وارد کردن پروفایل» را بزن تا رزومه‌ات به کارجو منتقل شود.</li>
+          <li>«اپلای خودکار در مرورگر» را روشن کن تا کارجو برایت اپلای کند.</li>
+        </ol>
         <p class="hint">
           وضعیت ورود شما به هر سایت <strong>فقط در مرورگر خودتان</strong> بررسی می‌شود.
           هیچ کوکی یا توکنی به سرور کارجو ارسال نمی‌شود — تنها وضعیت «متصل».
@@ -75,6 +94,8 @@
             پروفایل و رزومه‌ی <strong>خودتان</strong> از سایت‌هایی که در آن‌ها وارد شده‌اید
             خوانده می‌شود و فقط <strong>داده‌ی پروفایل</strong> (نام، مهارت‌ها، سوابق) به کارجو
             منتقل می‌شود. هیچ کوکی، توکن یا رمزی ارسال نمی‌شود.
+            برای دیدن یا ویرایشِ رزومه‌ات:
+            <a id="import-resume" href="#" target="_blank" rel="noopener">رزومه در داشبورد ↗</a>
           </p>
           <ul id="import-results" class="import-results"></ul>
         </section>
@@ -90,7 +111,18 @@
           <strong>ارسال نهایی فقط با تأیید شما</strong> انجام می‌شود.
         </p>
         <div id="queue-list" class="queue-list"></div>
-        <p id="queue-empty" class="empty" hidden>صف اپلای خالی است.</p>
+        <div id="queue-empty" class="empty" hidden>
+          <p><strong>هنوز شغلی برای اپلای پیدا نشده.</strong></p>
+          <p class="hint">
+            کارجو شغل‌های متناسب را بر اساسِ <strong>رزومه‌ی شما</strong> پیدا می‌کند. اگر صف خالی است:
+          </p>
+          <ul class="empty-steps">
+            <li>مطمئن شو رزومه‌ات کامل است — <a id="qe-resume" href="#" target="_blank" rel="noopener">رزومه در داشبورد ↗</a></li>
+            <li>اگر تازه رزومه را وارد کرده‌ای، کمی صبر کن تا آگهی‌های متناسب پیدا شوند.</li>
+            <li>می‌توانی خودت هم در سایت‌ها جست‌وجو کنی و اپلای کنی.</li>
+          </ul>
+          <a id="qe-dash" class="btn btn-ghost btn-sm" href="#" target="_blank" rel="noopener">رفتن به داشبورد ↗</a>
+        </div>
       </div>
 
       <!-- Tab: auto-apply IN THE BROWSER (§10 — opt-in, revocable) -->
