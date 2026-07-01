@@ -43,12 +43,10 @@ export function LoginForm() {
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [devNote, setDevNote] = useState<string | null>(null);
 
   async function requestOtp(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setDevNote(null);
     const normalized = normalizePhone(phone);
     if (!isValidIranMobile(normalized)) {
       setError("شماره موبایل معتبر نیست. مثل ۰۹۱۲۳۴۵۶۷۸۹ وارد کنید.");
@@ -68,9 +66,6 @@ export function LoginForm() {
         setError(data.error ?? "ارسالِ کد ناموفق بود. کمی بعد دوباره تلاش کنید.");
         return;
       }
-      // پاسخ همیشه عمومی است (افشای وجود/عدم‌وجودِ شماره ممنوع)؛ اگر providerِ پیامک
-      // تنظیم نشده باشد، سرور کد را در کنسول لاگ می‌کند (حالتِ توسعه).
-      setDevNote("اگر کد را دریافت نکردید و در حالتِ توسعه‌اید، کد در کنسولِ سرور چاپ شده است.");
       setPhone(normalized);
       setStep("otp");
     } catch {
@@ -159,11 +154,6 @@ export function LoginForm() {
             کدِ ارسال‌شده به <span className="ltr-nums font-medium text-foreground">{toFaDigits(phone)}</span> را
             وارد کنید.
           </p>
-          {devNote ? (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-600 dark:text-amber-400">
-              {devNote}
-            </div>
-          ) : null}
           <div>
             <label htmlFor="code" className="mb-1.5 block text-sm font-medium">
               کد تأیید
@@ -197,7 +187,6 @@ export function LoginForm() {
               setStep("phone");
               setCode("");
               setError(null);
-              setDevNote(null);
             }}
             disabled={pending}
             className="w-full text-center text-sm text-muted transition-colors hover:text-foreground"
