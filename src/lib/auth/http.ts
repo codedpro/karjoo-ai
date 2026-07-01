@@ -19,7 +19,8 @@ import { eq } from "drizzle-orm";
 import { db as defaultDb } from "@/db";
 import { users } from "@/db/schema";
 import type { User } from "@/db/schema";
-import { requireAuthPepper } from "@/lib/env";
+import { requireAuthPepper, signupCreditToman } from "@/lib/env";
+import { credit, type WalletDb } from "@/lib/billing/wallet";
 import {
   revokeSession,
   verifySessionToken,
@@ -72,6 +73,13 @@ export interface AuthHttpDeps {
   now?: Clock;
   pepper?: string;
   randomBytesImpl?: RandomBytes;
+  /**
+   * اعطای اعتبارِ خوش‌آمد به کاربرِ *تازه* (اختیاری، تزریقی برای تست). اگر داده نشود،
+   * از پیاده‌سازیِ پیش‌فرض (creditWelcomeGrant) استفاده می‌شود که فقط روی یک DBِ تراکنش‌پذیرِ
+   * واقعی اثر می‌گذارد و در تست‌های با DB جعلی بی‌سروصدا رد می‌شود. هرگز نباید ورود را
+   * بشکند (best-effort).
+   */
+  grantSignupCredit?: (userId: string, now: number) => Promise<void>;
 }
 
 const defaultNow: Clock = () => Date.now();
@@ -197,7 +205,59 @@ export async function findOrCreateUserByGoogle(
     .insert(users)
     .values({ googleSub: identity.sub, email: identity.email, name, avatarUrl })
     .returning();
+
+  // اعتبارِ خوش‌آمد فقط برای کاربرِ *تازه‌ساخته‌شده* (best-effort، ورود را نمی‌شکند).
+  const grant =
+    opts.grantSignupCredit ??
+    ((userId: string, t: number) => creditWelcomeGrant(userId, db, t));
+  try {
+    await grant(created.id, now());
+  } catch (err) {
+    // اعتبارِ خوش‌آمد «به‌بهترین‌تلاش» است: اگر شکست خورد، ورود نباید بشکند.
+    console.error("[auth] اعطای اعتبارِ خوش‌آمدِ کاربرِ تازه ناموفق بود:", err);
+  }
+
   return created;
+}
+
+/**
+ * اعتبارِ خوش‌آمدِ کاربرِ تازه را به کیف‌پولش credit می‌کند (grant، ایدمپوتنت با
+ * refId=`signup:<userId>`). این تابع «به‌بهترین‌تلاش» است و توسطِ فراخواننده در try/catch
+ * پیچیده می‌شود.
+ *
+ * دو گاردِ ایمنی:
+ *   • اگر مبلغِ اعتبار ۰ باشد (env=۰ یا خاموش)، هیچ‌کاری نمی‌کند.
+ *   • فقط روی یک DBِ *تراکنش‌پذیرِ واقعی* اجرا می‌شود؛ در تست‌های با DB جعلی (بدونِ
+ *     `transaction`) بی‌سروصدا رد می‌شود تا مسیرِ auth بدونِ کیف‌پول هم قابلِ تست بماند.
+ *
+ * ایدمپوتنسی: creditِ 'grant' با refId یکتا؛ ایندکسِ partial-unique روی (user, ref_id)
+ * WHERE kind='grant' تضمین می‌کند حتی اگر این مسیر دوبار برای یک کاربر اجرا شود، اعتبار
+ * دوبار داده نشود (درجِ دوم روی unique-violation می‌افتد و catch می‌شود). چون فقط در مسیرِ
+ * *ساختِ* کاربر صدا زده می‌شود، در عمل یک‌بار بیشتر اجرا نمی‌شود.
+ */
+async function creditWelcomeGrant(
+  userId: string,
+  db: AuthHttpDb,
+  now: number,
+): Promise<void> {
+  const amount = signupCreditToman();
+  if (!(amount > 0)) return; // اعتبارِ خوش‌آمد خاموش است.
+
+  // فقط روی DBِ تراکنش‌پذیرِ واقعی (کیف‌پول transaction می‌خواهد). DB جعلیِ تست → رد.
+  if (typeof (db as { transaction?: unknown }).transaction !== "function") return;
+
+  await credit(
+    userId,
+    "grant",
+    amount,
+    {
+      refType: "signup",
+      refId: `signup:${userId}`,
+      description: "اعتبارِ خوش‌آمدِ کاربرِ تازه",
+    },
+    db as unknown as WalletDb,
+    () => now,
+  );
 }
 
 /* ───────────────────────  محدودسازیِ نرخِ درخواست  ───────────────────────── */

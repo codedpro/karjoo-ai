@@ -17,7 +17,7 @@ import "server-only";
  * مهاجرتِ آینده: همین قرارداد (saveResumeFile/readResumeFile) را می‌توان پشتِ S3/مشابه
  * پیاده کرد بدونِ تغییرِ فراخواننده.
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -68,6 +68,18 @@ export async function readResumeFile(
   baseDir: string = uploadsBaseDir(),
 ): Promise<Buffer> {
   return readFile(resolveWithinBase(relativePath, baseDir));
+}
+
+/**
+ * یک فایلِ ذخیره‌شده را با مسیرِ نسبیِ امن حذف می‌کند (best-effort). اگر فایل از قبل نبود،
+ * خطا نمی‌دهد (force). مسیر پیش از حذف با resolveWithinBase راستی‌آزمایی می‌شود تا traversal
+ * ممکن نباشد. برای «حذفِ رزومه» — پس از پاک‌شدنِ رکوردِ DB، فایلِ فیزیکی را هم پاک می‌کند.
+ */
+export async function deleteStoredResumeFile(
+  relativePath: string,
+  baseDir: string = uploadsBaseDir(),
+): Promise<void> {
+  await rm(resolveWithinBase(relativePath, baseDir), { force: true });
 }
 
 /**

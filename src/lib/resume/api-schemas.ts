@@ -25,24 +25,85 @@ export const resumeParseSchema = z.object({
 
 export type ResumeParseBody = z.infer<typeof resumeParseSchema>;
 
+/** بدنه‌ی POST /api/resume/primary — یک فایلِ آپلودشده را «رزومه‌ی اصلی» می‌کند (رایگان). */
+export const resumeSetPrimarySchema = z.object({
+  resumeFileId: z.string().uuid("resumeFileId باید UUID معتبر باشد"),
+});
+
+export type ResumeSetPrimaryBody = z.infer<typeof resumeSetPrimarySchema>;
+
+/** بدنه‌ی DELETE /api/resume/file — حذفِ یک فایلِ آپلودشده (رکورد + دیسک). */
+export const resumeDeleteFileSchema = z.object({
+  resumeFileId: z.string().uuid("resumeFileId باید UUID معتبر باشد"),
+});
+
+export type ResumeDeleteFileBody = z.infer<typeof resumeDeleteFileSchema>;
+
+/* ─────────────────  زیر-اسکیماهای آرایه‌ایِ پروفایلِ جامع (WF2)  ───────────── */
+/*
+ * شکلِ این‌ها *دقیقاً* با jsonbهای candidate_profiles (ProfileWorkExperience/
+ * ProfileEducation/ProfileLanguage/ProfileLink) هم‌راستاست تا ذخیره بی‌واسطه باشد.
+ * همه‌ی متن‌ها trim می‌شوند؛ رشته‌ی خالی → در سرویس حذف می‌شود. سقفِ طول‌ها محافظه‌کارانه است.
+ */
+
+/** رشته‌ی متنیِ کوتاهِ اختیاری (trim، سقفِ طول). */
+const shortText = (max: number) => z.string().trim().max(max);
+
+/** یک ردیفِ سابقه‌ی کاری. */
+export const workExperienceItemSchema = z.object({
+  company: shortText(200).optional(),
+  title: shortText(200).optional(),
+  startDate: shortText(40).optional(),
+  endDate: shortText(40).optional(),
+  current: z.boolean().optional(),
+  description: shortText(2000).optional(),
+});
+
+/** یک ردیفِ تحصیلات. */
+export const educationItemSchema = z.object({
+  institution: shortText(200).optional(),
+  degree: shortText(120).optional(),
+  field: shortText(200).optional(),
+  startYear: shortText(20).optional(),
+  endYear: shortText(20).optional(),
+});
+
+/** یک زبان + سطح. name اجباری است (ردیفِ بی‌نام معنا ندارد). */
+export const languageItemSchema = z.object({
+  name: z.string().trim().min(1, "نامِ زبان لازم است").max(80),
+  level: shortText(60).optional(),
+});
+
+/** یک لینک. url اجباری است (ردیفِ بی‌url معنا ندارد). */
+export const linkItemSchema = z.object({
+  label: shortText(80).optional(),
+  url: z.string().trim().min(1, "آدرسِ لینک لازم است").max(500),
+});
+
 /**
  * بدنه‌ی PATCH /api/resume/profile — ذخیره‌ی نسخه‌ی ویرایش‌شده‌ی کاربر روی پروفایل.
  *
- * کاربر پس از دیدنِ فیلدهای استخراج‌شده‌ی AI می‌تواند آن‌ها را تصحیح کند و ذخیره بزند.
- * این مسیر مستقل از AI است؛ فقط فیلدهای پروفایل را روی candidate_profiles می‌نشاند
- * (به نشست مقید). همه اختیاری‌اند تا ویرایشِ جزئی ممکن باشد.
+ * کاربر پس از دیدنِ فیلدهای استخراج‌شده‌ی AI (یا دستی) می‌تواند *همه‌ی* فیلدهای پروفایلِ
+ * جامع را ویرایش کند و ذخیره بزند. این مسیر مستقل از AI است؛ فیلدها را روی
+ * candidate_profiles می‌نشاند (به نشست مقید). فقط fullName اجباری است؛ بقیه اختیاری‌اند
+ * تا ویرایشِ جزئی ممکن باشد. آرایه‌ها با default [] می‌آیند تا حذفِ همه‌ی ردیف‌ها هم ممکن باشد.
+ *
+ * WF2 (پروفایلِ جامع): علاوه بر فیلدهای پایه، عکس/خلاصه/تلفن/حقوق/سابقه/تحصیلات/زبان/لینک.
  */
 export const resumeProfileSaveSchema = z.object({
   fullName: z.string().trim().min(1, "نام نمی‌تواند خالی باشد").max(200),
-  headline: z.string().trim().max(200).nullish(),
-  city: z.string().trim().max(100).nullish(),
-  yearsExperience: z
-    .number()
-    .int()
-    .min(0)
-    .max(60)
-    .nullish(),
+  headline: shortText(200).nullish(),
+  summary: shortText(3000).nullish(),
+  city: shortText(100).nullish(),
+  phone: shortText(40).nullish(),
+  avatarUrl: shortText(1000).nullish(),
+  expectedSalary: shortText(120).nullish(),
+  yearsExperience: z.number().int().min(0).max(60).nullish(),
   skills: z.array(z.string().trim().min(1).max(80)).max(50).default([]),
+  workExperience: z.array(workExperienceItemSchema).max(30).default([]),
+  education: z.array(educationItemSchema).max(20).default([]),
+  languages: z.array(languageItemSchema).max(20).default([]),
+  links: z.array(linkItemSchema).max(15).default([]),
 });
 
 export type ResumeProfileSaveBody = z.infer<typeof resumeProfileSaveSchema>;

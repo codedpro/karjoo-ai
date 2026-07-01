@@ -12,6 +12,7 @@
  */
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import Link from "next/link";
+import { Inbox } from "lucide-react";
 
 /* ─────────────────────────────  کمک‌کننده‌ها  ─────────────────────────────── */
 
@@ -229,6 +230,10 @@ const STAT_ICON_TONES: Record<StatTone, string> = {
 /**
  * کارتِ آمار — عدد (بزرگ، ارقامِ فارسی)، برچسب، و یک آیکن‌باکسِ رنگی. اگر `href`
  * بدهی، کلِ کارت لینک و تعاملی می‌شود. برچسب `text-pretty` است تا نشکند.
+ *
+ * `icon` یک ReactNode است — معمولاً یک آیکنِ lucide از `./icons` (نه ایموجی). رنگ از
+ * لحنِ باکس (`currentColor`) می‌آید؛ پس آیکن را بدونِ کلاسِ رنگ بده تا با tone هماهنگ
+ * شود، و اندازه‌اش را با className (پیشنهاد: `h-5 w-5`) بده.
  */
 export function StatCard({
   icon,
@@ -238,6 +243,7 @@ export function StatCard({
   href,
   hint,
 }: {
+  /** یک آیکنِ ReactNode (lucide) — تزئینی؛ باکس خودش aria-hidden است. */
   icon: ReactNode;
   value: ReactNode;
   label: string;
@@ -250,7 +256,7 @@ export function StatCard({
       <div className="flex items-center gap-4">
         <span
           className={cn(
-            "grid h-11 w-11 shrink-0 place-items-center rounded-xl text-xl",
+            "grid h-11 w-11 shrink-0 place-items-center rounded-xl [&>svg]:h-5 [&>svg]:w-5",
             STAT_ICON_TONES[tone],
           )}
           aria-hidden
@@ -305,14 +311,21 @@ export function ScoreRing({ score }: { score: number | null }) {
 
 /* ──────────────────────────────  EmptyState  ────────────────────────────── */
 
-/** حالتِ خالی — وقتی هنوز داده‌ای نیست؛ با اکشنِ اختیاری برای پرکردنِ داده. */
+/**
+ * حالتِ خالی — وقتی هنوز داده‌ای نیست؛ با اکشنِ اختیاری برای پرکردنِ داده.
+ *
+ * `icon` یک ReactNode است — معمولاً یک آیکنِ lucide از `./icons` (نه ایموجی). پیش‌فرض
+ * یک آیکنِ «صندوقِ خالی» (Inbox) است. باکس خودش aria-hidden است و رنگِ brand دارد؛ آیکن
+ * را بدونِ کلاسِ رنگ بده تا از `currentColor` والد ارث ببرد.
+ */
 export function EmptyState({
-  icon = "📭",
+  icon,
   title,
   body,
   action,
   className = "",
 }: {
+  /** یک آیکنِ ReactNode (lucide). اگر ندهی، آیکنِ پیش‌فرضِ «صندوقِ خالی». */
   icon?: ReactNode;
   title: string;
   body?: string;
@@ -327,10 +340,10 @@ export function EmptyState({
       )}
     >
       <div
-        className="grid h-14 w-14 place-items-center rounded-2xl bg-brand/10 text-3xl"
+        className="grid h-14 w-14 place-items-center rounded-2xl bg-brand/10 text-brand [&>svg]:h-7 [&>svg]:w-7"
         aria-hidden
       >
-        {icon}
+        {icon ?? <Inbox strokeWidth={1.75} aria-hidden />}
       </div>
       <h3 className="mt-4 text-balance text-lg font-bold">{title}</h3>
       {body ? (

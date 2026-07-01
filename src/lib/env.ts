@@ -87,6 +87,14 @@ const envSchema = z.object({
   // یا نسبی هر دو پذیرفته می‌شود (نسبی نسبت به cwd حل می‌شود).
   KARJOO_UPLOADS_DIR: optionalNonEmpty(z.string().min(1)),
 
+  // ── اعتبارِ خوش‌آمدِ کاربرِ تازه (owner-approved) ──────────────────────────
+  // مبلغِ اعتبارِ هوش مصنوعی (به تومان) که به کیف‌پولِ کاربرِ *تازه* در اولین ورود هدیه
+  // می‌شود تا اولین «پردازشِ رزومه با هوش مصنوعی» بدونِ نیاز به شارژ کار کند. فقط هنگامِ
+  // *ساختِ* ردیفِ کاربر و به‌صورتِ ایدمپوتنت (refId=signup:<userId>) اعمال می‌شود؛ کاربرانِ
+  // موجود بی‌تأثیر می‌مانند. اختیاری؛ اگر تنظیم نشود پیش‌فرضِ ۲۰۰۰۰ تومان. عددِ صحیحِ
+  // نامنفی؛ ۰ یعنی «اعتبارِ خوش‌آمد را خاموش کن».
+  KARJOO_SIGNUP_CREDIT_TOMAN: optionalNonEmpty(z.coerce.number().int().min(0)),
+
   // ── حاشیه‌ی سودِ کارجو روی فراخوانیِ پولیِ هوش مصنوعی (billing) ─────────────
   // درصدِ سودِ کارجو روی قیمتِ بالادستِ 1xai. هزینه‌ی نهاییِ کاربر:
   //   costToman = upstreamCostToman × (۱ + KARJOO_AI_MARGIN_PCT/۱۰۰).
@@ -141,6 +149,9 @@ const envSchema = z.object({
 
 /** درصدِ پیش‌فرضِ حاشیه‌ی سود اگر KARJOO_AI_MARGIN_PCT تنظیم نشده باشد. */
 export const DEFAULT_AI_MARGIN_PCT = 20;
+
+/** مبلغِ پیش‌فرضِ اعتبارِ خوش‌آمدِ کاربرِ تازه (تومان) اگر env تنظیم نشده باشد. */
+export const DEFAULT_SIGNUP_CREDIT_TOMAN = 20_000;
 
 /* ─────────────  پیش‌فرض‌های گاردریلِ ایمنی (WF3)  ────────────────────────── */
 
@@ -312,6 +323,15 @@ export function isGoogleOAuthConfigured(): boolean {
  */
 export function resolveMarginPct(): number {
   return env.KARJOO_AI_MARGIN_PCT ?? DEFAULT_AI_MARGIN_PCT;
+}
+
+/**
+ * مبلغِ اعتبارِ خوش‌آمدِ کاربرِ تازه به تومان (env یا پیش‌فرضِ ۲۰۰۰۰). هرگز throw نمی‌کند.
+ * مقدارِ ۰ یعنی «اعتبارِ خوش‌آمد خاموش است» و findOrCreateUserByGoogle آن را نادیده می‌گیرد.
+ * این را فقط هنگامِ ساختِ کاربرِ تازه (auth/http.ts) صدا بزنید.
+ */
+export function signupCreditToman(): number {
+  return env.KARJOO_SIGNUP_CREDIT_TOMAN ?? DEFAULT_SIGNUP_CREDIT_TOMAN;
 }
 
 /* ─────────────  حل‌کننده‌های گاردریلِ ایمنی (WF3)  ───────────────────────── */

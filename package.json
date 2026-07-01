@@ -17,6 +17,7 @@
   "dependencies": {
     "@itmaster/sdk": "^0.2.0",
     "drizzle-orm": "^0.44.6",
+    "lucide-react": "^1.22.0",
     "next": "16.2.9",
     "postgres": "^3.4.7",
     "react": "19.2.4",

@@ -313,7 +313,48 @@ export const deviceLinks = pgTable(
   ],
 );
 
-/** پروفایل کارجوی کاربر — معادل CandidateProfile. ترجیحات به‌صورت jsonb. */
+/**
+ * یک ردیفِ سابقه‌ی کاری در پروفایل (workExperience jsonb) — شکلِ پایدارِ ذخیره.
+ * تاریخ‌ها متنِ آزادند (بازارِ ایران: شمسی/میلادی، بازه‌ی آزاد)؛ `current` یعنی «تا کنون».
+ */
+export interface ProfileWorkExperience {
+  company?: string;
+  title?: string;
+  startDate?: string;
+  endDate?: string;
+  current?: boolean;
+  description?: string;
+}
+
+/** یک ردیفِ تحصیلات در پروفایل (education jsonb). */
+export interface ProfileEducation {
+  institution?: string;
+  degree?: string;
+  field?: string;
+  startYear?: string;
+  endYear?: string;
+}
+
+/** یک زبان + سطحِ تسلط در پروفایل (languages jsonb). */
+export interface ProfileLanguage {
+  name: string;
+  level?: string;
+}
+
+/** یک لینک (وب‌سایت/لینکدین/گیت‌هاب/…) در پروفایل (links jsonb). */
+export interface ProfileLink {
+  label?: string;
+  url: string;
+}
+
+/**
+ * پروفایل کارجوی کاربر — معادل CandidateProfile. ترجیحات به‌صورت jsonb.
+ *
+ * WF2 (پروفایلِ جامع): علاوه بر فیلدهای پایه (نام/عنوان/شهر/مهارت‌ها/سابقه/ترجیحات)،
+ * هرچه بردهای ایرانی می‌پرسند اینجا پایدار می‌شود: عکس (avatarUrl)، درباره‌ی من (summary)،
+ * تلفن، سابقه‌ی کاری/تحصیلات/زبان‌ها (jsonb array)، حقوقِ درخواستی و لینک‌ها. این فیلدها
+ * با هوش مصنوعی (از رزومه) یا دستی پر می‌شوند؛ merge محتاطانه است تا ویرایشِ کاربر پاک نشود.
+ */
 export const candidateProfiles = pgTable(
   "candidate_profiles",
   {
@@ -327,6 +368,25 @@ export const candidateProfiles = pgTable(
     yearsExperience: integer("years_experience"),
     city: text("city"),
     resumeText: text("resume_text"),
+    /** آدرسِ عکسِ پروفایل (آواتار). ممکن است از Google یا آپلودِ کاربر بیاید. */
+    avatarUrl: text("avatar_url"),
+    /** «درباره‌ی من» / خلاصه‌ی حرفه‌ای (متنِ آزاد). */
+    summary: text("summary"),
+    /** شماره‌ی تماسِ کاربر (نمایش در پروفایل/رزومه). */
+    phone: text("phone"),
+    /** سابقه‌ی کاری — آرایه‌ی jsonb. */
+    workExperience: jsonb("work_experience")
+      .$type<ProfileWorkExperience[]>()
+      .notNull()
+      .default([]),
+    /** تحصیلات — آرایه‌ی jsonb. */
+    education: jsonb("education").$type<ProfileEducation[]>().notNull().default([]),
+    /** زبان‌ها + سطحِ تسلط — آرایه‌ی jsonb. */
+    languages: jsonb("languages").$type<ProfileLanguage[]>().notNull().default([]),
+    /** حقوقِ درخواستی (متنِ آزاد؛ بازارِ ایران اغلب بازه/توافقی می‌نویسد). */
+    expectedSalary: text("expected_salary"),
+    /** لینک‌ها (وب‌سایت/لینکدین/گیت‌هاب/…) — آرایه‌ی jsonb {label,url}. */
+    links: jsonb("links").$type<ProfileLink[]>().notNull().default([]),
     /** JobPreferences از types.ts (titles, cities, minSalary, employmentTypes). */
     preferences: jsonb("preferences").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -740,9 +800,23 @@ export const resumeFiles = pgTable(
     /** فیلدهای ساخت‌یافته‌ی استخراج‌شده با هوش مصنوعی (نام، مهارت‌ها، سابقه و …). */
     parsedFields: jsonb("parsed_fields").$type<Record<string, unknown>>(),
     source: resumeSourceEnum("source").notNull().default("upload"),
+    /**
+     * «رزومه‌ی اصلی» (WF2 — مسیرِ PDF-only): PDFی که کاربر مستقیم به اپلای‌ها می‌چسباند،
+     * *بدونِ* استخراجِ هوش مصنوعی. حداکثر یک فایلِ اصلی به‌ازای هر کاربر — با ایندکسِ
+     * partial unique زیر تضمین می‌شود. تنظیمش (setPrimaryResumeFile) اول همه را false و
+     * سپس این یکی را true می‌کند (اتمیک، در یک تراکنش). پیش‌فرض false.
+     */
+    isPrimary: boolean("is_primary").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("resume_files_user_idx").on(t.userId)],
+  (t) => [
+    index("resume_files_user_idx").on(t.userId),
+    // حداکثر یک رزومه‌ی «اصلی» به‌ازای هر کاربر — partial: فقط ردیف‌های is_primary=true
+    // در یکتایی شرکت می‌کنند (چند ردیفِ is_primary=false برخورد نمی‌کنند).
+    uniqueIndex("resume_files_primary_uq")
+      .on(t.userId)
+      .where(sql`is_primary = true`),
+  ],
 );
 
 /**

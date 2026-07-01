@@ -46,4 +46,46 @@ describe("parsedResumeSchema", () => {
     expect(r.experience[0].company).toBeUndefined();
     expect(r.education[0].field).toBe("MBA");
   });
+
+  it("ردیف‌های کاملاً خالیِ سابقه/تحصیلات را فیلتر می‌کند", () => {
+    const r = parsedResumeSchema.parse({
+      experience: [{}, { title: "توسعه‌دهنده" }],
+      education: [{ field: "  " }, { institution: "دانشگاه" }],
+    });
+    expect(r.experience).toHaveLength(1);
+    expect(r.education).toHaveLength(1);
+  });
+
+  it("فیلدهای جامعِ WF2 را استخراج/نرمال می‌کند (خلاصه، تلفن، حقوق، تاریخ‌ها، زبان، لینک)", () => {
+    const r = parsedResumeSchema.parse({
+      summary: "درباره‌ی من",
+      phone: "0912",
+      expectedSalary: "توافقی",
+      experience: [
+        {
+          company: "شرکت الف",
+          title: "برنامه‌نویس",
+          startDate: "1398",
+          current: "true",
+          description: "کار",
+        },
+      ],
+      education: [
+        { institution: "دانشگاه تهران", degree: "کارشناسی", startYear: "1394", endYear: "1398" },
+      ],
+      languages: [{ name: "English", level: "C1" }, { name: "  " }],
+      links: [{ label: "لینکدین", url: "https://linkedin.com/in/x" }, { url: "" }],
+    });
+    expect(r.summary).toBe("درباره‌ی من");
+    expect(r.phone).toBe("0912");
+    expect(r.expectedSalary).toBe("توافقی");
+    expect(r.experience[0].startDate).toBe("1398");
+    expect(r.experience[0].current).toBe(true); // "true" → boolean
+    expect(r.education[0].startYear).toBe("1394");
+    // زبانِ بدونِ نام رد می‌شود (name اجباری) — کلِ parse نباید بشکند.
+    expect(r.languages.map((l) => l.name)).toEqual(["English"]);
+    // لینکِ بدونِ url رد می‌شود.
+    expect(r.links).toHaveLength(1);
+    expect(r.links[0].label).toBe("لینکدین");
+  });
 });

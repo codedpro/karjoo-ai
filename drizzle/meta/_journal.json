@@ -71,6 +71,13 @@
       "when": 1782895059034,
       "tag": "0009_jazzy_joseph",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782903060833,
+      "tag": "0010_freezing_wolverine",
+      "breakpoints": true
     }
   ]
 }

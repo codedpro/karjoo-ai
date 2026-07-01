@@ -17,7 +17,13 @@ import { and, eq } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import { candidateProfiles, resumeFiles } from "@/db/schema";
-import type { ResumeFile } from "@/db/schema";
+import type {
+  ProfileEducation,
+  ProfileLanguage,
+  ProfileLink,
+  ProfileWorkExperience,
+  ResumeFile,
+} from "@/db/schema";
 import { getSelectedSlugs } from "@/lib/interests/store";
 import { mergeInterestPreferences } from "@/lib/interests/to-preferences";
 import type { ParsedResume } from "@/lib/resume/schema";
@@ -155,43 +161,101 @@ export async function persistParsedFields(
   return { resumeFile, profile };
 }
 
+/** نامِ پیش‌فرضِ امنِ پروفایل — وقتی نه کاربر نه AI نامی نداد (تا insertِ NOT NULL نشکند). */
+export const DEFAULT_PROFILE_NAME = "کاربر کارجو";
+
 /** فیلدهای قابلِ‌نوشتنِ پروفایل که از parsed استخراج می‌شوند. */
 export interface ProfileFieldUpdate {
   fullName: string;
   headline: string | null;
+  summary: string | null;
   city: string | null;
+  phone: string | null;
+  expectedSalary: string | null;
   yearsExperience: number | null;
   skills: string[];
+  workExperience: ProfileWorkExperience[];
+  education: ProfileEducation[];
+  languages: ProfileLanguage[];
+  links: ProfileLink[];
   resumeText?: string;
 }
 
 /**
  * فیلدهای parsed را روی پروفایلِ موجود merge می‌کند (تابعِ خالص، قابلِ تست).
  *
- * قواعد merge:
- *   • fullName اجباری است (NOT NULL در schema): اگر AI نام نداد و پروفایلِ قبلی هم
- *     نداشت، یک مقدارِ پیش‌فرضِ امن گذاشته می‌شود تا insert نشکند (کاربر بعداً ویرایش کند).
- *   • headline/city/yearsExperience فقط وقتی AI مقدار داد جایگزین می‌شوند؛ وگرنه مقدارِ
- *     قبلیِ کاربر حفظ می‌شود (داده‌ی موجود را پاک نمی‌کنیم).
- *   • skills با مهارت‌های موجود ادغامِ یکتا می‌شوند.
+ * قواعد merge (WF2 — «پر کردنِ خالی‌ها»، بدونِ پاک‌کردنِ ویرایشِ کاربر):
+ *   • fullName اجباری است (NOT NULL در schema) و fill-empties: نامِ *واقعیِ* موجودِ
+ *     کاربر حفظ می‌شود؛ اما اگر نامِ قبلی نبود یا صرفاً placeholderِ پیش‌فرض بود، نامِ AI
+ *     جایگزینش می‌شود. اگر هیچ‌کدام نبود، همان placeholderِ امن می‌ماند تا insert نشکند.
+ *   • اسکالرها (headline/summary/city/phone/expectedSalary/yearsExperience): فقط وقتی AI
+ *     مقدار داد *و* پروفایلِ قبلی آن فیلد را خالی داشت، مقدارِ AI می‌نشیند؛ وگرنه مقدارِ
+ *     قبلیِ کاربر حفظ می‌شود (fill-empties — ویرایشِ کاربر هرگز کوبیده نمی‌شود).
+ *   • آرایه‌ها (skills/workExperience/education/languages/links): مقادیرِ AI به مقادیرِ
+ *     موجود *افزوده* و dedupe می‌شوند (append+dedupe؛ داده‌ی قبلی پاک نمی‌شود).
  */
 export function mergeProfileFields(
   existing: (typeof candidateProfiles.$inferSelect) | null,
   parsed: ParsedResume,
 ): ProfileFieldUpdate {
+  // نامِ موجودِ کاربر را حفظ کن، مگر خالی/placeholder باشد که آنگاه نامِ AI جایش می‌نشیند.
+  const existingName = existing?.fullName?.trim();
+  const realExistingName =
+    existingName && existingName !== DEFAULT_PROFILE_NAME ? existingName : undefined;
   const fullName =
-    parsed.fullName?.trim() || existing?.fullName?.trim() || "کاربر کارجو";
+    realExistingName || parsed.fullName?.trim() || DEFAULT_PROFILE_NAME;
 
-  const headline = parsed.headline ?? existing?.headline ?? null;
-  const city = parsed.city ?? existing?.city ?? null;
+  // اسکالرها: fill-empties — مقدارِ قبلیِ کاربر بر مقدارِ AI اولویت دارد.
+  const headline = fillEmpty(existing?.headline, parsed.headline);
+  const summary = fillEmpty(existing?.summary, parsed.summary);
+  const city = fillEmpty(existing?.city, parsed.city);
+  const phone = fillEmpty(existing?.phone, parsed.phone);
+  const expectedSalary = fillEmpty(existing?.expectedSalary, parsed.expectedSalary);
   const yearsExperience =
-    typeof parsed.yearsExperience === "number"
-      ? parsed.yearsExperience
-      : (existing?.yearsExperience ?? null);
+    typeof existing?.yearsExperience === "number"
+      ? existing.yearsExperience
+      : typeof parsed.yearsExperience === "number"
+        ? parsed.yearsExperience
+        : null;
 
+  // آرایه‌ها: append + dedupe (داده‌ی قبلی حفظ، تکراری‌ها حذف).
   const skills = mergeSkills(existing?.skills ?? [], parsed.skills);
+  const workExperience = mergeWorkExperience(
+    existing?.workExperience ?? [],
+    parsed.experience,
+  );
+  const education = mergeEducation(existing?.education ?? [], parsed.education);
+  const languages = mergeLanguages(existing?.languages ?? [], parsed.languages);
+  const links = mergeLinks(existing?.links ?? [], parsed.links);
 
-  return { fullName, headline, city, yearsExperience, skills };
+  return {
+    fullName,
+    headline,
+    summary,
+    city,
+    phone,
+    expectedSalary,
+    yearsExperience,
+    skills,
+    workExperience,
+    education,
+    languages,
+    links,
+  };
+}
+
+/**
+ * fill-empties برای یک فیلدِ اسکالرِ متنی: مقدارِ *موجودِ* کاربر را حفظ می‌کند؛ فقط اگر
+ * خالی/غایب بود، مقدارِ تازه (AI) را می‌گذارد. خروجی همیشه string|null (نه undefined/خالی).
+ */
+function fillEmpty(
+  existing: string | null | undefined,
+  incoming: string | undefined,
+): string | null {
+  const cur = existing?.trim();
+  if (cur) return cur;
+  const next = incoming?.trim();
+  return next && next.length > 0 ? next : null;
 }
 
 /** فیلدهای ویرایش‌شده‌ی کاربر برای ذخیره‌ی مستقیمِ پروفایل (بدونِ AI). */
@@ -285,4 +349,99 @@ export function mergeSkills(existing: string[], incoming: string[]): string[] {
     if (out.length >= 50) break;
   }
   return out;
+}
+
+/* ─────────────────  ادغامِ آرایه‌های ساخت‌یافته‌ی پروفایل (WF2)  ─────────────── */
+/*
+ * قاعده‌ی مشترک: append + dedupe. مقادیرِ موجودِ کاربر اول می‌آیند و حفظ می‌شوند؛ ردیفِ
+ * تازه فقط اگر «کلیدِ هویتش» تکراری نباشد افزوده می‌شود. کلیدِ هویت برای هر نوع، امضایِ
+ * نرمال‌شده‌ی فیلدهای شناسه‌ایِ آن است (نه کلِ شیء) تا نویزِ جزئی ردیفِ تکراری نسازد.
+ */
+
+/** آیا مقدار یک آرایه‌ی معتبر است؟ (DB با default []؛ ولی داده‌ی legacy ممکن است null باشد). */
+function asArray<T>(v: T[] | null | undefined): T[] {
+  return Array.isArray(v) ? v : [];
+}
+
+/** ادغامِ سابقه‌ی کاری — کلیدِ هویت: company|title|startDate (نرمال‌شده). سقف ۳۰. */
+export function mergeWorkExperience(
+  existing: ProfileWorkExperience[] | null | undefined,
+  incoming: ProfileWorkExperience[] | null | undefined,
+): ProfileWorkExperience[] {
+  const seen = new Set<string>();
+  const out: ProfileWorkExperience[] = [];
+  for (const e of [...asArray(existing), ...asArray(incoming)]) {
+    if (!e || (!e.company && !e.title && !e.startDate && !e.endDate && !e.description)) {
+      continue;
+    }
+    const key = sig(e.company, e.title, e.startDate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(e);
+    if (out.length >= 30) break;
+  }
+  return out;
+}
+
+/** ادغامِ تحصیلات — کلیدِ هویت: institution|degree|field. سقف ۲۰. */
+export function mergeEducation(
+  existing: ProfileEducation[] | null | undefined,
+  incoming: ProfileEducation[] | null | undefined,
+): ProfileEducation[] {
+  const seen = new Set<string>();
+  const out: ProfileEducation[] = [];
+  for (const e of [...asArray(existing), ...asArray(incoming)]) {
+    if (!e || (!e.institution && !e.degree && !e.field && !e.startYear && !e.endYear)) {
+      continue;
+    }
+    const key = sig(e.institution, e.degree, e.field);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(e);
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+/** ادغامِ زبان‌ها — کلیدِ هویت: نامِ زبان (نرمال‌شده). سقف ۲۰. */
+export function mergeLanguages(
+  existing: ProfileLanguage[] | null | undefined,
+  incoming: ProfileLanguage[] | null | undefined,
+): ProfileLanguage[] {
+  const seen = new Set<string>();
+  const out: ProfileLanguage[] = [];
+  for (const l of [...asArray(existing), ...asArray(incoming)]) {
+    const name = l?.name?.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, ...(l.level?.trim() ? { level: l.level.trim() } : {}) });
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+/** ادغامِ لینک‌ها — کلیدِ هویت: url (نرمال‌شده). سقف ۱۵. */
+export function mergeLinks(
+  existing: ProfileLink[] | null | undefined,
+  incoming: ProfileLink[] | null | undefined,
+): ProfileLink[] {
+  const seen = new Set<string>();
+  const out: ProfileLink[] = [];
+  for (const l of [...asArray(existing), ...asArray(incoming)]) {
+    const url = l?.url?.trim();
+    if (!url) continue;
+    const key = url.toLowerCase().replace(/\/+$/, "");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ url, ...(l.label?.trim() ? { label: l.label.trim() } : {}) });
+    if (out.length >= 15) break;
+  }
+  return out;
+}
+
+/** امضای نرمال‌شده‌ی چند فیلدِ شناسه‌ای — برای dedupeِ ردیف‌های آرایه (case/space-insensitive). */
+function sig(...parts: Array<string | undefined | null>): string {
+  return parts.map((p) => (p ?? "").trim().toLowerCase()).join("|");
 }
