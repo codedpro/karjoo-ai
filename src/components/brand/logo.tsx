@@ -27,8 +27,7 @@
  *   <Logo/>       — قفلِ کاملِ نشان + وردمارک (کانسپتِ پیش‌فرض = KafSpark).
  *   <Brandmark/>  — فقط نشان (برای فاوآیکن/آواتار/جای تنگ).
  *   props مشترک: variant ('full' | 'mark')، size، className، title، و برای وردمارک
- *   showAi (نمایشِ «AI»). کانسپت‌های دیگر (LogoKafPin/LogoKafOrbit) برای صفحه‌ی /brand
- *   اکسپورت شده‌اند تا مالک مقایسه و انتخاب کند.
+ *   showAi (نمایشِ «AI»).
  */
 import { useId } from "react";
 
@@ -303,14 +302,8 @@ function makeLogo(kind: MarkKind, defaultTitle: string) {
 
 /* ─────────────────────────────  اکسپورت‌ها  ──────────────────────────────── */
 
-/** کانسپتِ پیش‌فرض و قوی‌تر — «ک» + جرقه/بولتِ اتوماسیون. */
+/** لوگوی رسمیِ کارجو — «ک» + جرقه/بولتِ اتوماسیون (کانسپتِ KafSpark، انتخابِ نهایی). */
 export const Logo = makeLogo("spark", "کارجو");
-
-/** کانسپتِ جایگزین ۱ — «ک» درونِ پینِ نقشه (پیدا کردنِ کار). برای /brand. */
-export const LogoKafPin = makeLogo("pin", "کارجو");
-
-/** کانسپتِ جایگزین ۲ — «ک» + مدارِ اتوماسیون. برای /brand. */
-export const LogoKafOrbit = makeLogo("orbit", "کارجو");
 
 /**
  * فقط نشان (بدونِ وردمارک) — کانسپتِ پیش‌فرض. برای فاوآیکن‌درون‌اپ/آواتار/جای تنگ.
@@ -319,30 +312,5 @@ export const LogoKafOrbit = makeLogo("orbit", "کارجو");
 export function Brandmark({ size = 32, className, title = "کارجو" }: BrandmarkProps) {
   return <MarkSvg kind="spark" size={size} className={className} title={title} />;
 }
-
-/** فهرستِ کانسپت‌ها برای صفحه‌ی پیش‌نمایشِ /brand (نام + کامپوننت + توضیح). */
-export const LOGO_CONCEPTS = [
-  {
-    id: "spark",
-    name: "KafSpark",
-    labelFa: "کاف‌جرقه",
-    description: "«ک» با بولتِ جرقه — کار + خودکارسازی. کانسپتِ پیش‌فرض.",
-    Component: Logo,
-  },
-  {
-    id: "pin",
-    name: "KafPin",
-    labelFa: "کاف‌پین",
-    description: "«ک» درونِ پینِ نقشه — پیدا کردنِ کار، با جرقه‌ی هسته.",
-    Component: LogoKafPin,
-  },
-  {
-    id: "orbit",
-    name: "KafOrbit",
-    labelFa: "کاف‌مدار",
-    description: "«ک» + قوسِ مدارِ اتوماسیون و ذره‌ی اپلای.",
-    Component: LogoKafOrbit,
-  },
-] as const;
 
 export default Logo;
