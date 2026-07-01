@@ -20,7 +20,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db as defaultDb } from "@/db";
 import { otpCodes, users } from "@/db/schema";
 import type { User } from "@/db/schema";
-import { requireAuthPepper } from "@/lib/env";
+import { getSmsConfig, requireAuthPepper } from "@/lib/env";
 import {
   OTP_LENGTH,
   OTP_TTL_MS,
@@ -163,6 +163,30 @@ export function resetOtpRateLimit(): void {
   rateBuckets.clear();
 }
 
+/* ── محدودیتِ نرخِ سخت‌گیرانه‌تر بر اساسِ IP ─────────────────────────────────
+ * دفاع در برابرِ یک IP که چند شماره/کد را می‌کوبد (مکملِ محدودیتِ per-phone). همه از
+ * همان سطلِ درون‌حافظه‌ایِ checkOtpRateLimit استفاده می‌کنند؛ در پروداکشنِ چندنمونه‌ای
+ * باید به Redis منتقل شود. */
+/** سقفِ «درخواستِ کد» از یک IP در پنجره‌ی ۱۰ دقیقه. */
+export const OTP_REQUEST_IP_MAX = 15;
+/** سقفِ «راستی‌آزماییِ کد» از یک IP در پنجره‌ی ۱۰ دقیقه. */
+export const OTP_VERIFY_IP_MAX = 20;
+/** سقفِ «راستی‌آزماییِ کد» روی یک شماره در پنجره‌ی ۱۰ دقیقه (مکملِ سقفِ ۵-تلاشِ per-code). */
+export const OTP_VERIFY_PHONE_MAX = 8;
+
+/**
+ * IPِ کلاینت را از هدرهای proxy می‌خواند (پشتِ reverse-proxy: اولین مقدارِ
+ * x-forwarded-for، سپس x-real-ip، وگرنه 'unknown'). برای کلیدِ محدودساز.
+ */
+export function clientIp(request: Request): string {
+  const xff = request.headers.get("x-forwarded-for");
+  if (xff) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return request.headers.get("x-real-ip")?.trim() || "unknown";
+}
+
 /* ─────────────────────────────  درخواستِ OTP  ───────────────────────────── */
 
 /** سقفِ تلاشِ راستی‌آزمایی روی یک کدِ OTP پیش از باطل‌شدنش. */
@@ -192,7 +216,11 @@ export async function requestOtp(
   const pepper = opts.pepper ?? requireAuthPepper();
   const send = opts.sendOtp ?? sendOtpSms;
 
-  const code = generateOtp(OTP_LENGTH);
+  // حالتِ توسعه: اگر هیچ providerِ پیامکی پیکربندی نشده باشد، از کدِ ثابتِ توسعه (همه ۱)
+  // استفاده می‌کنیم تا بدونِ دیدنِ کنسولِ سرور هم بشود وارد شد. به‌محضِ پیکربندیِ SMS
+  // (Kavenegar/generic) خودکار به کدِ تصادفیِ امن برمی‌گردد.
+  const code =
+    getSmsConfig() === null ? "1".repeat(OTP_LENGTH) : generateOtp(OTP_LENGTH);
   const codeHash = hashOtp(code, pepper);
   const expiresAt = new Date(now() + OTP_TTL_MS);
 

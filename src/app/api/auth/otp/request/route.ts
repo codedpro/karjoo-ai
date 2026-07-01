@@ -10,8 +10,13 @@ import "server-only";
  * نکته‌ی امنیتی: پاسخ همیشه «عمومی و یکسان» است (چه شماره وجود داشته باشد چه نه) تا
  * نشت ندهد که کدام شماره ثبت‌نام کرده است (user enumeration).
  */
-import { json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
-import { checkOtpRateLimit, requestOtp } from "@/lib/auth/http";
+import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
+import {
+  checkOtpRateLimit,
+  clientIp,
+  OTP_REQUEST_IP_MAX,
+  requestOtp,
+} from "@/lib/auth/http";
 import { otpRequestSchema } from "@/lib/auth/schemas";
 
 // به DB و node API (crypto) دست می‌زند → اجرای Node لازم است.
@@ -21,6 +26,12 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
+    // ۰) محدودیتِ نرخِ سخت‌گیرانه بر اساسِ IP — یک آدرس نتواند برای چند شماره اسپم کند.
+    const ip = clientIp(request);
+    if (!checkOtpRateLimit(`otp-req-ip:${ip}`, Date.now(), OTP_REQUEST_IP_MAX)) {
+      return errorJson("درخواست‌های بیش از حد از این آدرس. کمی بعد دوباره تلاش کنید.", 429);
+    }
+
     // ۱) اعتبارسنجی + نرمالِ شماره (E.164).
     const { phone } = await parseJsonBody(request, otpRequestSchema);
 

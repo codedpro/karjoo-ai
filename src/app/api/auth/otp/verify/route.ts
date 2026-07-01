@@ -10,7 +10,15 @@ import "server-only";
  */
 import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
 import { WEB_SESSION_TTL_MS } from "@/lib/auth/core";
-import { publicUser, setSessionCookie, verifyOtpAndLogin } from "@/lib/auth/http";
+import {
+  checkOtpRateLimit,
+  clientIp,
+  OTP_VERIFY_IP_MAX,
+  OTP_VERIFY_PHONE_MAX,
+  publicUser,
+  setSessionCookie,
+  verifyOtpAndLogin,
+} from "@/lib/auth/http";
 import { otpVerifySchema } from "@/lib/auth/schemas";
 
 // به DB و node API (crypto/cookies) دست می‌زند → اجرای Node لازم است.
@@ -22,6 +30,17 @@ export async function POST(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
     // ۱) اعتبارسنجیِ ورودی.
     const { phone, code } = await parseJsonBody(request, otpVerifySchema);
+
+    // ۱٫۵) محدودیتِ نرخِ سخت‌گیرانه: تلاشِ راستی‌آزمایی هم per-IP و هم per-phone
+    //      (ضدِ brute-force روی کد، مکملِ سقفِ ۵-تلاشِ per-code در هسته). عبور → ۴۲۹.
+    const now = Date.now();
+    const ip = clientIp(request);
+    if (
+      !checkOtpRateLimit(`otp-vrf-ip:${ip}`, now, OTP_VERIFY_IP_MAX) ||
+      !checkOtpRateLimit(`otp-vrf-phone:${phone}`, now, OTP_VERIFY_PHONE_MAX)
+    ) {
+      return errorJson("تلاش‌های بیش از حد. کمی بعد دوباره تلاش کنید.", 429);
+    }
 
     // ۲) راستی‌آزمایی + ورود (هسته یک‌بارمصرفی/سقفِ تلاش را اعمال می‌کند).
     const userAgent = request.headers.get("user-agent");
