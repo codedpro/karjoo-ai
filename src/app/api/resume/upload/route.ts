@@ -19,6 +19,7 @@ import "server-only";
  */
 import { errorJson, json, withErrorHandling } from "@/lib/api/http";
 import { getCurrentUser } from "@/lib/auth/http";
+import { EVENTS, track } from "@/lib/analytics";
 import { extractText, PdfExtractError } from "@/lib/resume/pdf";
 import { resumeUploadJsonSchema } from "@/lib/resume/api-schemas";
 import { createResumeFileRecord } from "@/lib/resume/service";
@@ -84,6 +85,10 @@ export async function POST(request: Request): Promise<Response> {
       storagePath: saved.relativePath,
       extractedText,
     });
+
+    // آنالیتیکس: آپلودِ رزومه (best-effort، بی‌نام‌فایل/بی‌راز — فقط متادیتای غیرحساس).
+    // fire-and-forget؛ track هرگز throw نمی‌کند و پاسخ را بلاک نمی‌کند.
+    track(user.id, EVENTS.RESUME_UPLOADED, { hasText: extractedText !== null });
 
     return json(
       {

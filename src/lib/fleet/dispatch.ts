@@ -28,6 +28,7 @@ import { applications, users, type Plan } from "@/db/schema";
 import {
   assertServerAutoApplyAllowed,
   recordAutoApplyAudit,
+  ServerAutoApplyNotAllowedError,
 } from "@/lib/apply/auto-apply";
 import {
   claimUserApplyItems,
@@ -39,6 +40,7 @@ import {
 import { decryptSession } from "@/lib/vault/crypto";
 import { readSessionBlob, type Board } from "@/lib/vault/store";
 import { listUserIdsForNode } from "@/lib/fleet/assign";
+import { logger } from "@/lib/observability/logger";
 
 /** هندلِ DB که این لایه نیاز دارد — کلاینتِ کاملِ Drizzle. */
 export type FleetDispatchDb = typeof defaultDb;
@@ -171,8 +173,19 @@ export async function claimFleetJobs(
     let minScore: number;
     try {
       ({ minScore } = await assertAllowed(userId, plan));
-    } catch {
-      // ServerAutoApplyNotAllowedError (پلنِ بی‌ورکر/تاگلِ سرور خاموش/سقف پر) → این کاربر آیتمی نمی‌گیرد.
+    } catch (gateErr) {
+      // ServerAutoApplyNotAllowedError (پلنِ بی‌ورکر/تاگلِ سرور خاموش/سقف پر) رفتارِ
+      // *موردانتظار* است و بی‌سروصدا رد می‌شود. ولی هر خطای *غیرمنتظره‌ی دیگری* در
+      // مسیرِ دیسپچِ ناوگان باید در هابِ مشاهده‌پذیری (Loki) دیده شود — بدونِ تغییرِ
+      // کنترل‌فلو (در هر حال continue) و بدونِ نشتِ نشست/راز. logger هرگز throw نمی‌کند.
+      if (!(gateErr instanceof ServerAutoApplyNotAllowedError)) {
+        logger.error("fleet dispatch gate unexpected error", {
+          path: "fleet/dispatch",
+          nodeId,
+          userId,
+          err: gateErr instanceof Error ? gateErr : new Error(String(gateErr)),
+        });
+      }
       continue;
     }
 

@@ -16,6 +16,7 @@ import "server-only";
  */
 import { errorJson, json, withErrorHandling } from "@/lib/api/http";
 import { getCurrentUser } from "@/lib/auth/http";
+import { EVENTS, track } from "@/lib/analytics";
 import { resumeParseSchema } from "@/lib/resume/api-schemas";
 import { ResumeParseError } from "@/lib/resume/parse";
 import { meteredParseResumeText } from "@/lib/resume/metered-parse";
@@ -76,6 +77,10 @@ export async function POST(request: Request): Promise<Response> {
 
     // ۶) ذخیره‌ی فیلدها + upsertِ پروفایل (به نشست مقید).
     const { profile } = await persistParsedFields(user.id, record.id, parsed);
+
+    // آنالیتیکس: parseِ موفقِ رزومه با هوش مصنوعی (best-effort، بدونِ محتوای رزومه —
+    // فقط شمارشِ مهارت به‌عنوانِ سیگنالِ کیفیتِ استخراج). track هرگز throw نمی‌کند.
+    track(user.id, EVENTS.AI_PARSE, { skills: parsed.skills?.length ?? 0 });
 
     // پروفایلِ کاملِ به‌روزشده را برمی‌گردانیم تا فرمِ کلاینت همه‌ی فیلدها را نشان دهد.
     return json({

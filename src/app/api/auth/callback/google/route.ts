@@ -28,6 +28,8 @@ import {
 } from "@/lib/auth/google";
 import { findOrCreateUserByGoogle, setSessionCookie } from "@/lib/auth/http";
 import { isGoogleOAuthConfigured, requireGoogleOAuth } from "@/lib/env";
+import { logger } from "@/lib/observability/logger";
+import { EVENTS, flush, identify, track } from "@/lib/analytics";
 import { OAUTH_STATE_COOKIE } from "@/app/api/auth/google/route";
 
 // به DB و node API (crypto/cookies) دست می‌زند → اجرای Node لازم است.
@@ -110,6 +112,21 @@ export async function GET(request: Request): Promise<Response> {
     const { token } = await issueSession(user.id, "web", { userAgent });
     await setSessionCookie(token, WEB_SESSION_TTL_MS);
 
+    // آنالیتیکسِ سرور: identify کاربر (نشست تازه برقرار شد) + رویدادِ ورود. best-effort و
+    // مقید به نشست (userId از DB، نه ورودیِ کلاینت). هر خطا بلعیده می‌شود — ورود هرگز نمی‌شکند.
+    try {
+      identify(user.id, {
+        email: user.email ?? undefined,
+        name: user.name ?? undefined,
+      });
+      track(user.id, EVENTS.LOGIN, { method: "google" });
+      // چون کانتینر بلندعمر است و کاربر بلافاصله redirect می‌شود، flush می‌کنیم تا
+      // رویدادِ ورود پیش از پاسخ به PostHog برسد (flush هرگز throw نمی‌کند).
+      await flush();
+    } catch {
+      /* آنالیتیکس هرگز مسیرِ ورود را نمی‌شکند. */
+    }
+
     return redirect("/dashboard");
   } catch (err) {
     // خطای نوع‌دارِ OAuth (تبادلِ توکن/userinfo/هویتِ ناقص) → پاسخِ عمومی، بدونِ نشت.
@@ -118,6 +135,12 @@ export async function GET(request: Request): Promise<Response> {
     }
     // خطای غیرمنتظره: در لاگِ سرور ثبت شود (بدونِ code/توکن)، به کاربر پاسخِ عمومی.
     console.error("[auth/callback/google] unexpected error:", err);
+    // لاگِ ساخت‌یافته به هابِ مشاهده‌پذیری (Loki) — بدونِ نشتِ code/state/توکن؛ فقط زمینه‌ی
+    // امنِ اشکال‌زدایی. logger هرگز throw/بلاک نمی‌کند، پس رفتارِ مسیر تغییری نمی‌کند.
+    logger.error("oauth callback unexpected error", {
+      route: "auth/callback/google",
+      err: err instanceof Error ? err : new Error(String(err)),
+    });
     return redirect("/login?error=oauth");
   }
 }

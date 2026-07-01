@@ -21,6 +21,7 @@ import "server-only";
 import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
 import { updateAutoApplyBodySchema } from "@/lib/api/auto-apply-schemas";
 import { getCurrentUser } from "@/lib/auth/http";
+import { EVENTS, track } from "@/lib/analytics";
 import {
   getAutoApplySettings,
   recordAutoApplyAudit,
@@ -72,6 +73,15 @@ export async function PUT(request: Request): Promise<Response> {
         eventType: updated.enabled ? "auto_apply_enabled" : "auto_apply_disabled",
         metadata: { minScore: updated.minScore, channel: "extension" },
       });
+
+      // آنالیتیکس: فقط گذارِ روشن‌شدن را به‌عنوانِ رویدادِ کلیدیِ محصول ثبت می‌کنیم
+      // (خاموش‌کردن رویدادِ conversion نیست). best-effort؛ track هرگز throw نمی‌کند.
+      if (updated.enabled) {
+        track(user.id, EVENTS.APPLY_ENABLED, {
+          minScore: updated.minScore,
+          channel: "extension",
+        });
+      }
     }
 
     return json({ enabled: updated.enabled, minScore: updated.minScore });

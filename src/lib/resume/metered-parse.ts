@@ -14,6 +14,7 @@ import { buildResumeParsePrompt } from "@/lib/resume/prompts";
 import { parsedResumeSchema, type ParsedResume } from "@/lib/resume/schema";
 import { ResumeParseError } from "@/lib/resume/parse";
 import { meteredChatJson, type MeteringOptions } from "@/lib/billing/metering";
+import { logger } from "@/lib/observability/logger";
 
 /**
  * متنِ خامِ رزومه را با هوش مصنوعی به فیلدهای ساخت‌یافته تبدیل می‌کند — *مترشده*.
@@ -43,6 +44,15 @@ export async function meteredParseResumeText(
   } catch (cause) {
     if (cause instanceof ResumeParseError) throw cause;
     if (isInsufficientBalance(cause)) throw cause;
+    // خطای واقعیِ فراخوانیِ مترشده‌ی هوش مصنوعی (نه موجودیِ ناکافی، نه خطای اسکیما):
+    // به هابِ مشاهده‌پذیری (Loki) لاگ کن تا خطاهای متر/گیت‌وی قابلِ رصد باشند. بدونِ نشتِ
+    // متنِ رزومه (فقط طولِ آن). logger هرگز throw/بلاک نمی‌کند؛ رفتارِ مسیر تغییری نمی‌کند.
+    logger.error("metered resume parse failed", {
+      path: "resume/metered-parse",
+      userId,
+      resumeTextLength: resumeText.length,
+      err: cause instanceof Error ? cause : new Error(String(cause)),
+    });
     throw new ResumeParseError(
       "فراخوانیِ مترشده‌ی گیت‌وی هوش مصنوعی برای ساخت‌یافته‌سازیِ رزومه ناموفق بود.",
       cause,
