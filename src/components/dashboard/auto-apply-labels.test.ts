@@ -11,7 +11,7 @@ import {
 } from "./auto-apply-labels";
 
 describe("autoApplyEventLabel", () => {
-  it("هر نوعِ رویدادِ شناخته‌شده برچسب/لحن/آیکن دارد", () => {
+  it("هر نوعِ رویدادِ شناخته‌شده برچسب/لحن دارد", () => {
     for (const t of [
       "auto_apply_enabled",
       "auto_apply_disabled",
@@ -20,7 +20,6 @@ describe("autoApplyEventLabel", () => {
     ] as const) {
       const meta = autoApplyEventLabel(t);
       expect(meta.label.length).toBeGreaterThan(0);
-      expect(meta.icon.length).toBeGreaterThan(0);
     }
   });
 

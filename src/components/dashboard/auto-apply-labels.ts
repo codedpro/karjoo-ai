@@ -9,33 +9,33 @@ import { boardLabel as sharedBoardLabel } from "./labels";
 
 type Tone = "brand" | "accent" | "muted" | "green" | "amber" | "rose";
 
-/** برچسب + لحن + آیکنِ هر نوع رویدادِ ممیزیِ اپلای خودکار. */
+/**
+ * برچسب + لحن + توضیحِ هر نوع رویدادِ ممیزیِ اپلای خودکار. خودِ آیکن در UI با نگاشتِ
+ * `AuditIcon` در `auto-apply-panels.tsx` (بر پایه‌ی eventType، از `./icons`) رندر می‌شود —
+ * این‌جا دیگر ایموجی نگه نمی‌داریم.
+ */
 export const AUTO_APPLY_EVENT_LABELS: Record<
   AutoApplyAuditEventType,
-  { label: string; tone: Tone; icon: string; description: string }
+  { label: string; tone: Tone; description: string }
 > = {
   auto_apply_enabled: {
     label: "روشن‌کردنِ اپلای خودکار",
     tone: "green",
-    icon: "✅",
     description: "شما رضایتِ اپلای خودکار را فعال کردید.",
   },
   auto_apply_disabled: {
     label: "خاموش‌کردنِ اپلای خودکار",
     tone: "muted",
-    icon: "⏸️",
     description: "شما اپلای خودکار را غیرفعال کردید.",
   },
   auto_apply_attempted: {
     label: "تلاش برای اپلای خودکار",
     tone: "brand",
-    icon: "📨",
     description: "یک فرصت از صف برای اپلای خودکار برداشته شد.",
   },
   auto_apply_skipped: {
     label: "ردِ یک فرصت",
     tone: "amber",
-    icon: "↪️",
     description: "یک فرصت به‌دلیلِ آستانه/سقف/خاموش‌بودنِ تاگل اپلای نشد.",
   },
 };
@@ -44,14 +44,12 @@ export const AUTO_APPLY_EVENT_LABELS: Record<
 export function autoApplyEventLabel(eventType: string): {
   label: string;
   tone: Tone;
-  icon: string;
   description: string;
 } {
   return (
     AUTO_APPLY_EVENT_LABELS[eventType as AutoApplyAuditEventType] ?? {
       label: eventType,
       tone: "muted",
-      icon: "•",
       description: "",
     }
   );

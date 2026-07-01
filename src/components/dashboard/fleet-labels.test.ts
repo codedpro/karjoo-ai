@@ -81,11 +81,10 @@ describe("workerIpCapacityLabel", () => {
 });
 
 describe("nodeHealthLabel", () => {
-  it("هر وضعیتِ شناخته‌شده برچسب/لحن/آیکن دارد", () => {
+  it("هر وضعیتِ شناخته‌شده برچسب/لحن دارد", () => {
     for (const h of ["online", "degraded", "offline"] as const) {
       const meta = nodeHealthLabel(h);
       expect(meta.label.length).toBeGreaterThan(0);
-      expect(meta.icon.length).toBeGreaterThan(0);
     }
     expect(nodeHealthLabel("online").tone).toBe("green");
     expect(nodeHealthLabel("offline").tone).toBe("rose");

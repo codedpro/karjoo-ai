@@ -16,7 +16,7 @@ import {
   IconPlug,
   IconReceipt,
   IconWarn,
-} from "./track-icons";
+} from "./icons";
 import {
   applyUsageLabel,
   applyUsagePct,

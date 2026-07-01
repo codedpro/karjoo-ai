@@ -7,7 +7,10 @@
  * چیدمانِ RTL: از property‌های منطقی استفاده می‌شود. عنوان `truncate` می‌شود و
  * `title` می‌گیرد تا هیچ‌وقت زشت دو-خطی نشود؛ نشان‌ها `whitespace-nowrap`اند.
  */
+import { ChevronDown } from "lucide-react";
+
 import type { DashboardMatch } from "./data";
+import { IconMapPin, IconWallet } from "./icons";
 import { boardLabel, MATCH_STATUS } from "./labels";
 import { Badge, Card, ScoreRing } from "./ui";
 
@@ -16,44 +19,6 @@ function preview(text: string, max = 180): string {
   const clean = text.trim().replace(/\s+/g, " ");
   if (clean.length <= max) return clean;
   return clean.slice(0, max).trimEnd() + "…";
-}
-
-/** آیکنِ خطیِ ظریف (بی‌ایموجی) — مکان و حقوق. `aria-hidden` چون متنِ کنارش گویاست. */
-function PinIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="size-3.5 shrink-0 text-muted/70" aria-hidden>
-      <path
-        d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <circle cx="12" cy="10" r="2.4" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
-function WalletIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="size-3.5 shrink-0 text-muted/70" aria-hidden>
-      <rect x="3" y="6" width="18" height="13" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M16 12.5h2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      <path d="M3 9h13a2 2 0 0 1 2 2v0" stroke="currentColor" strokeWidth="1.6" />
-    </svg>
-  );
-}
-
-/** فلشِ باز/بسته‌ی دیسکلوژر — چرخش با `group-open`. */
-function DisclosureChevron() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="size-4 shrink-0 text-muted transition-transform duration-200 group-open:rotate-180"
-      aria-hidden
-    >
-      <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 export function MatchCard({ match }: { match: DashboardMatch }) {
@@ -101,13 +66,13 @@ export function MatchCard({ match }: { match: DashboardMatch }) {
             </span>
             {listing.city ? (
               <span className="inline-flex min-w-0 items-center gap-1" title={listing.city}>
-                <PinIcon />
+                <IconMapPin className="size-3.5 text-muted/70" />
                 <span className="truncate">{listing.city}</span>
               </span>
             ) : null}
             {listing.salary ? (
               <span className="inline-flex min-w-0 items-center gap-1" title={listing.salary}>
-                <WalletIcon />
+                <IconWallet className="size-3.5 text-muted/70" />
                 <span className="truncate">{listing.salary}</span>
               </span>
             ) : null}
@@ -128,7 +93,11 @@ export function MatchCard({ match }: { match: DashboardMatch }) {
         <details className="group mt-3">
           <summary className="focus-ring flex cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-1 py-1 text-sm font-semibold text-brand marker:content-['']">
             پیش‌نمایشِ انگیزه‌نامه
-            <DisclosureChevron />
+            <ChevronDown
+              strokeWidth={1.75}
+              className="size-4 shrink-0 text-muted transition-transform duration-200 group-open:rotate-180"
+              aria-hidden
+            />
           </summary>
           <p className="mt-2 whitespace-pre-line text-pretty rounded-xl border border-border bg-surface/70 px-3.5 py-3 text-sm leading-8 text-muted">
             {preview(match.coverLetter, 600)}

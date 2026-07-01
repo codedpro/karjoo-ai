@@ -13,6 +13,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { IconWallet } from "./icons";
 import { Badge, Button, Card, cn, toFaDigits } from "./ui";
 import { PLAN_BADGE } from "./wallet-labels";
 import { formatToman } from "./wallet-format";
@@ -20,26 +21,6 @@ import type { Plan } from "@/db/schema";
 
 /** مبالغِ پیشنهادیِ شارژ (تومان) — هم‌راستا با MIN/MAX در billing-schemas. */
 const PRESET_AMOUNTS = [50_000, 100_000, 200_000, 500_000] as const;
-
-/** آیکنِ کیف‌پول (SVG سبک، بدونِ ایموجی) — تزئینی. */
-function WalletIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className="h-5 w-5"
-      aria-hidden
-    >
-      <path
-        d="M3 8.5A2.5 2.5 0 0 1 5.5 6H18a2 2 0 0 1 2 2v1H6.5a1.5 1.5 0 0 0 0 3H20v4a2 2 0 0 1-2 2H5.5A2.5 2.5 0 0 1 3 15.5v-7Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <circle cx="16.5" cy="10.5" r="1.1" fill="currentColor" />
-    </svg>
-  );
-}
 
 export function WalletPanel({
   initialBalanceToman,
@@ -103,7 +84,7 @@ export function WalletPanel({
               className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand"
               aria-hidden
             >
-              <WalletIcon />
+              <IconWallet className="h-5 w-5" />
             </span>
             <h2 className="text-sm font-medium">موجودیِ کیف‌پول</h2>
           </div>

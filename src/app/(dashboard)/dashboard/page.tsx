@@ -24,9 +24,10 @@ import { PairExtensionPanel } from "@/components/dashboard/pair-extension-panel"
 import { getDashboardUser } from "@/components/dashboard/session";
 import {
   IconCheck,
+  IconHand,
   IconSend,
   IconTarget,
-} from "@/components/dashboard/track-icons";
+} from "@/components/dashboard/icons";
 import {
   ButtonLink,
   EmptyState,
@@ -108,9 +109,10 @@ async function Welcome({
     <div className="space-y-6">
       <PageHeader
         title={
-          <>
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <IconHand className="h-6 w-6 text-amber-500" />
             سلام، <span className="text-brand">{name}</span>
-          </>
+          </span>
         }
         subtitle="آخرین وضعیتِ تطبیق‌ها و اپلای‌هایت را این‌جا دنبال کن."
       />

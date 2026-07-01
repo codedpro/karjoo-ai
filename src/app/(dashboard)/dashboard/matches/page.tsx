@@ -20,6 +20,7 @@ import {
   getMatchesForUser,
 } from "@/components/dashboard/data";
 import { BOARD_ACCOUNT_STATUS, boardLabel } from "@/components/dashboard/labels";
+import { IconCompass } from "@/components/dashboard/icons";
 import { MatchCard } from "@/components/dashboard/match-card";
 import { PairExtensionPanel } from "@/components/dashboard/pair-extension-panel";
 import { getDashboardUser } from "@/components/dashboard/session";
@@ -91,7 +92,7 @@ async function MatchesList({ userId }: { userId: string }) {
   if (matches.length === 0) {
     return (
       <EmptyState
-        icon="🧭"
+        icon={<IconCompass />}
         title="هنوز تطبیقی ثبت نشده"
         body="کارجو به‌صورتِ خودکار آگهی‌های تازه را با پروفایلت می‌سنجد. به‌محضِ پیدا‌شدنِ فرصتِ مناسب، این‌جا فهرست می‌شود."
         action={

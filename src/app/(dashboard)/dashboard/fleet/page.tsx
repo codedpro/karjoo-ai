@@ -14,7 +14,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { Card, PageHeader, SkeletonList } from "@/components/dashboard/ui";
-import { IconLock } from "@/components/dashboard/track-icons";
+import { IconLock } from "@/components/dashboard/icons";
 import { FleetAdminTable } from "@/components/dashboard/fleet-admin-table";
 import { listFleetNodes } from "@/components/dashboard/fleet-admin-data";
 import { isFleetAdmin } from "@/components/dashboard/fleet-admin-guard";

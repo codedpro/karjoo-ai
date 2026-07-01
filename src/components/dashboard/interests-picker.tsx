@@ -14,7 +14,7 @@
 import { useMemo, useState } from "react";
 
 import { Badge, Button, EmptyState, cn, toFaDigits } from "./ui";
-import { IconCheck, IconStar } from "./track-icons";
+import { IconCheck, IconStar } from "./icons";
 
 /** یک دسته‌ی تاکسونومی که UI لازم دارد (زیرمجموعه‌ی CategoryRow). */
 export interface PickerCategory {

@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { IconArrowStart } from "@/components/dashboard/icons";
 import { loginErrorMessage } from "@/components/dashboard/login-error";
 import { getDashboardUser } from "@/components/dashboard/session";
 import { site } from "@/lib/site";
@@ -79,8 +80,12 @@ export default async function LoginPage({
         </div>
 
         <p className="mt-6 text-center text-xs text-muted">
-          <Link href="/" className="hover:text-foreground">
-            ← بازگشت به صفحه‌ی اصلی
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 hover:text-foreground"
+          >
+            <IconArrowStart className="h-4 w-4" />
+            بازگشت به صفحه‌ی اصلی
           </Link>
         </p>
       </div>

@@ -21,7 +21,8 @@ import {
   IconPower,
   IconRefresh,
   IconServer,
-} from "./track-icons";
+  IconStatusDot,
+} from "./icons";
 import {
   agentVersionLabel,
   isNodeStale,
@@ -109,18 +110,17 @@ function FleetNodeCard({
               {shortNodeKey(node.nodeKey)}
             </span>
             <Badge tone={health.tone}>
-              <span
+              <IconStatusDot
                 className={cn(
-                  "h-1.5 w-1.5 rounded-full",
+                  "h-3 w-3",
                   health.tone === "green"
-                    ? "bg-emerald-500"
+                    ? "text-emerald-500"
                     : health.tone === "amber"
-                      ? "bg-amber-500"
+                      ? "text-amber-500"
                       : health.tone === "rose"
-                        ? "bg-rose-500"
-                        : "bg-muted",
+                        ? "text-rose-500"
+                        : "text-muted",
                 )}
-                aria-hidden
               />
               {health.label}
             </Badge>

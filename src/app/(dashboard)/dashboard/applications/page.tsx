@@ -11,6 +11,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { getApplicationsForUser } from "@/components/dashboard/data";
+import { IconSend } from "@/components/dashboard/icons";
 import {
   APPLICATION_STATUS,
   boardLabel,
@@ -86,7 +87,7 @@ async function ApplicationsList({ userId }: { userId: string }) {
   if (apps.length === 0) {
     return (
       <EmptyState
-        icon="📨"
+        icon={<IconSend />}
         title="هنوز اپلایی ثبت نشده"
         body="وقتی یک تطبیق را برای اپلای تأیید کنی، نتیجه و وضعیتِ آن (ارسال‌شده، در انتظار، …) همین‌جا نمایش داده می‌شود."
         action={

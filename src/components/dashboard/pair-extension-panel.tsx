@@ -10,6 +10,7 @@
  */
 import { useEffect, useState } from "react";
 
+import { IconCheck, IconPuzzle } from "./icons";
 import { Button, Card, toFaDigits } from "./ui";
 
 interface PairResponse {
@@ -97,10 +98,10 @@ export function PairExtensionPanel() {
     <Card padded>
       <div className="flex items-start gap-3">
         <div
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand/10 text-2xl"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"
           aria-hidden
         >
-          🧩
+          <IconPuzzle className="h-5 w-5" />
         </div>
         <div className="min-w-0">
           <h3 className="text-balance text-base font-bold">اتصالِ افزونه‌ی مرورگر</h3>
@@ -134,7 +135,14 @@ export function PairExtensionPanel() {
               size="sm"
               className="shrink-0"
             >
-              {copied ? "کپی شد ✓" : "کپی"}
+              {copied ? (
+                <>
+                  <IconCheck className="h-4 w-4" />
+                  کپی شد
+                </>
+              ) : (
+                "کپی"
+              )}
             </Button>
           </div>
           <p className="mt-2 text-xs text-muted">

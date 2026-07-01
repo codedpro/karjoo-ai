@@ -56,16 +56,19 @@ export function workerIpCapacityLabel(workerIpLimit: number): string | null {
 
 /* ──────────────────────────  سلامتِ نود (ادمین)  ────────────────────────── */
 
-/** برچسب + لحن + آیکنِ هر وضعیتِ سلامتِ نود (worker_health). */
-export const NODE_HEALTH_LABELS: Record<string, { label: string; tone: Tone; icon: string }> = {
-  online: { label: "آنلاین", tone: "green", icon: "🟢" },
-  degraded: { label: "نیمه‌فعال", tone: "amber", icon: "🟡" },
-  offline: { label: "آفلاین", tone: "rose", icon: "⚪" },
+/**
+ * برچسب + لحنِ هر وضعیتِ سلامتِ نود (worker_health). خودِ آیکن (نقطه‌ی رنگی) در UI با
+ * `IconStatusDot` از `./icons` رندر می‌شود؛ رنگ از همین `tone` مشتق می‌شود (بدونِ ایموجی).
+ */
+export const NODE_HEALTH_LABELS: Record<string, { label: string; tone: Tone }> = {
+  online: { label: "آنلاین", tone: "green" },
+  degraded: { label: "نیمه‌فعال", tone: "amber" },
+  offline: { label: "آفلاین", tone: "rose" },
 };
 
 /** برچسبِ فارسیِ سلامتِ نود (با fallbackِ امن برای مقدارِ ناشناخته). */
-export function nodeHealthLabel(health: string): { label: string; tone: Tone; icon: string } {
-  return NODE_HEALTH_LABELS[health] ?? { label: health, tone: "muted", icon: "•" };
+export function nodeHealthLabel(health: string): { label: string; tone: Tone } {
+  return NODE_HEALTH_LABELS[health] ?? { label: health, tone: "muted" };
 }
 
 /* ────────────────────────  فاصله‌ی زمانیِ «چند پیش»  ───────────────────── */

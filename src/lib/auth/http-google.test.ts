@@ -92,6 +92,59 @@ describe("findOrCreateUserByGoogle", () => {
     expect(user.name ?? null).toBeNull();
     expect(user.avatarUrl ?? null).toBeNull();
   });
+
+  it("اعتبارِ خوش‌آمد را فقط برای کاربرِ تازه‌ساخته‌شده اعطا می‌کند", async () => {
+    const { db } = makeDb();
+    const calls: Array<{ userId: string; now: number }> = [];
+    const grantSignupCredit = async (userId: string, now: number) => {
+      calls.push({ userId, now });
+    };
+
+    const created = await findOrCreateUserByGoogle(IDENTITY, {
+      db,
+      now: () => 5_000,
+      grantSignupCredit,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({ userId: created.id, now: 5_000 });
+
+    // ورودِ دومِ همان کاربر (پیدا با googleSub) → دیگر اعتبار نمی‌گیرد.
+    await findOrCreateUserByGoogle(IDENTITY, {
+      db,
+      now: () => 6_000,
+      grantSignupCredit,
+    });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("fallback با email اعتبارِ خوش‌آمد نمی‌دهد (کاربرِ تازه نیست)", async () => {
+    const { db } = makeDb();
+    await db.insert(users).values({ email: IDENTITY.email }).returning();
+    const calls: string[] = [];
+
+    await findOrCreateUserByGoogle(IDENTITY, {
+      db,
+      now: () => 1_000,
+      grantSignupCredit: async (userId) => {
+        calls.push(userId);
+      },
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("شکستِ اعتبارِ خوش‌آمد ورود را نمی‌شکند (best-effort)", async () => {
+    const { db, fake } = makeDb();
+    const user = await findOrCreateUserByGoogle(IDENTITY, {
+      db,
+      now: () => 1_000,
+      grantSignupCredit: async () => {
+        throw new Error("wallet down");
+      },
+    });
+    // با وجودِ شکستِ اعتبار، کاربر ساخته و برگردانده می‌شود.
+    expect(user.googleSub).toBe(IDENTITY.sub);
+    expect(fake.rows(users)).toHaveLength(1);
+  });
 });
 
 describe("publicUser", () => {

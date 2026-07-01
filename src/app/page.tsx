@@ -1,37 +1,46 @@
 import Link from "next/link";
 
+import {
+  IconBell,
+  IconBot,
+  IconChart,
+  IconDoc,
+  type IconComponent,
+  IconShield,
+  IconTarget,
+} from "@/components/dashboard/icons";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { site } from "@/lib/site";
 
-const features = [
+const features: { icon: IconComponent; title: string; body: string }[] = [
   {
-    icon: "🤖",
+    icon: IconBot,
     title: "اپلای خودکار با هوش مصنوعی",
     body: "کارجو آگهی‌های مرتبط را پیدا می‌کند، انگیزه‌نامه‌ی اختصاصی می‌نویسد و به‌جای شما در سایت‌های کاریابی اپلای می‌کند.",
   },
   {
-    icon: "🎯",
+    icon: IconTarget,
     title: "تطبیق هوشمند شغل",
     body: "بر اساس مهارت‌ها، سابقه و حقوق موردانتظار شما، فقط فرصت‌هایی که واقعاً مناسب‌اند انتخاب می‌شوند.",
   },
   {
-    icon: "📝",
+    icon: IconDoc,
     title: "رزومه و کاورلتر هوشمند",
     body: "برای هر آگهی، رزومه و انگیزه‌نامه با کلمات کلیدی همان موقعیت شغلی بازنویسی و بهینه می‌شود.",
   },
   {
-    icon: "📊",
+    icon: IconChart,
     title: "داشبورد پیگیری",
     body: "وضعیت همه‌ی اپلای‌ها، بازدید کارفرما و دعوت به مصاحبه را یک‌جا و لحظه‌ای دنبال کنید.",
   },
   {
-    icon: "🔔",
+    icon: IconBell,
     title: "هشدار فرصت‌های تازه",
     body: "به‌محض انتشار آگهی متناسب با پروفایلتان، کارجو در همان دقایق اول برای شما اقدام می‌کند.",
   },
   {
-    icon: "🔒",
+    icon: IconShield,
     title: "حریم خصوصی شما",
     body: "اطلاعات و رزومه‌ی شما رمزنگاری می‌شود و هیچ‌گاه بدون اجازه‌ی شما جایی منتشر نمی‌شود.",
   },
@@ -154,8 +163,8 @@ export default function Home() {
                 key={f.title}
                 className="group rounded-2xl border border-border bg-card p-6 transition-all hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5"
               >
-                <div className="grid h-12 w-12 place-items-center rounded-xl bg-brand/10 text-2xl">
-                  {f.icon}
+                <div className="grid h-12 w-12 place-items-center rounded-xl bg-brand/10 text-brand transition-colors group-hover:bg-brand/15">
+                  <f.icon className="h-6 w-6" />
                 </div>
                 <h3 className="mt-4 text-lg font-bold">{f.title}</h3>
                 <p className="mt-2 text-sm leading-7 text-muted">{f.body}</p>

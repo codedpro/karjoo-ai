@@ -13,6 +13,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { IconCheck, IconWarn } from "./icons";
 import { Badge, Button, Card, cn, toFaDigits } from "./ui";
 import { formatToman } from "./wallet-format";
 import {
@@ -177,7 +178,7 @@ export function PlansGrid({
               <ul className="mt-4 space-y-1.5 text-xs leading-6 text-muted">
                 {plan.features.map((f) => (
                   <li key={f} className="flex gap-2">
-                    <CheckIcon />
+                    <IconCheck className="mt-0.5 h-3.5 w-3.5 text-brand" />
                     <span className="text-pretty">{toFaDigits(f)}</span>
                   </li>
                 ))}
@@ -221,7 +222,7 @@ export function PlansGrid({
 
       {/* یادآوریِ DEV: پرداختِ واقعی هنوز فعال نیست */}
       <p className="mt-5 flex items-start gap-2 text-pretty rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs leading-6 text-amber-700 dark:text-amber-400">
-        <WarnIcon />
+        <IconWarn className="mt-0.5 h-4 w-4" />
         <span>
           درگاهِ پرداختِ واقعی (زرین‌پال) به‌زودی فعال می‌شود. در این نسخه‌ی آزمایشی،
           تغییرِ پلن بدونِ پرداختِ واقعی اعمال می‌شود تا سرویس قابلِ آزمایش باشد.
@@ -241,48 +242,3 @@ function SpecRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** آیکنِ تیکِ سبز کنارِ هر قابلیت (SVG، بدونِ ایموجی). */
-function CheckIcon() {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand"
-      fill="none"
-      aria-hidden
-    >
-      <path
-        d="M3 8.5 6.5 12 13 4.5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** آیکنِ هشدار برای نوارِ DEV (SVG، بدونِ ایموجی). */
-function WarnIcon() {
-  return (
-    <svg
-      viewBox="0 0 20 20"
-      className="mt-0.5 h-4 w-4 shrink-0"
-      fill="none"
-      aria-hidden
-    >
-      <path
-        d="M10 2.5 18.5 17.5H1.5L10 2.5Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M10 8v3.5"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-      <circle cx="10" cy="14.4" r="0.9" fill="currentColor" />
-    </svg>
-  );
-}

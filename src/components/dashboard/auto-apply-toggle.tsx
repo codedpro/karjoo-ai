@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Card, cn, toFaDigits } from "./ui";
-import { IconBolt, IconShield, IconTarget, IconWarn } from "./track-icons";
+import { IconBolt, IconShield, IconTarget, IconWarn } from "./icons";
 
 /** پاسخِ GET/PUT /api/auto-apply. */
 interface AutoApplyResult {

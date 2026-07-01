@@ -11,7 +11,7 @@
  * پرایمیتیوهای مشترک (Card/Badge/ButtonLink) و آیکن‌های SVG سوار است (بدونِ ایموجی).
  */
 import { Badge, ButtonLink, Card, cn, toFaDigits } from "./ui";
-import { IconServer, IconShield, IconWarn } from "./track-icons";
+import { IconServer, IconShield, IconWarn } from "./icons";
 import { workerIpCapacityLabel } from "./fleet-labels";
 import type { FleetStatusData } from "./fleet-status-data";
 

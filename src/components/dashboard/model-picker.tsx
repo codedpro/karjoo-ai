@@ -11,6 +11,7 @@
  */
 import { useMemo, useState } from "react";
 
+import { IconCheck, IconPuzzle } from "./icons";
 import { Badge, Button, EmptyState, cn, toFaDigits } from "./ui";
 import { MODEL_TAGS, MODEL_TAG_ORDER } from "./labels";
 
@@ -116,7 +117,7 @@ export function ModelPicker({
   if (groups.length === 0) {
     return (
       <EmptyState
-        icon="🧩"
+        icon={<IconPuzzle />}
         title="هنوز مدلی در دسترس نیست"
         body="کاتالوگِ مدل‌ها هنوز همگام نشده است. کمی بعد دوباره سر بزنید."
       />
@@ -243,7 +244,7 @@ function ModelCard({
         {isSaved ? (
           <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand px-2.5 py-0.5 text-xs font-bold text-white">
             انتخاب‌شده
-            <CheckIcon />
+            <IconCheck className="h-3.5 w-3.5" />
           </span>
         ) : isRecommended ? (
           <Badge tone="brand">پیشنهادی</Badge>
@@ -305,20 +306,5 @@ function PriceCell({ label, value }: { label: string; value: number }) {
         <span className="text-xs font-normal text-muted">تومان</span>
       </dd>
     </div>
-  );
-}
-
-/** آیکنِ تیک (SVG، بدونِ ایموجی) — تزئینی، درونِ نشانِ «انتخاب‌شده». */
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" aria-hidden>
-      <path
-        d="M3.5 8.5 6.5 11.5 12.5 4.5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

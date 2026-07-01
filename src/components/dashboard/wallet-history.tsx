@@ -4,6 +4,7 @@
  *
  * داده از RSC (wallet-data.ts) می‌آید و مقید به userIdِ نشست است.
  */
+import { IconChart } from "./icons";
 import { Badge, Card, EmptyState, toFaDigits } from "./ui";
 import { LEDGER_KIND, USAGE_KIND, providerLabel } from "./wallet-labels";
 import { formatSignedToman, formatToman } from "./wallet-format";
@@ -92,7 +93,7 @@ export function UsageTable({ rows }: { rows: DashboardUsageRow[] }) {
   if (rows.length === 0) {
     return (
       <EmptyState
-        icon="📊"
+        icon={<IconChart />}
         title="هنوز مصرفی ثبت نشده"
         body="به‌محضِ اولین استفاده از سرویس‌های هوش مصنوعی (تطبیق، انگیزه‌نامه، پردازشِ رزومه)، هزینه‌ی هر فراخوانی این‌جا فهرست می‌شود."
       />
