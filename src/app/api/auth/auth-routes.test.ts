@@ -1,9 +1,16 @@
 /**
  * تست‌های route handlerهای احراز هویت (/api/auth/*).
  *
- * استراتژی: لایه‌ی منطق (`@/lib/auth/http`, `@/lib/auth/pairing`) و کوکی‌ها
- * (`next/headers`) mock می‌شوند تا فقط «سیم‌کشیِ HTTP» تستِ شود: کدِ وضعیتِ درست،
- * نشاندن/پاک‌کردنِ کوکی، پاسخِ عمومیِ یکسان، و گاردِ احراز هویت. بدون DB/شبکه.
+ * استراتژی: لایه‌ی منطق (`@/lib/auth/http`, `@/lib/auth/core`, `@/lib/auth/google`,
+ * `@/lib/auth/pairing`, `@/lib/env`) و کوکی‌ها (`next/headers`) mock می‌شوند تا فقط
+ * «سیم‌کشیِ HTTP» تست شود: کدِ وضعیت/هدرِ redirect درست، نشاندن/پاک‌کردنِ کوکی، راستی‌آزماییِ
+ * state (CSRF)، و گاردِ احراز هویت. بدون DB/شبکه.
+ *
+ * پوششِ ورود با Google:
+ *   • GET /api/auth/google        — نشاندنِ کوکیِ state + 302 به URLِ رضایتِ Google.
+ *   • GET /api/auth/google        — پیکربندی‌نشده → 302 /login?error=oauth_unconfigured.
+ *   • GET /api/auth/callback/...   — مسیرِ خوشحال: state معتبر → نشست + 302 /dashboard.
+ *   • GET /api/auth/callback/...   — عدمِ تطابقِ state → 302 /login?error=state.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,19 +25,56 @@ vi.mock("next/headers", () => ({
   cookies: vi.fn(async () => cookieStore),
 }));
 
-/* ─────────────────────────  mock لایه‌ی منطقِ auth  ──────────────────────── */
+/* ────────────────────  mock لایه‌ی منطقِ auth (http/core)  ────────────────── */
 
 vi.mock("@/lib/auth/http", async () => {
   const actual = await vi.importActual<typeof import("@/lib/auth/http")>("@/lib/auth/http");
   return {
     ...actual,
-    requestOtp: vi.fn(async () => ({ sms: { ok: true, mode: "dev_mode" } })),
-    verifyOtpAndLogin: vi.fn(),
     getCurrentUser: vi.fn(),
     logoutByToken: vi.fn(async () => true),
     readSessionToken: vi.fn(async () => "tok"),
     setSessionCookie: vi.fn(async () => {}),
     clearSessionCookie: vi.fn(async () => {}),
+    findOrCreateUserByGoogle: vi.fn(),
+  };
+});
+
+vi.mock("@/lib/auth/core", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/auth/core")>("@/lib/auth/core");
+  return {
+    ...actual,
+    issueSession: vi.fn(async () => ({ token: "raw-token", sessionRow: {} as never })),
+  };
+});
+
+vi.mock("@/lib/auth/google", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/auth/google")>("@/lib/auth/google");
+  return {
+    ...actual,
+    buildGoogleAuthUrl: vi.fn(() => "https://accounts.google.com/o/oauth2/v2/auth?mock=1"),
+    exchangeCodeForTokens: vi.fn(async () => ({ accessToken: "at" })),
+    fetchGoogleUser: vi.fn(async () => ({
+      sub: "google-sub-1",
+      email: "user@example.com",
+      emailVerified: true,
+      name: "Ali Test",
+      picture: "https://img/a.png",
+    })),
+  };
+});
+
+vi.mock("@/lib/env", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/env")>("@/lib/env");
+  return {
+    ...actual,
+    isGoogleOAuthConfigured: vi.fn(() => true),
+    requireGoogleOAuth: vi.fn(() => ({
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      redirectUri: "https://karjooai.itmaster.uk/api/auth/callback/google",
+    })),
   };
 });
 
@@ -39,118 +83,217 @@ vi.mock("@/lib/auth/pairing", () => ({
 }));
 
 import * as authHttp from "@/lib/auth/http";
+import * as authCore from "@/lib/auth/core";
+import * as authGoogle from "@/lib/auth/google";
+import * as appEnv from "@/lib/env";
 import { createPairingCode } from "@/lib/auth/pairing";
+import { GoogleOAuthError } from "@/lib/auth/google";
 import { POST as logoutPOST } from "@/app/api/auth/logout/route";
 import { GET as meGET } from "@/app/api/auth/me/route";
-import { POST as otpRequestPOST } from "@/app/api/auth/otp/request/route";
-import { POST as otpVerifyPOST } from "@/app/api/auth/otp/verify/route";
 import { POST as pairPOST } from "@/app/api/auth/extension/pair/route";
+import {
+  GET as googleStartGET,
+  OAUTH_STATE_COOKIE,
+} from "@/app/api/auth/google/route";
+import { GET as googleCallbackGET } from "@/app/api/auth/callback/google/route";
 
-const requestOtpMock = vi.mocked(authHttp.requestOtp);
-const verifyOtpAndLoginMock = vi.mocked(authHttp.verifyOtpAndLogin);
 const getCurrentUserMock = vi.mocked(authHttp.getCurrentUser);
 const setSessionCookieMock = vi.mocked(authHttp.setSessionCookie);
 const clearSessionCookieMock = vi.mocked(authHttp.clearSessionCookie);
 const logoutByTokenMock = vi.mocked(authHttp.logoutByToken);
+const findOrCreateUserByGoogleMock = vi.mocked(authHttp.findOrCreateUserByGoogle);
+const issueSessionMock = vi.mocked(authCore.issueSession);
+const buildGoogleAuthUrlMock = vi.mocked(authGoogle.buildGoogleAuthUrl);
+const exchangeCodeForTokensMock = vi.mocked(authGoogle.exchangeCodeForTokens);
+const fetchGoogleUserMock = vi.mocked(authGoogle.fetchGoogleUser);
+const isGoogleOAuthConfiguredMock = vi.mocked(appEnv.isGoogleOAuthConfigured);
 const createPairingCodeMock = vi.mocked(createPairingCode);
 
-const USER = { id: "u1", phone: "+989121234567", fullName: null, plan: "payg" as const, isActive: true, createdAt: new Date(), updatedAt: new Date() };
+/** کاربرِ نمونه با شکلِ جدیدِ schema (هویتِ Google، بدونِ phone). */
+const USER = {
+  id: "u1",
+  googleSub: "google-sub-1",
+  email: "user@example.com",
+  name: "Ali Test",
+  avatarUrl: "https://img/a.png",
+  phone: null,
+  fullName: null,
+  plan: "free" as const,
+  isActive: true,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+} as unknown as import("@/db/schema").User;
 
-function jsonRequest(url: string, body: unknown): Request {
+/** یک GET Request با هدرها (user-agent برای رصدِ نشست). */
+function getRequest(url: string): Request {
   return new Request(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "user-agent": "ua-test" },
-    body: JSON.stringify(body),
+    method: "GET",
+    headers: { "user-agent": "ua-test", "x-forwarded-for": "203.0.113.7" },
   });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   authHttp.resetOtpRateLimit();
+  // پیش‌فرض‌های mock (بعضی تست‌ها override می‌کنند).
+  isGoogleOAuthConfiguredMock.mockReturnValue(true);
+  cookieStore.get.mockReturnValue(undefined);
 });
 
-describe("POST /api/auth/otp/request", () => {
-  it("ورودیِ معتبر → ۲۰۰ با پاسخِ عمومی و فراخوانیِ requestOtp", async () => {
-    const res = await otpRequestPOST(
-      jsonRequest("http://x/api/auth/otp/request", { phone: "09121234567" }),
+/* ─────────────────────────  GET /api/auth/google  ────────────────────────── */
+
+describe("GET /api/auth/google (شروعِ جریانِ OAuth)", () => {
+  it("کوکیِ state را می‌نشاند و به URLِ رضایتِ Google هدایت می‌کند (302)", async () => {
+    const res = await googleStartGET(getRequest("http://x/api/auth/google"));
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe(
+      "https://accounts.google.com/o/oauth2/v2/auth?mock=1",
     );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.ok).toBe(true);
-    expect(requestOtpMock).toHaveBeenCalledTimes(1);
-    // شماره نرمال‌شده (E.164) به منطق می‌رسد.
-    expect(requestOtpMock.mock.calls[0][0]).toBe("+989121234567");
+
+    // کوکیِ state (httpOnly، کوتاه‌عمر) نشانده شد.
+    expect(cookieStore.set).toHaveBeenCalledTimes(1);
+    const [name, value, opts] = cookieStore.set.mock.calls[0];
+    expect(name).toBe(OAUTH_STATE_COOKIE);
+    expect(typeof value).toBe("string");
+    expect(value.length).toBeGreaterThan(0);
+    expect(opts).toMatchObject({ httpOnly: true, sameSite: "lax", path: "/" });
+
+    // همان stateِ کوکی به سازنده‌ی URL منتقل شد (تا در callback مقایسه شود).
+    expect(buildGoogleAuthUrlMock).toHaveBeenCalledTimes(1);
+    expect(buildGoogleAuthUrlMock.mock.calls[0][0]).toBe(value);
   });
 
-  it("شماره‌ی نامعتبر → ۴۰۰", async () => {
-    const res = await otpRequestPOST(
-      jsonRequest("http://x/api/auth/otp/request", { phone: "abc" }),
-    );
-    expect(res.status).toBe(400);
-    expect(requestOtpMock).not.toHaveBeenCalled();
+  it("پیکربندی‌نشده → 302 /login?error=oauth_unconfigured و کوکیِ state نمی‌نشیند", async () => {
+    isGoogleOAuthConfiguredMock.mockReturnValue(false);
+    const res = await googleStartGET(getRequest("http://x/api/auth/google"));
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("/login?error=oauth_unconfigured");
+    expect(cookieStore.set).not.toHaveBeenCalled();
+    expect(buildGoogleAuthUrlMock).not.toHaveBeenCalled();
   });
 
-  it("بدنه‌ی غیرJSON → ۴۰۰", async () => {
-    const bad = new Request("http://x/api/auth/otp/request", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{not json",
-    });
-    const res = await otpRequestPOST(bad);
-    expect(res.status).toBe(400);
-  });
-
-  it("پس از عبور از سقفِ نرخ، دیگر پیامک نمی‌فرستد ولی همان پاسخِ عمومی را می‌دهد", async () => {
-    const url = "http://x/api/auth/otp/request";
+  it("پس از عبور از سقفِ نرخِ per-IP → 302 /login?error=rate_limited", async () => {
+    const url = "http://x/api/auth/google";
     for (let i = 0; i < authHttp.OTP_RATE_LIMIT_MAX; i++) {
-      const r = await otpRequestPOST(jsonRequest(url, { phone: "09121234567" }));
-      expect(r.status).toBe(200);
+      const r = await googleStartGET(getRequest(url));
+      expect(r.status).toBe(302);
+      expect(r.headers.get("Location")).not.toContain("error=rate_limited");
     }
-    // درخواستِ بعدی: مسدودِ نرخ → requestOtp صدا نمی‌خورد ولی پاسخ ۲۰۰ عمومی است.
-    const blocked = await otpRequestPOST(jsonRequest(url, { phone: "09121234567" }));
-    expect(blocked.status).toBe(200);
-    expect((await blocked.json()).ok).toBe(true);
-    expect(requestOtpMock).toHaveBeenCalledTimes(authHttp.OTP_RATE_LIMIT_MAX);
+    const blocked = await googleStartGET(getRequest(url));
+    expect(blocked.status).toBe(302);
+    expect(blocked.headers.get("Location")).toContain("/login?error=rate_limited");
   });
 });
 
-describe("POST /api/auth/otp/verify", () => {
-  it("کدِ درست → ۲۰۰، کوکی نشانده می‌شود، کاربر برمی‌گردد", async () => {
-    verifyOtpAndLoginMock.mockResolvedValueOnce({
-      ok: true,
-      user: USER,
-      session: { token: "raw-token", sessionRow: {} as never },
-    });
-    const res = await otpVerifyPOST(
-      jsonRequest("http://x/api/auth/otp/verify", { phone: "09121234567", code: "123456" }),
+/* ─────────────────────  GET /api/auth/callback/google  ───────────────────── */
+
+describe("GET /api/auth/callback/google (بازگشت از Google)", () => {
+  it("state معتبر → نشست صادر و کوکی نشانده می‌شود، 302 /dashboard", async () => {
+    cookieStore.get.mockReturnValue({ value: "state-abc" });
+    findOrCreateUserByGoogleMock.mockResolvedValueOnce(USER);
+
+    const res = await googleCallbackGET(
+      getRequest("http://x/api/auth/callback/google?code=the-code&state=state-abc"),
     );
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.user).toEqual({ id: "u1", phone: "+989121234567", fullName: null });
-    // کوکیِ نشست با توکنِ خام نشانده شد.
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("/dashboard");
+
+    // تبادلِ کد + خواندنِ پروفایل + پیدا/ساختِ کاربر.
+    expect(exchangeCodeForTokensMock).toHaveBeenCalledTimes(1);
+    expect(exchangeCodeForTokensMock.mock.calls[0][0]).toBe("the-code");
+    expect(fetchGoogleUserMock).toHaveBeenCalledTimes(1);
+    expect(findOrCreateUserByGoogleMock).toHaveBeenCalledTimes(1);
+    expect(findOrCreateUserByGoogleMock.mock.calls[0][0]).toMatchObject({
+      sub: "google-sub-1",
+      email: "user@example.com",
+      name: "Ali Test",
+      avatarUrl: "https://img/a.png",
+    });
+
+    // نشستِ وب صادر و کوکیِ نشست با توکنِ خام نشانده شد.
+    expect(issueSessionMock).toHaveBeenCalledTimes(1);
+    expect(issueSessionMock.mock.calls[0][0]).toBe("u1");
+    expect(issueSessionMock.mock.calls[0][1]).toBe("web");
     expect(setSessionCookieMock).toHaveBeenCalledTimes(1);
     expect(setSessionCookieMock.mock.calls[0][0]).toBe("raw-token");
-    // userAgent از هدر به منطق رسید.
-    expect(verifyOtpAndLoginMock.mock.calls[0][2]).toMatchObject({ userAgent: "ua-test" });
+
+    // کوکیِ state (یک‌بارمصرف) پاک شد.
+    expect(cookieStore.delete).toHaveBeenCalledWith(OAUTH_STATE_COOKIE);
   });
 
-  it("کدِ غلط → ۴۰۱ عمومی، بدونِ کوکی", async () => {
-    verifyOtpAndLoginMock.mockResolvedValueOnce({ ok: false, reason: "mismatch" });
-    const res = await otpVerifyPOST(
-      jsonRequest("http://x/api/auth/otp/verify", { phone: "09121234567", code: "000000" }),
+  it("عدمِ تطابقِ state → 302 /login?error=state، بدونِ نشست", async () => {
+    cookieStore.get.mockReturnValue({ value: "state-abc" });
+
+    const res = await googleCallbackGET(
+      getRequest("http://x/api/auth/callback/google?code=the-code&state=WRONG"),
     );
-    expect(res.status).toBe(401);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("/login?error=state");
+    // هیچ تبادلِ توکن/نشستی رخ نمی‌دهد.
+    expect(exchangeCodeForTokensMock).not.toHaveBeenCalled();
+    expect(issueSessionMock).not.toHaveBeenCalled();
+    expect(setSessionCookieMock).not.toHaveBeenCalled();
+    // کوکیِ state حتی در مسیرِ خطا هم پاک می‌شود (یک‌بارمصرف).
+    expect(cookieStore.delete).toHaveBeenCalledWith(OAUTH_STATE_COOKIE);
+  });
+
+  it("نبودِ کوکیِ state → 302 /login?error=state", async () => {
+    cookieStore.get.mockReturnValue(undefined);
+
+    const res = await googleCallbackGET(
+      getRequest("http://x/api/auth/callback/google?code=the-code&state=state-abc"),
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("/login?error=state");
+    expect(exchangeCodeForTokensMock).not.toHaveBeenCalled();
+  });
+
+  it("پیکربندی‌نشده → 302 /login?error=oauth_unconfigured", async () => {
+    isGoogleOAuthConfiguredMock.mockReturnValue(false);
+
+    const res = await googleCallbackGET(
+      getRequest("http://x/api/auth/callback/google?code=c&state=s"),
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("/login?error=oauth_unconfigured");
+  });
+
+  it("GoogleOAuthError هنگامِ تبادلِ توکن → 302 /login?error=oauth، بدونِ نشست", async () => {
+    cookieStore.get.mockReturnValue({ value: "state-abc" });
+    exchangeCodeForTokensMock.mockRejectedValueOnce(
+      new GoogleOAuthError("token_exchange_failed", "boom", 400),
+    );
+
+    const res = await googleCallbackGET(
+      getRequest("http://x/api/auth/callback/google?code=the-code&state=state-abc"),
+    );
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("/login?error=oauth");
+    expect(issueSessionMock).not.toHaveBeenCalled();
     expect(setSessionCookieMock).not.toHaveBeenCalled();
   });
 
-  it("کدِ بدشکل → ۴۰۰", async () => {
-    const res = await otpVerifyPOST(
-      jsonRequest("http://x/api/auth/otp/verify", { phone: "09121234567", code: "x" }),
+  it("نبودِ code (رد رضایت) با stateِ معتبر → 302 /login?error=oauth", async () => {
+    cookieStore.get.mockReturnValue({ value: "state-abc" });
+
+    const res = await googleCallbackGET(
+      getRequest("http://x/api/auth/callback/google?state=state-abc&error=access_denied"),
     );
-    expect(res.status).toBe(400);
-    expect(verifyOtpAndLoginMock).not.toHaveBeenCalled();
+
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("/login?error=oauth");
+    expect(exchangeCodeForTokensMock).not.toHaveBeenCalled();
   });
 });
+
+/* ────────────────────────────  POST /api/auth/logout  ────────────────────── */
 
 describe("POST /api/auth/logout", () => {
   it("همیشه ۲۰۰ و کوکی را پاک می‌کند (idempotent)", async () => {
@@ -161,12 +304,19 @@ describe("POST /api/auth/logout", () => {
   });
 });
 
+/* ────────────────────────────  GET /api/auth/me  ─────────────────────────── */
+
 describe("GET /api/auth/me", () => {
-  it("نشستِ معتبر → کاربر", async () => {
+  it("نشستِ معتبر → کاربر (شکلِ جدید: id/email/name/avatarUrl)", async () => {
     getCurrentUserMock.mockResolvedValueOnce(USER);
     const res = await meGET();
     expect(res.status).toBe(200);
-    expect((await res.json()).user).toEqual({ id: "u1", phone: "+989121234567", fullName: null });
+    expect((await res.json()).user).toEqual({
+      id: "u1",
+      email: "user@example.com",
+      name: "Ali Test",
+      avatarUrl: "https://img/a.png",
+    });
   });
 
   it("بدونِ نشست → ۴۰۱", async () => {
@@ -175,6 +325,8 @@ describe("GET /api/auth/me", () => {
     expect(res.status).toBe(401);
   });
 });
+
+/* ──────────────────────  POST /api/auth/extension/pair  ──────────────────── */
 
 describe("POST /api/auth/extension/pair", () => {
   it("کاربرِ احرازشده → کدِ جفت‌سازی + انقضا", async () => {
