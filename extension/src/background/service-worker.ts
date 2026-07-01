@@ -234,11 +234,15 @@ async function handleImportProfiles(boards?: BoardId[]): Promise<BoardImportOutc
 /** Import one board: open profile page → scrape DATA → DATA-only POST. */
 async function importOneBoard(api: KarjooApi, board: BoardId): Promise<BoardImportOutcome> {
   const cfg = BOARDS[board];
-  const profileUrl = `${cfg.origin}${cfg.profilePath}`;
 
-  // Open (or focus) the user's OWN profile page in a real tab — they are present.
-  const tab = await ensureTab(profileUrl, cfg.origin);
-  if (!tab?.id) return { board, ok: false, message: "نتوانستم صفحه‌ی پروفایل را باز کنم." };
+  // نشانیِ عمیقِ صفحه‌ی رزومه بین سایت‌ها فرق دارد و ممکن است ۴۰۴ شود؛ پس هرگز کاربر را
+  // روی یک لینکِ حدسیِ ۴۰۴ نمی‌فرستیم. اگر تبی از همین سایت باز است (به‌احتمالِ زیاد صفحه‌ی
+  // خودِ کاربر)، همان را به کار می‌بریم؛ وگرنه خانه‌ی سایت (صفحه‌ی معتبر) را باز می‌کنیم و
+  // اسکرپر از همان صفحه می‌خواند.
+  const openTabs = await chrome.tabs.query({ url: `${cfg.origin}/*` });
+  const tab = openTabs[0] ?? (await chrome.tabs.create({ url: cfg.origin, active: true }));
+  if (!tab?.id) return { board, ok: false, message: "نتوانستم صفحه‌ی سایت را باز کنم." };
+  await chrome.tabs.update(tab.id, { active: true });
 
   // Ask the import content script to read the user's OWN profile DOM (DATA only).
   let scraped: ScrapeProfileResult | undefined;
@@ -256,7 +260,13 @@ async function importOneBoard(api: KarjooApi, board: BoardId): Promise<BoardImpo
   }
 
   if (!scraped?.ok || !scraped.profile) {
-    return { board, ok: false, message: scraped?.message ?? "داده‌ای برای ایمپورت پیدا نشد." };
+    return {
+      board,
+      ok: false,
+      message:
+        scraped?.message ??
+        "رزومه‌ای در این صفحه پیدا نشد — صفحه‌ی رزومه‌ات را در این سایت باز کن و دوباره «وارد کردن» را بزن.",
+    };
   }
 
   // Build the DATA-ONLY body. This THROWS if any credential-shaped key sneaked in

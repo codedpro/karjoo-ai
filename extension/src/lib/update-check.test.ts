@@ -115,8 +115,18 @@ describe("checkForUpdate (integration, injectable fetch)", () => {
   });
 
   it("resolves to no-update when no fetch implementation is available", async () => {
-    const r = await checkForUpdate(ORIGIN, "0.2.0", { fetchImpl: undefined });
-    expect(r.updateAvailable).toBe(false);
+    // Simulate an environment with NO fetch at all: inject undefined AND remove the
+    // global. (Just passing fetchImpl:undefined falls back to globalThis.fetch, which
+    // exists in Node — so we must unset it to exercise the `!fetchImpl` guard.)
+    const savedFetch = globalThis.fetch;
+    // @ts-expect-error — intentionally removing fetch to simulate its absence
+    delete globalThis.fetch;
+    try {
+      const r = await checkForUpdate(ORIGIN, "0.2.0", { fetchImpl: undefined });
+      expect(r.updateAvailable).toBe(false);
+    } finally {
+      globalThis.fetch = savedFetch;
+    }
   });
 
   it("hits the /api/extension/version endpoint on the given origin", async () => {

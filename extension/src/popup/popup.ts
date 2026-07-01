@@ -311,7 +311,7 @@ function boardCard(board: BoardId, displayName: string): HTMLLIElement {
     <input class="input board-label-input" data-label placeholder="برچسب حساب (اختیاری)" autocomplete="off" />
     <div class="board-actions">
       <button class="btn btn-ghost btn-sm" data-detect>بررسی ورود</button>
-      <button class="btn btn-primary btn-sm" data-connect disabled>اتصال</button>
+      <button class="btn btn-primary btn-sm" data-connect>اتصال</button>
     </div>
   `;
   const statusEl = li.querySelector<HTMLElement>("[data-status]")!;
@@ -319,20 +319,23 @@ function boardCard(board: BoardId, displayName: string): HTMLLIElement {
   const detectBtn = li.querySelector<HTMLButtonElement>("[data-detect]")!;
   const labelInput = li.querySelector<HTMLInputElement>("[data-label]")!;
 
+  // تشخیصِ ورود «مشورتی» است، نه دروازه‌بان: هرگز دکمه‌ی «اتصال» را غیرفعال نمی‌کند.
+  // خودِ کاربر می‌داند وارد شده یا نه؛ و «اتصال» فقط متادیتای {board} را ذخیره می‌کند
+  // (هیچ کوکی/توکنی فرستاده نمی‌شود). پس تشخیصِ ناموفق نباید کاربر را قفل کند.
   const detect = async () => {
     setStatus(statusEl, "در حال بررسی…", "");
+    detectBtn.disabled = true;
     try {
       const res = await send<ProbeSessionResult>({ type: "DETECT_BOARD", board });
       if (res.loggedIn) {
         setStatus(statusEl, "وارد شده در مرورگر شما", "ok");
-        connectBtn.disabled = false;
       } else {
-        setStatus(statusEl, "وارد نشده‌اید", "warn");
-        connectBtn.disabled = true;
+        setStatus(statusEl, "ورود تشخیص داده نشد — اگر واردید، «اتصال» را بزنید", "warn");
       }
-    } catch (e) {
-      setStatus(statusEl, "خطا در بررسی", "warn");
-      showGlobalError(errMsg(e));
+    } catch {
+      setStatus(statusEl, "بررسی ناموفق بود — می‌توانید دستی «اتصال» بزنید", "warn");
+    } finally {
+      detectBtn.disabled = false;
     }
   };
 
