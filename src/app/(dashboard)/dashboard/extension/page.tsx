@@ -23,6 +23,7 @@ import {
   IconSparkle,
 } from "@/components/dashboard/icons";
 import { Badge, Card, PageHeader } from "@/components/dashboard/ui";
+import { KARJOO_EXTENSION_VERSION } from "@/lib/extension/version";
 
 // راستی‌آزماییِ نشست → اجرای Node.
 export const runtime = "nodejs";
@@ -206,6 +207,25 @@ function InstallGuide() {
           مرورگر افزونه را از همان مسیر می‌خواند. برای به‌روزرسانی، نسخه‌ی جدید را دانلود
           و از همان‌جا دوباره «Load unpacked» کنید.
         </p>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-foreground/[0.02] px-4 py-3">
+        <div className="flex items-center gap-2 text-xs text-muted">
+          <IconSparkle className="h-4 w-4 text-brand" aria-hidden />
+          <span>
+            آخرین نسخه‌ی منتشرشده‌ی افزونه:{" "}
+            <span
+              dir="ltr"
+              className="ltr-nums mx-0.5 inline-block rounded-md bg-brand/10 px-1.5 py-0.5 align-middle font-mono text-[0.7rem] font-semibold text-brand"
+            >
+              v{KARJOO_EXTENSION_VERSION}
+            </span>
+          </span>
+        </div>
+        <span className="text-[0.7rem] leading-5 text-muted">
+          افزونه هنگام باز شدن، نسخه‌ی نصب‌شده را با این نسخه می‌سنجد و در صورتِ قدیمی بودن،
+          پیامِ به‌روزرسانی نشان می‌دهد.
+        </span>
       </div>
     </Card>
   );
