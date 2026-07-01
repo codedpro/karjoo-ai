@@ -11,6 +11,25 @@
   --muted: #64748b;
   --card: #ffffff;
   --border: #e7e8ee;
+
+  /* سطحِ فرورفته (رَنگِ زمینه‌ی پشتِ کارت‌ها/ناوبری) — لایه‌بندیِ عمق */
+  --surface: #f7f8fb;
+
+  /* ── توکن‌های شعاعِ گوشه (یک مقیاسِ منسجم) ── */
+  --radius-sm: 0.5rem; /* نشان/چیپ */
+  --radius-md: 0.75rem; /* دکمه/آیکن‌باکس */
+  --radius-lg: 1rem; /* کارتِ کوچک */
+  --radius-xl: 1.25rem; /* کارتِ اصلی */
+  --radius-2xl: 1.5rem; /* پنلِ بزرگ */
+
+  /* ── سایه‌ها؛ hue-tinted و ملایم (نه glow) ── */
+  --shadow-xs: 0 1px 2px -1px color-mix(in oklab, var(--foreground) 12%, transparent);
+  --shadow-sm: 0 2px 8px -3px color-mix(in oklab, var(--foreground) 14%, transparent);
+  --shadow-md: 0 12px 32px -12px color-mix(in oklab, var(--foreground) 20%, transparent);
+  --shadow-brand: 0 10px 26px -10px color-mix(in oklab, var(--brand) 55%, transparent);
+
+  /* حلقه‌ی تمرکز (a11y) — همه‌جا یکسان */
+  --ring: color-mix(in oklab, var(--brand) 55%, transparent);
 }
 
 @theme inline {
@@ -22,8 +41,20 @@
   --color-muted: var(--muted);
   --color-card: var(--card);
   --color-border: var(--border);
+  --color-surface: var(--surface);
   --font-sans: var(--font-vazir);
   --font-display: var(--font-vazir);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-brand: var(--shadow-brand);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -33,6 +64,12 @@
     --muted: #94a3b8;
     --card: #0e1322;
     --border: #1e2640;
+    --surface: #0a0f1c;
+
+    --shadow-xs: 0 1px 2px -1px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 2px 10px -3px rgba(0, 0, 0, 0.55);
+    --shadow-md: 0 16px 40px -14px rgba(0, 0, 0, 0.7);
+    --shadow-brand: 0 12px 30px -12px color-mix(in oklab, var(--brand) 65%, transparent);
   }
 }
 
@@ -57,6 +94,49 @@ body {
 .ltr-nums {
   direction: ltr;
   unicode-bidi: isolate;
+}
+
+/* ── کمک‌کننده‌های مشترکِ داشبورد (توکن‌محور) ── */
+
+/* حلقه‌ی تمرکزِ یکسان و قابل‌مشاهده برای همه‌ی عناصرِ تعاملی (a11y) */
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 4px var(--ring);
+  border-radius: inherit;
+}
+
+/* درخششِ ملایمِ اسکلت (به‌جای pulseِ خشک) — فقط transform/opacity، بدونِ ری‌پینت */
+@keyframes karjoo-shimmer {
+  100% {
+    transform: translateX(-100%);
+  }
+}
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--foreground) 6%, transparent),
+    transparent
+  );
+  animation: karjoo-shimmer 1.6s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after {
+    animation: none;
+  }
 }
 
 /* محتوای وبلاگ از موتور IT Master (HTML خام) — تایپوگرافی پایه و RTL */
