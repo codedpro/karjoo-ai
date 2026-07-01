@@ -32,6 +32,7 @@
     "https://*.e-estekhdam.com/*",
     "https://irantalent.com/*",
     "https://*.irantalent.com/*",
+    "https://karjooai.itmaster.uk/*",
     "http://localhost:3000/*"
   ],
   "content_scripts": [
