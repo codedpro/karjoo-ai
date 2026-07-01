@@ -1,44 +1,39 @@
 "use client";
 
 /**
- * پنلِ کنترلِ «اپلای خودکار» (client component) — تاگلِ رضایت + اسلایدرِ آستانه.
+ * پنلِ کنترلِ «اپلای خودکارِ سرور» (client component) — تاگلِ رضایتِ سطحِ *سرور* + آستانه.
  *
- * تنظیماتِ اولیه از سرور (RSC) می‌آید؛ این کامپوننت فقط تغییرات را با
- * PUT /api/auto-apply می‌فرستد (بدنه: { enabled?, minScore? }) و نتیجه را نشان می‌دهد،
- * سپس router.refresh تا RSCها (ردِ ممیزی/وضعیت) تازه شوند.
+ * سطحِ سرور مستقل از تاگلِ افزونه است: اپلای ۲۴ ساعته روی ناوگانِ ایرانیِ کارجو، بدونِ نیاز
+ * به بازبودنِ مرورگر. فقط برای پلن‌های Max/Max+ رندر می‌شود (صفحه پیش از این کامپوننت
+ * eligibility را چک می‌کند)؛ اگر سرور با ۴۰۳/not_entitled پاسخ دهد، پیامِ ارتقا نشان داده و
+ * تاگل به حالتِ راستینِ سرور برگردانده می‌شود (fail-closed).
  *
- * رضایتِ صریح: تاگل پیش‌فرض خاموش است و فقط با کلیکِ خودِ کاربر روشن می‌شود. متنِ کنارِ
- * تاگل دقیقاً می‌گوید چه کاری انجام می‌شود، که قابلِ لغو است و یادآوریِ ToS/حساب را دارد.
- *
- * هیچ توکن/رازی نمی‌بیند؛ فقط با کوکیِ نشستِ httpOnly کار می‌کند (مرورگر خودش می‌فرستد).
- * userId هرگز از کلاینت فرستاده نمی‌شود — سرور آن را از نشست می‌گیرد (§۱۰/قاعده‌ی ۴).
+ * تنظیماتِ اولیه از RSC می‌آید؛ این کامپوننت فقط تغییرات را با PUT /api/server-auto-apply
+ * می‌فرستد (بدنه: { enabled?, minScore? }) و سپس router.refresh تا پنل‌های وضعیت تازه شوند.
+ * هیچ توکن/رازی نمی‌بیند؛ userId هرگز از کلاینت نمی‌رود — سرور از نشست می‌گیرد (§۱۰/قاعده‌ی ۴).
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Card, cn, toFaDigits } from "./ui";
-import { IconBolt, IconShield, IconTarget, IconWarn } from "./icons";
+import { IconServer, IconShield, IconTarget } from "./icons";
 
-/** پاسخِ GET/PUT /api/auto-apply. */
-interface AutoApplyResult {
+/** پاسخِ GET/PUT /api/server-auto-apply. */
+interface ServerAutoApplyResult {
   enabled?: boolean;
   minScore?: number;
   error?: string;
 }
 
-export function AutoApplyToggle({
+export function ServerAutoApplyToggle({
   initialEnabled,
   initialMinScore,
-  /** آیا کاربر دستِ‌کم یک حسابِ متصلِ آماده دارد؟ (برای هشدارِ پیش‌نیاز). */
-  hasReadyBoard,
 }: {
   initialEnabled: boolean;
   initialMinScore: number;
-  hasReadyBoard: boolean;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(initialEnabled);
-  // اسلایدر با درصدِ صحیح (۰..۱۰۰) کار می‌کند؛ هنگامِ ارسال به ۰..۱ تبدیل می‌شود.
   const [scorePct, setScorePct] = useState(Math.round(initialMinScore * 100));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,14 +45,17 @@ export function AutoApplyToggle({
     setNotice(null);
     setBusy(true);
     try {
-      const res = await fetch("/api/auto-apply", {
+      const res = await fetch("/api/server-auto-apply", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),
       });
-      const data: AutoApplyResult = await res.json().catch(() => ({}));
+      const data: ServerAutoApplyResult = await res.json().catch(() => ({}));
       if (!res.ok || data.enabled === undefined) {
-        setError(data.error ?? "ذخیره‌ی تنظیمات ناموفق بود.");
+        setError(
+          data.error ??
+            "ذخیره‌ی تنظیماتِ اپلای خودکارِ سرور ناموفق بود.",
+        );
         return false;
       }
       setEnabled(data.enabled);
@@ -80,50 +78,47 @@ export function AutoApplyToggle({
     if (ok) {
       setNotice(
         next
-          ? "اپلای خودکار روشن شد. کارجو فقط فرصت‌های بالاتر از آستانه را در محدوده‌ی سقفِ روزانه اپلای می‌کند."
-          : "اپلای خودکار خاموش شد. هیچ اپلای خودکاری انجام نمی‌شود.",
+          ? "اپلای خودکارِ سرور روشن شد. کارجو فرصت‌های بالاتر از آستانه را ۲۴ ساعته و بدونِ نیاز به افزونه اپلای می‌کند."
+          : "اپلای خودکارِ سرور خاموش شد. ناوگان دیگر برای شما اپلای نمی‌کند.",
       );
       router.refresh();
     }
   }
 
-  /** ذخیره‌ی آستانه (هنگامِ رهاکردنِ اسلایدر، تا روی هر پیکسل درخواست نرود). */
+  /** ذخیره‌ی آستانه (هنگامِ رهاکردنِ اسلایدر). */
   async function onCommitScore() {
     if (busy) return;
     const ok = await persist({ minScore: scorePct / 100 });
     if (ok) {
-      setNotice(`آستانه‌ی امتیاز به ${toFaDigits(scorePct)}٪ تنظیم شد.`);
+      setNotice(`آستانه‌ی امتیازِ سرور به ${toFaDigits(scorePct)}٪ تنظیم شد.`);
       router.refresh();
     }
   }
 
   return (
     <Card padded>
-      {/* ───── تاگلِ رضایت ───── */}
+      {/* ───── تاگلِ رضایتِ سطحِ سرور ───── */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           <span
             className={cn(
               "grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-colors",
-              enabled
-                ? "bg-brand/12 text-brand"
-                : "bg-foreground/5 text-muted",
+              enabled ? "bg-brand/12 text-brand" : "bg-foreground/5 text-muted",
             )}
             aria-hidden
           >
-            <IconBolt className="h-5 w-5" />
+            <IconServer className="h-5 w-5" />
           </span>
           <div className="min-w-0">
             <h3 className="text-balance text-base font-bold leading-tight">
-              اپلای خودکار
+              فعال‌سازیِ اپلای خودکارِ سرور
             </h3>
             <p className="mt-1.5 text-pretty text-sm leading-7 text-muted">
-              با روشن‌کردنِ این گزینه، کارجو از طرفِ شما برای فرصت‌هایی که امتیازِ تطبیقِ
-              آن‌ها از آستانه بالاتر است و در محدوده‌ی سقفِ روزانه‌اند،{" "}
+              با روشن‌کردنِ این گزینه، ناوگانِ کارجو از طرفِ شما فرصت‌های بالاتر از آستانه را{" "}
               <strong className="font-semibold text-foreground">
-                به‌صورت خودکار
+                ۲۴ ساعته و بدونِ افزونه
               </strong>{" "}
-              اپلای می‌کند — در مرورگرِ خودتان و با نشستِ خودتان روی سایت‌های متصل.
+              اپلای می‌کند — با نشستِ رمزشده‌ی خودتان در خزانه، حتی وقتی مرورگرتان بسته است.
             </p>
           </div>
         </div>
@@ -132,7 +127,7 @@ export function AutoApplyToggle({
           type="button"
           role="switch"
           aria-checked={enabled}
-          aria-label="روشن/خاموش‌کردنِ اپلای خودکار"
+          aria-label="روشن/خاموش‌کردنِ اپلای خودکارِ سرور"
           onClick={onToggle}
           disabled={busy}
           className={cn(
@@ -150,7 +145,7 @@ export function AutoApplyToggle({
         </button>
       </div>
 
-      {/* وضعیتِ فعلیِ تاگل */}
+      {/* وضعیتِ فعلیِ تاگلِ سرور */}
       <div className="mt-4">
         <span
           className={cn(
@@ -167,41 +162,32 @@ export function AutoApplyToggle({
             )}
             aria-hidden
           />
-          {enabled ? "روشن — رضایت فعال است" : "خاموش — هیچ اپلایی انجام نمی‌شود"}
+          {enabled
+            ? "روشن — ناوگان برای شما اپلای می‌کند"
+            : "خاموش — ناوگان اپلای نمی‌کند"}
         </span>
       </div>
-
-      {/* هشدارِ پیش‌نیاز: حسابِ متصلِ آماده */}
-      {enabled && !hasReadyBoard ? (
-        <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-700 dark:text-amber-400">
-          <IconWarn className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="text-pretty text-xs leading-6">
-            هنوز حسابِ متصلِ آماده‌ای ندارید. تا وقتی یک سایتِ پشتیبانی‌شده را با افزونه
-            متصل نکنید، اپلای خودکار عملاً اجرا نمی‌شود.
-          </p>
-        </div>
-      ) : null}
 
       {/* ───── اسلایدرِ آستانه ───── */}
       <div className="mt-6 border-t border-border/70 pt-5">
         <div className="flex items-center justify-between gap-3">
           <label
-            htmlFor="min-score"
+            htmlFor="server-min-score"
             className="inline-flex items-center gap-2 text-sm font-medium"
           >
             <IconTarget className="h-4 w-4 text-muted" />
-            آستانه‌ی امتیازِ تطبیق
+            آستانه‌ی امتیازِ تطبیق (سرور)
           </label>
           <span className="ltr-nums whitespace-nowrap rounded-full bg-brand/10 px-2.5 py-0.5 text-sm font-bold text-brand">
             {toFaDigits(scorePct)}٪
           </span>
         </div>
         <p className="mt-1.5 text-pretty text-xs leading-6 text-muted">
-          فقط فرصت‌هایی که امتیازِ تطبیقِ آن‌ها از این مقدار بالاتر باشد به‌صورت خودکار
-          اپلای می‌شوند. مقدارِ بالاتر یعنی اپلای کم‌تر اما دقیق‌تر.
+          ناوگان فقط فرصت‌هایی را که امتیازِ تطبیقشان از این مقدار بالاتر است اپلای می‌کند.
+          مقدارِ بالاتر یعنی اپلای کم‌تر اما دقیق‌تر.
         </p>
         <input
-          id="min-score"
+          id="server-min-score"
           type="range"
           min={0}
           max={100}
@@ -216,14 +202,13 @@ export function AutoApplyToggle({
         />
       </div>
 
-      {/* ───── یادآوریِ ToS/لغو ───── */}
+      {/* ───── یادآوریِ امنیت/لغو ───── */}
       <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-border bg-surface/50 px-4 py-3 text-muted">
         <IconShield className="mt-0.5 h-4 w-4 shrink-0" />
         <p className="text-pretty text-xs leading-6">
-          این تنظیم هر لحظه قابلِ لغو است؛ کافی‌ست تاگل را خاموش کنید. توجه: اپلای خودکار
-          ممکن است با شرایطِ استفاده‌ی برخی سایت‌ها سازگار نباشد و مسئولیتِ حسابِ کاربری بر
-          عهده‌ی شماست. کارجو هرگز از سازوکارِ تشخیصِ ربات عبور نمی‌کند و فقط با نشستِ واقعیِ
-          خودِ شما عمل می‌کند.
+          این تنظیم هر لحظه قابلِ لغو است؛ کافی‌ست تاگل را خاموش کنید. ناوگان فقط با نشستِ
+          واقعیِ خودتان عمل می‌کند؛ کلیدِ خزانه هرگز کنترل‌پلین را ترک نمی‌کند و هیچ سازوکارِ
+          تشخیصِ ربات دور زده نمی‌شود.
         </p>
       </div>
 

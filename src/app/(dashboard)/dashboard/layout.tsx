@@ -22,7 +22,7 @@ import {
 } from "@/components/dashboard/dashboard-user-chip";
 import { MobileNav, SidebarNav } from "@/components/dashboard/dashboard-nav";
 import { signOut } from "@/components/dashboard/actions";
-import { site } from "@/lib/site";
+import { Logo } from "@/components/brand/logo";
 
 export default function DashboardLayout({
   children,
@@ -37,12 +37,16 @@ export default function DashboardLayout({
           {/* برند */}
           <Link
             href="/dashboard"
-            className="focus-ring flex items-center gap-2.5 rounded-lg text-lg font-bold"
+            className="focus-ring flex items-center gap-2.5 rounded-lg"
+            aria-label="کارجو — داشبورد"
           >
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white shadow-brand">
-              ک
+            {/* روی موبایل فقط نشان؛ روی sm به‌بالا قفلِ کامل. */}
+            <span className="sm:hidden">
+              <Logo variant="mark" size={30} title="" className="text-foreground" />
             </span>
-            <span className="hidden sm:inline">{site.name}</span>
+            <span className="hidden sm:inline-flex">
+              <Logo size={20} title="" className="text-foreground" />
+            </span>
             <span className="hidden rounded-full bg-foreground/5 px-2 py-0.5 text-xs font-medium text-muted md:inline">
               داشبورد
             </span>

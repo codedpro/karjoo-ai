@@ -22,7 +22,7 @@ import type {
 } from "@/lib/apply/extension-queue";
 import type { ApplicationRow } from "@/db/schema";
 import {
-  AutoApplyNotAllowedError,
+  ServerAutoApplyNotAllowedError,
   type AutoApplyAuditInput,
 } from "@/lib/apply/auto-apply";
 
@@ -97,7 +97,8 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
       readPlan: async () => "max",
       assertAllowed: async (userId) => {
         if (userId === "uBlocked") {
-          throw new AutoApplyNotAllowedError({ code: "disabled" });
+          // گیتِ سطحِ سرور: تاگلِ سرور خاموش/پلنِ بی‌ورکر → این کاربر بی‌سروصدا رد می‌شود.
+          throw new ServerAutoApplyNotAllowedError({ code: "disabled" });
         }
         return { minScore: 0.8 };
       },

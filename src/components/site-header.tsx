@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { site } from "@/lib/site";
+import { Logo } from "@/components/brand/logo";
 
 const nav = [
   { href: "#features", label: "امکانات" },
@@ -13,11 +13,12 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
-        <Link href="/" className="flex items-center gap-2 font-bold text-lg">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white">
-            ک
-          </span>
-          <span>{site.name}</span>
+        <Link
+          href="/"
+          className="focus-ring flex items-center rounded-lg"
+          aria-label="کارجو — خانه"
+        >
+          <Logo size={22} title="" className="text-foreground" />
         </Link>
 
         <nav className="hidden items-center gap-7 text-sm text-muted md:flex">

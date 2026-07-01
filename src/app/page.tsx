@@ -1,11 +1,18 @@
 import Link from "next/link";
 
+import { Logo } from "@/components/brand/logo";
 import {
   IconBell,
+  IconBolt,
   IconBot,
   IconChart,
+  IconCheck,
+  IconChip,
   IconDoc,
+  IconDownload,
   type IconComponent,
+  IconPlug,
+  IconPuzzle,
   IconShield,
   IconTarget,
 } from "@/components/dashboard/icons";
@@ -96,6 +103,13 @@ export default function Home() {
             className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60%_60%_at_50%_0%,color-mix(in_oklab,var(--brand)_18%,transparent),transparent)]"
           />
           <div className="mx-auto max-w-6xl px-5 pb-20 pt-16 text-center sm:pt-24">
+            {/* نشانِ برند — لنگرِ هویتِ کارجو در بالای هیرو */}
+            <Logo
+              size={30}
+              title="کارجو"
+              className="mx-auto mb-8 text-foreground"
+            />
+
             <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-medium text-muted">
               <span className="h-2 w-2 rounded-full bg-accent" />
               هوش مصنوعی، به‌جای ساعت‌ها جست‌وجوی شغل
@@ -191,6 +205,129 @@ export default function Home() {
                   <p className="mt-2 text-sm leading-7 text-muted">{s.body}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ───────── Browser extension ───────── */}
+        <section id="extension" className="mx-auto max-w-6xl px-5 py-20">
+          <div className="relative overflow-hidden rounded-3xl border border-border bg-card p-6 sm:p-10 lg:p-14">
+            {/* هاله‌ی گرادیانِ برند در گوشه — عمق بدونِ شلوغی */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(70%_60%_at_100%_0%,color-mix(in_oklab,var(--brand)_14%,transparent),transparent)]"
+            />
+
+            <div className="grid items-center gap-10 lg:grid-cols-2">
+              {/* متن + CTA */}
+              <div>
+                <span className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 text-xs font-semibold text-brand">
+                  <IconPuzzle className="h-4 w-4" />
+                  افزونه‌ی مرورگر کارجو
+                </span>
+
+                <h2 className="mt-5 text-3xl font-extrabold leading-[1.3] sm:text-4xl">
+                  افزونه‌ی مرورگر را نصب کن،
+                  <br />
+                  <span className="bg-gradient-to-l from-brand to-brand-2 bg-clip-text text-transparent">
+                    اپلای در مرورگرِ خودت
+                  </span>
+                </h2>
+
+                <p className="mt-5 max-w-xl text-pretty leading-8 text-muted">
+                  افزونه‌ی کارجو مستقیم در مرورگر شما اجرا می‌شود: آگهی‌های مناسب را
+                  می‌بیند، پروفایلتان را با آن‌ها تطبیق می‌دهد و می‌تواند اپلای را در
+                  همان جاب‌ویژن و جابینجایی که باز کرده‌اید، برایتان انجام دهد — بدون
+                  اینکه چیزی روی سرور بماند.
+                </p>
+
+                <ul className="mt-6 space-y-3 text-sm">
+                  {[
+                    { icon: IconBolt, text: "اپلای خودکار داخل مرورگرِ خودتان، روی حساب‌های خودتان" },
+                    { icon: IconChip, text: "تطبیق هوشمندِ آگهی با پروفایل، لحظه‌ای هنگام مرور" },
+                    { icon: IconPlug, text: "اتصال (Pairing) امن به حساب کارجو در چند ثانیه" },
+                  ].map((f) => (
+                    <li key={f.text} className="flex items-center gap-3">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">
+                        <f.icon className="h-4 w-4" />
+                      </span>
+                      <span className="leading-7 text-foreground/90">{f.text}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <a
+                    href="/karjoo-extension.zip"
+                    download
+                    className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-l from-brand to-brand-2 px-7 py-3.5 text-base font-bold text-white shadow-lg shadow-brand/30 transition-transform hover:-translate-y-0.5 sm:w-auto"
+                  >
+                    <IconDownload className="h-5 w-5" />
+                    دانلود افزونه
+                  </a>
+                  <Link
+                    href="/dashboard/extension"
+                    className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full border border-border bg-background px-7 py-3.5 text-base font-semibold transition-colors hover:bg-foreground/5 sm:w-auto"
+                  >
+                    <IconPuzzle className="h-5 w-5 text-muted" />
+                    راهنمای نصب
+                  </Link>
+                </div>
+
+                <p className="mt-4 text-xs text-muted">
+                  سازگار با <span className="ltr-nums">Chrome</span> و{" "}
+                  <span className="ltr-nums">Edge</span> · نصب دستی از پوشه‌ی
+                  باز‌شده (Load unpacked)
+                </p>
+              </div>
+
+              {/* نمایشِ بصری — «پنجره‌ی افزونه» با گرادیانِ برند */}
+              <div className="relative mx-auto w-full max-w-sm lg:max-w-none">
+                <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-brand to-brand-2 p-1 shadow-brand">
+                  <div className="rounded-[calc(1rem-1px)] bg-background p-5">
+                    {/* هدرِ پاپ‌آپ افزونه */}
+                    <div className="flex items-center justify-between border-b border-border/70 pb-4">
+                      <Logo variant="mark" size={26} className="text-foreground" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">
+                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+                        متصل
+                      </span>
+                    </div>
+
+                    {/* ردیفِ توگلِ نمایشی */}
+                    <div className="mt-4 flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <IconBot className="h-5 w-5 text-brand" />
+                        <span className="text-sm font-semibold">اپلای خودکار در مرورگر</span>
+                      </div>
+                      <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-gradient-to-l from-brand to-brand-2">
+                        <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white shadow-sm" />
+                      </span>
+                    </div>
+
+                    {/* آیتم‌های آگهیِ نمایشی */}
+                    <div className="mt-3 space-y-2">
+                      {[
+                        { t: "توسعه‌دهنده‌ی فرانت‌اند", m: "۹۲٪ تطبیق" },
+                        { t: "مهندس نرم‌افزار ارشد", m: "۸۷٪ تطبیق" },
+                      ].map((j) => (
+                        <div
+                          key={j.t}
+                          className="flex items-center justify-between rounded-lg bg-surface px-3.5 py-2.5"
+                        >
+                          <span className="flex items-center gap-2 text-sm text-foreground/90">
+                            <IconCheck className="h-4 w-4 text-accent" />
+                            {j.t}
+                          </span>
+                          <span className="ltr-nums text-xs font-semibold text-brand">
+                            {j.m}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>

@@ -17,10 +17,18 @@ describe("autoApplyEventLabel", () => {
       "auto_apply_disabled",
       "auto_apply_attempted",
       "auto_apply_skipped",
+      // سطحِ سرور (GOAL 3) — هر دو باید برچسب/لحن داشته باشند.
+      "server_auto_apply_enabled",
+      "server_auto_apply_disabled",
     ] as const) {
       const meta = autoApplyEventLabel(t);
       expect(meta.label.length).toBeGreaterThan(0);
     }
+  });
+
+  it("برچسبِ رویدادهای سطحِ سرور صریحاً «سرور» را دارد", () => {
+    expect(autoApplyEventLabel("server_auto_apply_enabled").label).toContain("سرور");
+    expect(autoApplyEventLabel("server_auto_apply_disabled").label).toContain("سرور");
   });
 
   it("نوعِ ناشناخته → fallbackِ امن (همان کلید با لحنِ خنثی)", () => {

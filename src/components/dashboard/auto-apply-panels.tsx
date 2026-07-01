@@ -15,6 +15,7 @@ import {
   IconGauge,
   IconPlug,
   IconReceipt,
+  IconServer,
   IconWarn,
 } from "./icons";
 import {
@@ -259,13 +260,16 @@ function AuditIcon({
   tone: keyof typeof AUDIT_ICON_TONES;
 }) {
   const Icon =
-    eventType === "auto_apply_enabled"
-      ? IconCheck
-      : eventType === "auto_apply_attempted"
-        ? IconBolt
-        : eventType === "auto_apply_skipped"
-          ? IconWarn
-          : IconReceipt;
+    eventType === "server_auto_apply_enabled" ||
+    eventType === "server_auto_apply_disabled"
+      ? IconServer
+      : eventType === "auto_apply_enabled"
+        ? IconCheck
+        : eventType === "auto_apply_attempted"
+          ? IconBolt
+          : eventType === "auto_apply_skipped"
+            ? IconWarn
+            : IconReceipt;
   return (
     <span
       className={cn(

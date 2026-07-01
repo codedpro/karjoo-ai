@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { Logo } from "@/components/brand/logo";
 import { site } from "@/lib/site";
 
 export function SiteFooter() {
@@ -7,12 +8,7 @@ export function SiteFooter() {
     <footer className="mt-auto border-t border-border/70 bg-background">
       <div className="mx-auto grid max-w-6xl gap-8 px-5 py-12 md:grid-cols-4">
         <div className="md:col-span-2">
-          <div className="flex items-center gap-2 text-lg font-bold">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand to-brand-2 text-white">
-              ک
-            </span>
-            {site.name}
-          </div>
+          <Logo size={22} className="text-foreground" />
           <p className="mt-3 max-w-sm text-sm leading-7 text-muted">{site.description}</p>
         </div>
 

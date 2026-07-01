@@ -19,12 +19,18 @@ import { getAutoApplySettings, type AutoApplySettings } from "@/lib/apply/auto-a
 import { isApplySpecReady } from "@/lib/apply/apply-spec";
 import { getUserPlanStatus, type ApplyUsageStatus } from "@/components/dashboard/plan-data";
 
-/** رویدادهای ممیزیِ مربوط به اپلای خودکار (زیرمجموعه‌ی audit_event_type). */
+/**
+ * رویدادهای ممیزیِ مربوط به اپلای خودکار (زیرمجموعه‌ی audit_event_type).
+ * شاملِ هر دو سطح (GOAL 3): افزونه/اجرا (auto_apply_*) و سرور (server_auto_apply_*) —
+ * تا ردِ ممیزیِ مشترکِ صفحه هر دو سطح را شفاف نشان دهد.
+ */
 const AUTO_APPLY_EVENTS = [
   "auto_apply_enabled",
   "auto_apply_disabled",
   "auto_apply_attempted",
   "auto_apply_skipped",
+  "server_auto_apply_enabled",
+  "server_auto_apply_disabled",
 ] as const;
 
 export type AutoApplyAuditEventType = (typeof AUTO_APPLY_EVENTS)[number];

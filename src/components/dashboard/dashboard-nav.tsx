@@ -98,6 +98,13 @@ function IconLayers({ className }: IconProps) {
     </svg>
   );
 }
+function IconPuzzle({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={cn(ICON_BASE, className)} aria-hidden>
+      <path d="M9 3.5a1.5 1.5 0 0 1 3 0c0 .4-.15.8-.4 1.1-.15.2-.1.4.1.4H14a1 1 0 0 1 1 1v1.9c0 .2.2.25.4.1.3-.25.7-.4 1.1-.4a1.5 1.5 0 0 1 0 3c-.4 0-.8-.15-1.1-.4-.2-.15-.4-.1-.4.1V16a1 1 0 0 1-1 1h-2.4c-.2 0-.25-.2-.1-.4.25-.3.4-.7.4-1.1a1.5 1.5 0 0 0-3 0c0 .4.15.8.4 1.1.15.2.1.4-.1.4H6a1 1 0 0 1-1-1v-2.4c0-.2-.2-.25-.4-.1-.3.25-.7.4-1.1.4a1.5 1.5 0 0 1 0-3c.4 0 .8.15 1.1.4.2.15.4.1.4-.1V8a1 1 0 0 1 1-1h2.4c.2 0 .25-.2.1-.4A1.85 1.85 0 0 1 9 5.5Z" />
+    </svg>
+  );
+}
 
 /* ─────────────────────────────  فهرستِ ناوبری  ────────────────────────────── */
 
@@ -114,6 +121,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/interests", label: "علاقه‌مندی‌ها", icon: IconStar },
   { href: "/dashboard/applications", label: "اپلای‌ها", icon: IconSend },
   { href: "/dashboard/auto-apply", label: "اپلای خودکار", icon: IconBolt },
+  { href: "/dashboard/extension", label: "افزونه", icon: IconPuzzle },
   { href: "/dashboard/resume", label: "رزومه", icon: IconDoc },
   { href: "/dashboard/models", label: "مدلِ هوش مصنوعی", icon: IconChip },
   { href: "/dashboard/billing", label: "کیف‌پول", icon: IconWallet },
