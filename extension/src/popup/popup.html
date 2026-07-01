@@ -46,7 +46,7 @@
       <nav class="tabs" role="tablist">
         <button class="tab" data-tab="boards" role="tab">اتصال سایت‌ها</button>
         <button class="tab" data-tab="queue" role="tab">صف اپلای</button>
-        <button class="tab" data-tab="auto" role="tab">اپلای خودکار</button>
+        <button class="tab" data-tab="auto" role="tab">اپلای خودکار در مرورگر</button>
       </nav>
 
       <!-- Tab: connect boards -->
@@ -84,11 +84,11 @@
         <p id="queue-empty" class="empty" hidden>صف اپلای خالی است.</p>
       </div>
 
-      <!-- Tab: auto-apply (§10 — opt-in, revocable) -->
+      <!-- Tab: auto-apply IN THE BROWSER (§10 — opt-in, revocable) -->
       <div class="tab-panel" data-panel="auto" hidden>
         <div class="auto-toggle-row">
           <div class="auto-toggle-text">
-            <span class="auto-title">اپلای خودکار در پس‌زمینه</span>
+            <span class="auto-title">اپلای خودکار در مرورگر</span>
             <span id="auto-state" class="auto-state">در حال بررسی…</span>
           </div>
           <label class="switch">
@@ -98,15 +98,16 @@
         </div>
 
         <p class="hint">
-          با روشن‌کردن این گزینه، کارجو در <strong>مرورگر خودِ شما</strong> و با
-          <strong>نشستِ خودتان</strong>، آگهی‌های بالای آستانه‌ی تطبیق را به‌صورت خودکار
-          اپلای می‌کند — حتی وقتی این پنجره بسته است (تا وقتی مرورگر باز باشد). هر اپلای
+          این گزینه فقط <strong>اپلای خودکار در مرورگر خودِ شما</strong> را کنترل می‌کند: با
+          روشن‌کردنش، کارجو با <strong>نشستِ خودتان</strong> آگهی‌های بالای آستانه‌ی تطبیق را
+          خودکار اپلای می‌کند — حتی وقتی این پنجره بسته است (تا وقتی مرورگر باز باشد). هر اپلای
           زیرِ سقفِ روزانه و آستانه‌ی کیفیت انجام می‌شود و در تاریخچه ثبت می‌شود. هر زمان
           می‌توانید آن را خاموش کنید. هیچ دور زدنِ تشخیصِ ربات انجام نمی‌شود.
         </p>
         <p class="hint hint-muted">
-          توجه: سرویس‌ورکر فقط <strong>تا وقتی مرورگر باز است</strong> کار می‌کند؛ اپلای
-          ۲۴ ساعته نیازمند پلنِ Max/Max+ (کارگرِ سمت سرور) است.
+          توجه: این حالت فقط <strong>تا وقتی مرورگر باز است</strong> کار می‌کند و کاملاً جدا از
+          «اپلای خودکار روی سرور» (۲۴ ساعته، ویژه‌ی پلن Max/Max+) در داشبورد است؛ این تاگل آن
+          را تغییر نمی‌دهد.
         </p>
 
         <div class="auto-meta">

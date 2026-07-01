@@ -38,6 +38,16 @@ export const AUTO_APPLY_EVENT_LABELS: Record<
     tone: "amber",
     description: "یک فرصت به‌دلیلِ آستانه/سقف/خاموش‌بودنِ تاگل اپلای نشد.",
   },
+  server_auto_apply_enabled: {
+    label: "روشن‌کردنِ اپلای خودکارِ سرور",
+    tone: "green",
+    description: "شما اپلای خودکارِ سرور (۲۴ ساعته، Max/Max+) را فعال کردید.",
+  },
+  server_auto_apply_disabled: {
+    label: "خاموش‌کردنِ اپلای خودکارِ سرور",
+    tone: "muted",
+    description: "شما اپلای خودکارِ سرور را غیرفعال کردید.",
+  },
 };
 
 /** برچسبِ فارسیِ یک رویدادِ ممیزی (با fallback امن). */

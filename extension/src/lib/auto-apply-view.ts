@@ -1,12 +1,16 @@
 /**
- * Pure rendering helpers for the auto-apply popup tab (Persian, RTL). Pure so the
- * popup stays a thin DOM binding and the wording is unit-tested.
+ * Pure rendering helpers for the BROWSER auto-apply popup tab (Persian, RTL). This
+ * level runs in the user's own browser and is independent of the SERVER auto-apply
+ * toggle (Max/Max+, dashboard). Pure so the popup stays a thin DOM binding and the
+ * wording is unit-tested.
  */
 import type { AutoApplySettings, AutoApplyStatus } from "@ext/lib/types";
 
-/** The on/off state line under the toggle. */
+/** The on/off state line under the toggle. Browser-scoped wording. */
 export function stateLabel(settings: AutoApplySettings): string {
-  return settings.enabled ? "روشن — در پس‌زمینه فعال است" : "خاموش — هیچ اپلای خودکاری انجام نمی‌شود";
+  return settings.enabled
+    ? "روشن — در مرورگرِ شما فعال است"
+    : "خاموش — هیچ اپلای خودکاری در مرورگر انجام نمی‌شود";
 }
 
 /** The match-threshold value formatted as a percentage (0.7 → "۷۰٪"-ish, ASCII). */

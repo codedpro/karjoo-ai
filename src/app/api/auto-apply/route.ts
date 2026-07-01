@@ -1,14 +1,19 @@
 import "server-only";
 
 /**
- * مسیرهای «اپلای خودکار» (نشستِ وب) — Track A، مصرف‌کننده‌ی هسته‌ی Foundation:
- *   • GET  /api/auto-apply — تنظیماتِ مؤثرِ کاربر: { enabled, minScore }.
- *   • PUT  /api/auto-apply — ست‌کردنِ تاگلِ رضایت و/یا آستانه (بدنه: { enabled?, minScore? }).
+ * مسیرهای «اپلای خودکارِ افزونه» (نشستِ وب) — سطحِ *مرورگر* (GOAL 3، Track B).
  *
- * امنیت/رضایت (قاعده‌ی ۴ + §۱۰ گاردِ ۱): کاربرِ هدف همیشه از کوکیِ نشست گرفته می‌شود
- * (getCurrentUser)، نه از بدنه/کوئری؛ بدنه عمداً userId نمی‌پذیرد. تاگل پیش‌فرض خاموش
- * است و فقط با یک PUTِ صریحِ خودِ کاربر روشن می‌شود (رضایت). هر تغییرِ روشن/خاموش‌شدنِ
- * تاگل یک ردیفِ audit_events می‌نویسد (auto_apply_enabled/disabled) تا ردِ ممیزی کامل بماند.
+ * این مسیر *فقط* تاگلِ سطحِ افزونه (user_auto_apply) را کنترل می‌کند — اپلای در مرورگرِ
+ * خودِ کاربر با نشستِ خودش (حلقه‌ی آلارمِ ۱۵-دقیقه‌ای در extension/). سطحِ *سرور* (پَسیو،
+ * ناوگانِ ۲۴/۷، Max/Max+) مسیرِ جداگانه‌ی /api/server-auto-apply دارد و این‌جا لمس نمی‌شود.
+ *   • GET  /api/auto-apply — تنظیماتِ مؤثرِ تاگلِ افزونه: { enabled, minScore }.
+ *   • PUT  /api/auto-apply — ست‌کردنِ تاگلِ افزونه و/یا آستانه (بدنه: { enabled?, minScore? }).
+ *
+ * برخلافِ سطحِ سرور، این تاگل برای *همه‌ی* پلن‌ها در دسترس است (اجرا در مرورگرِ خودِ کاربر،
+ * بدونِ ورکرِ سرور). امنیت/رضایت (قاعده‌ی ۴ + §۱۰ گاردِ ۱): کاربرِ هدف همیشه از کوکیِ نشست
+ * گرفته می‌شود (getCurrentUser)، نه از بدنه/کوئری؛ بدنه عمداً userId نمی‌پذیرد. تاگل پیش‌فرض
+ * خاموش است و فقط با یک PUTِ صریحِ خودِ کاربر روشن می‌شود (رضایت). هر گذارِ روشن/خاموش یک
+ * ردیفِ audit_events می‌نویسد (auto_apply_enabled/disabled) تا ردِ ممیزیِ *سطحِ افزونه* کامل بماند.
  *
  * این فایل از فایل‌های مالکیتیِ Foundation نیست؛ صرفاً مصرف‌کننده‌ی
  * auto-apply.ts (getAutoApplySettings/setAutoApplyEnabled/recordAutoApplyAudit) است.
@@ -65,7 +70,7 @@ export async function PUT(request: Request): Promise<Response> {
       await recordAutoApplyAudit({
         userId: user.id,
         eventType: updated.enabled ? "auto_apply_enabled" : "auto_apply_disabled",
-        metadata: { minScore: updated.minScore },
+        metadata: { minScore: updated.minScore, channel: "extension" },
       });
     }
 

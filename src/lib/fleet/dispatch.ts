@@ -4,8 +4,9 @@ import "server-only";
  * توزیعِ امنِ کارها به نودِ ورکر + ثبتِ نتیجه (server-only) — قاعده‌ی ۳.
  *
  * این قلبِ امنیتیِ ناوگان است. یک نود فقط برای کاربرانی کار claim می‌کند که *به همین نود
- * تخصیص یافته‌اند* (worker_assignments) و فقط وقتی گیتِ اپلای خودکارِ آن کاربر بگذرد
- * (assertAutoApplyAllowed: تاگل روشن + زیرِ سقف + بالای آستانه). برای هر کار، نشستِ
+ * تخصیص یافته‌اند* (worker_assignments) و فقط وقتی گیتِ اپلای خودکارِ *سرورِ* آن کاربر
+ * بگذرد (assertServerAutoApplyAllowed: پلنِ دارای ورکر + تاگلِ سرور روشن + زیرِ سقف +
+ * بالای آستانه). تاگلِ افزونه (سطحِ مرورگر) به این مسیر ربطی ندارد. برای هر کار، نشستِ
  * *خودِ همان کاربر* در سمتِ سرور رمزگشایی می‌شود (vault.decryptSession) و فقط به نودِ
  * تخصیص‌یافته فرستاده می‌شود — *کلیدِ خزانه هرگز کنترل‌پلین را ترک نمی‌کند*؛ فقط نشستِ
  * رمزگشایی‌شده‌ی هر-کار (روی کانالِ احرازشده) می‌رود، در حافظه استفاده و دور انداخته می‌شود.
@@ -25,7 +26,7 @@ import { eq } from "drizzle-orm";
 import { db as defaultDb } from "@/db";
 import { applications, users, type Plan } from "@/db/schema";
 import {
-  assertAutoApplyAllowed,
+  assertServerAutoApplyAllowed,
   recordAutoApplyAudit,
 } from "@/lib/apply/auto-apply";
 import {
@@ -70,7 +71,7 @@ export interface ClaimFleetDeps {
   readAssignedUserIds?: (nodeId: string) => Promise<string[]>;
   /** خواننده‌ی پلنِ کاربر (پیش‌فرض از users.plan). */
   readPlan?: (userId: string) => Promise<Plan | null>;
-  /** گیتِ اپلای خودکار (پیش‌فرض assertAutoApplyAllowed) — برمی‌گرداند {minScore}. */
+  /** گیتِ اپلای خودکارِ *سرور* (پیش‌فرض assertServerAutoApplyAllowed) — برمی‌گرداند {minScore}. */
   assertAllowed?: (userId: string, plan: Plan) => Promise<{ minScore: number }>;
   /** claim آیتم‌های صف برای یک کاربر (پیش‌فرض claimUserApplyItems). */
   claimItems?: (
@@ -121,8 +122,8 @@ async function defaultLoadSession(
  *
  * جریان (به‌ازای هر کاربرِ تخصیص‌یافته):
  *   ۱) پلنِ کاربر را بخوان (نبودِ کاربر → رد).
- *   ۲) assertAutoApplyAllowed(userId, plan) — اگر رد شد (تاگل خاموش/سقف پر)، این کاربر را
- *      *بی‌سروصدا رد کن* (نودِ دیگران را بلاک نکن) و آیتمی برنگردان.
+ *   ۲) assertServerAutoApplyAllowed(userId, plan) — اگر رد شد (پلنِ بی‌ورکر/تاگلِ سرور
+ *      خاموش/سقف پر)، این کاربر را *بی‌سروصدا رد کن* (نودِ دیگران را بلاک نکن) و آیتمی برنگردان.
  *   ۳) claimUserApplyItems(userId, perUser, {minScore}) — آیتم‌های بالای آستانه را lease کن.
  *   ۴) برای هر آیتم، نشستِ همان (کاربر، board) را رمزگشایی کن؛ اگر نشست نباشد، آن آیتم را
  *      رد کن (نود بدونِ نشست نمی‌تواند کار کند). یک FleetJob با نشستِ رمزگشایی‌شده بساز.
@@ -141,7 +142,8 @@ export async function claimFleetJobs(
   const readPlan = deps.readPlan ?? ((id: string) => readUserPlan(id, db));
   const assertAllowed =
     deps.assertAllowed ??
-    ((userId: string, plan: Plan) => assertAutoApplyAllowed(userId, plan, { db }));
+    ((userId: string, plan: Plan) =>
+      assertServerAutoApplyAllowed(userId, plan, { db }));
   const claimItems =
     deps.claimItems ??
     ((userId: string, lim: number, minScore: number) =>
@@ -170,7 +172,7 @@ export async function claimFleetJobs(
     try {
       ({ minScore } = await assertAllowed(userId, plan));
     } catch {
-      // AutoApplyNotAllowedError (تاگل خاموش/سقف پر) → این کاربر آیتمی نمی‌گیرد.
+      // ServerAutoApplyNotAllowedError (پلنِ بی‌ورکر/تاگلِ سرور خاموش/سقف پر) → این کاربر آیتمی نمی‌گیرد.
       continue;
     }
 

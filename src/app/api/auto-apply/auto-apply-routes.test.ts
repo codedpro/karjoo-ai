@@ -115,7 +115,8 @@ describe("PUT /api/auto-apply", () => {
     const auditArg = recordAuditMock.mock.calls[0][0];
     expect(auditArg.userId).toBe("user-1");
     expect(auditArg.eventType).toBe("auto_apply_enabled");
-    expect(auditArg.metadata).toEqual({ minScore: 0.7 });
+    // متادیتای تصمیم (آستانه + کانالِ افزونه)، هرگز نشست/راز.
+    expect(auditArg.metadata).toEqual({ minScore: 0.7, channel: "extension" });
   });
 
   it("خاموش‌کردن (روشن→خاموش) → auto_apply_disabled ممیزی می‌گردد", async () => {

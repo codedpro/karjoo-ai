@@ -313,7 +313,10 @@ export class KarjooApi {
   }
 
   /**
-   * Read the user's auto-apply settings (the SERVER is authoritative).
+   * Read the user's BROWSER auto-apply settings (Karjoo server is authoritative
+   * for the stored value). This is the EXTENSION/browser-level toggle only; it is
+   * fully independent of the SERVER auto-apply toggle (Max/Max+, /api/server-auto-apply)
+   * which the extension never reads or writes.
    * Contract: GET /api/auto-apply → { enabled, minScore }.
    *
    * IMPORTANT: that route is authed by the Karjoo WEB SESSION COOKIE

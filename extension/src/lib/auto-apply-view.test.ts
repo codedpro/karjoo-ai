@@ -15,6 +15,12 @@ describe("stateLabel / thresholdLabel", () => {
     expect(stateLabel({ enabled: true, minScore: 0.7 })).toContain("روشن");
     expect(stateLabel({ enabled: false, minScore: 0.7 })).toContain("خاموش");
   });
+  it("is BROWSER-scoped (mentions مرورگر, never سرور)", () => {
+    // این سطح باید صریحاً «مرورگر» باشد تا با سطحِ سرور (Max/Max+) اشتباه نشود.
+    expect(stateLabel({ enabled: true, minScore: 0.7 })).toContain("مرورگر");
+    expect(stateLabel({ enabled: false, minScore: 0.7 })).toContain("مرورگر");
+    expect(stateLabel({ enabled: true, minScore: 0.7 })).not.toContain("سرور");
+  });
   it("formats the threshold as a percentage", () => {
     expect(thresholdLabel({ enabled: true, minScore: 0.7 })).toBe("70٪");
     expect(thresholdLabel({ enabled: true, minScore: 0.82 })).toBe("82٪");
