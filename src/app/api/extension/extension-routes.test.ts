@@ -119,7 +119,9 @@ describe("GET /api/extension/me", () => {
       userId: "user-3",
       session: { kind: "extension" },
     } as never);
-    pushSelect([{ id: "user-3", phone: "+98912", fullName: "Ali", isActive: true }]);
+    pushSelect([
+      { id: "user-3", email: "ali@example.com", name: "Ali", avatarUrl: null, fullName: "Ali", isActive: true },
+    ]);
     pushSelect([
       { board: "jobinja", status: "connected", accountLabel: "me", lastConnectedAt: null },
     ]);

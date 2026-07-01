@@ -2,8 +2,8 @@
  * Pairing-code helpers (pure logic).
  *
  * The pairing code is the base64url string the Karjoo dashboard shows after the
- * user has already logged in with phone OTP on the web. The extension PAIRS to
- * that existing account with this one-time code — there is NO second phone OTP
+ * user has already logged in with Google on the web. The extension PAIRS to
+ * that existing account with this one-time code — there is NO second login
  * in the extension (LEGITIMACY RULE 5).
  *
  * The server stores only a hash of the code (see src/lib/auth/pairing.ts); this

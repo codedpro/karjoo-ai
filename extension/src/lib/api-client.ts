@@ -38,10 +38,12 @@ import { DEFAULT_AUTO_APPLY_MIN_SCORE } from "@ext/lib/api-contracts";
 
 /* ── server response shapes (control-plane contract) ───────────────────────── */
 
-/** Raw user object from GET /api/extension/me. */
+/** Raw user object from GET /api/extension/me (Google identity — no phone). */
 interface ServerMeUser {
   id: string;
-  phone: string;
+  email: string | null;
+  name: string | null;
+  avatarUrl: string | null;
   fullName: string | null;
   isActive: boolean;
 }
@@ -204,16 +206,17 @@ export class KarjooApi {
 
   /**
    * Current signed-in identity (requires token).
-   * Server returns `{ user: { id, phone, fullName, isActive }, boards }`; we map
-   * it onto the extension's narrow Identity ({ userId, phone?, displayName? }).
+   * Server returns `{ user: { id, email, name, avatarUrl, fullName, isActive }, boards }`;
+   * we map it onto the extension's narrow Identity ({ userId, email?, displayName? }).
+   * displayName prefers the Google profile name, falling back to the stored fullName.
    */
   async me(): Promise<Identity> {
     const res = await this.request<ServerMeResponse>("/api/extension/me", { method: "GET" });
     const user = res.user;
     return {
       userId: user.id,
-      phone: user.phone || undefined,
-      displayName: user.fullName ?? undefined,
+      email: user.email ?? undefined,
+      displayName: user.name ?? user.fullName ?? undefined,
     };
   }
 

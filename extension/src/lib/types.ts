@@ -8,8 +8,8 @@ import type { BoardId } from "@ext/lib/config";
 /** Signed-in identity returned by GET /api/extension/me. */
 export interface Identity {
   userId: string;
-  /** Masked phone for display, e.g. "0912***4567" — never the full number if maskable. */
-  phone?: string;
+  /** Google account email for display, e.g. "user@gmail.com". */
+  email?: string;
   displayName?: string;
 }
 

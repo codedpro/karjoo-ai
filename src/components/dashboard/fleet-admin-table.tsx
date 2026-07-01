@@ -155,9 +155,11 @@ function FleetNodeCard({
                 className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2"
               >
                 <div className="min-w-0">
-                  <div className="ltr-nums text-sm font-medium">{toFaDigits(u.phone)}</div>
+                  <div className="truncate text-sm font-medium" dir="ltr">
+                    {u.email ?? u.name ?? "بدونِ ایمیل"}
+                  </div>
                   <div className="text-xs text-muted">
-                    {u.fullName ?? "بدونِ نام"} · پلن: {u.plan}
+                    {u.name ?? u.fullName ?? "بدونِ نام"} · پلن: {u.plan}
                   </div>
                 </div>
                 <button

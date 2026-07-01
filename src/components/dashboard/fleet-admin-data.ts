@@ -13,10 +13,14 @@ import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { users, workerAssignments, workerNodes } from "@/db/schema";
 
-/** یک کاربرِ تخصیص‌یافته به یک نود (برای نمایشِ «چه کسی روی این نود است»). */
+/** یک کاربرِ تخصیص‌یافته به یک نود (برای نمایشِ «چه کسی روی این نود است»).
+ *
+ * هویت اکنون حسابِ Google است؛ برای نمایش از `email`/`name` استفاده می‌شود (نه phone).
+ */
 export interface AssignedUserRow {
   userId: string;
-  phone: string;
+  email: string | null;
+  name: string | null;
   fullName: string | null;
   plan: string;
 }
@@ -70,7 +74,8 @@ export async function listFleetNodes(): Promise<FleetNodeRow[]> {
     .select({
       nodeId: workerAssignments.nodeId,
       userId: users.id,
-      phone: users.phone,
+      email: users.email,
+      name: users.name,
       fullName: users.fullName,
       plan: users.plan,
     })
@@ -81,7 +86,13 @@ export async function listFleetNodes(): Promise<FleetNodeRow[]> {
   const byNode = new Map<string, AssignedUserRow[]>();
   for (const r of assignmentRows) {
     const list = byNode.get(r.nodeId) ?? [];
-    list.push({ userId: r.userId, phone: r.phone, fullName: r.fullName, plan: r.plan });
+    list.push({
+      userId: r.userId,
+      email: r.email,
+      name: r.name,
+      fullName: r.fullName,
+      plan: r.plan,
+    });
     byNode.set(r.nodeId, list);
   }
 

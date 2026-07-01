@@ -56,14 +56,24 @@ describe("KarjooApi authed calls", () => {
   it("attaches KARJOO's own token as Bearer (not a board credential)", async () => {
     const { fetchImpl, calls } = fakeFetch(() => ({
       status: 200,
-      body: { user: { id: "u1", phone: "+989120000000", fullName: "علی", isActive: true }, boards: [] },
+      body: {
+        user: {
+          id: "u1",
+          email: "ali@gmail.com",
+          name: "علی",
+          avatarUrl: null,
+          fullName: null,
+          isActive: true,
+        },
+        boards: [],
+      },
     }));
     const api = new KarjooApi({ origin: "http://localhost:3000", token: "ext-token-1", fetchImpl });
     const identity = await api.me();
     expect(calls[0]!.url).toBe("http://localhost:3000/api/extension/me");
     expect(calls[0]!.headers.get("authorization")).toBe("Bearer ext-token-1");
     // Maps the server `{ user, boards }` shape onto the extension Identity.
-    expect(identity).toEqual({ userId: "u1", phone: "+989120000000", displayName: "علی" });
+    expect(identity).toEqual({ userId: "u1", email: "ali@gmail.com", displayName: "علی" });
   });
 
   it("connectBoard sends EXACTLY { board, accountLabel } — no `status` (server is .strict)", async () => {

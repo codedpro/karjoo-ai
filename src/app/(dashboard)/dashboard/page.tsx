@@ -43,7 +43,7 @@ export default async function DashboardHomePage() {
       </div>
 
       <Suspense fallback={<HeadingSkeleton />}>
-        <Welcome userId={user.userId} fallbackName={user.fullName} />
+        <Welcome userId={user.userId} fallbackName={user.fullName ?? user.name} />
       </Suspense>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-3">

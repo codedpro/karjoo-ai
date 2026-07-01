@@ -197,7 +197,7 @@ function renderAutoStatus(status: AutoApplyStatus | null) {
 
 function identityLabel(identity: Identity | null): string {
   if (!identity) return "وارد شده";
-  return identity.displayName || identity.phone || "وارد شده";
+  return identity.displayName || identity.email || "وارد شده";
 }
 
 function wireTabs() {

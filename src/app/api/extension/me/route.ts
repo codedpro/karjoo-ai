@@ -28,11 +28,13 @@ export async function GET(request: Request): Promise<Response> {
       requireKind: "extension",
     });
 
-    // ۲) کاربر (متادیتای غیرحساس).
+    // ۲) کاربر (متادیتای غیرحساس — هویت با حسابِ Google: ایمیل/نام/آواتار، نه شماره).
     const [user] = await db
       .select({
         id: users.id,
-        phone: users.phone,
+        email: users.email,
+        name: users.name,
+        avatarUrl: users.avatarUrl,
         fullName: users.fullName,
         isActive: users.isActive,
       })

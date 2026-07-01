@@ -30,7 +30,7 @@ export const jobBoardSchema = z.enum([
 /* ───────────────────────────  POST /api/extension/link  ─────────────────── */
 
 /**
- * بدنه‌ی redeemِ کدِ جفت‌سازی — هندآفِ «بدون OTP دوم» (قاعده‌ی ۵).
+ * بدنه‌ی redeemِ کدِ جفت‌سازی — هندآفِ «بدون ورودِ دوم» (قاعده‌ی ۵).
  * `.strict()` تا فیلدِ اضافی (مثلاً تلاش برای فرستادنِ توکنِ خام) رد شود.
  */
 export const extensionLinkBodySchema = z

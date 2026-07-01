@@ -13,10 +13,17 @@ import "server-only";
  */
 import { getCurrentUser } from "@/lib/auth/http";
 
-/** کاربرِ احرازشده‌ی داشبورد — فیلدهای غیرحساسی که UI لازم دارد. */
+/** کاربرِ احرازشده‌ی داشبورد — فیلدهای غیرحساسی که UI لازم دارد.
+ *
+ * هویت اکنون حسابِ Google است؛ پس به‌جای `phone` از `email`/`name`/`avatarUrl` استفاده
+ * می‌کنیم. `fullName` نامِ نمایشیِ پروفایلِ کارجو (ستونِ مجزا) است که برای خوشامد به‌کار
+ * می‌رود و می‌تواند با نامِ Google (`name`) متفاوت باشد.
+ */
 export interface DashboardUser {
   userId: string;
-  phone: string;
+  email: string | null;
+  name: string | null;
+  avatarUrl: string | null;
   fullName: string | null;
 }
 
@@ -30,7 +37,13 @@ export async function getDashboardUser(): Promise<DashboardUser | null> {
   try {
     const user = await getCurrentUser();
     if (!user) return null;
-    return { userId: user.id, phone: user.phone, fullName: user.fullName ?? null };
+    return {
+      userId: user.id,
+      email: user.email ?? null,
+      name: user.name ?? null,
+      avatarUrl: user.avatarUrl ?? null,
+      fullName: user.fullName ?? null,
+    };
   } catch {
     // pepper تنظیم نشده / DB در دسترس نیست → نشستی نیست (به /login برو).
     return null;
