@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * چرخه‌ی عمرِ نودِ کارگر: ثبت‌نام + صدورِ اعتبارنامه + heartbeat (server-only).
+ * چرخه‌ی عمرِ نودِ ورکر: ثبت‌نام + صدورِ اعتبارنامه + heartbeat (server-only).
  * WF worker-fleet، قاعده‌ی ۱.
  *
  * جریان (همه روی کنترل‌پلین):
@@ -52,7 +52,7 @@ export class FleetEnrollmentClosedError extends Error {
   readonly code = "fleet_enrollment_closed" as const;
   constructor() {
     super(
-      "ثبت‌نامِ ناوگانِ کارگر بسته است: KARJOO_FLEET_ENROLLMENT_TOKEN تنظیم نشده. " +
+      "ثبت‌نامِ ناوگانِ اپلای بسته است: KARJOO_FLEET_ENROLLMENT_TOKEN تنظیم نشده. " +
         "این راز را در محیطِ کنترل‌پلین ست کنید تا نودها بتوانند ثبت‌نام کنند.",
     );
     this.name = "FleetEnrollmentClosedError";

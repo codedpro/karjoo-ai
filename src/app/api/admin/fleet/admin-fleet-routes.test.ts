@@ -1,5 +1,5 @@
 /**
- * تست‌های مسیرهای ادمینِ ناوگانِ کارگر (Track A) — فقط «سیم‌کشیِ HTTP».
+ * تست‌های مسیرهای ادمینِ ناوگانِ اپلای (Track A) — فقط «سیم‌کشیِ HTTP».
  *
  * استراتژی: گاردِ رازِ داخلی (guardInternal از @/lib/api/http) و هسته‌ی fleet
  * (assignNodeToUser/issueCommand) و db mock می‌شوند تا گاردِ راز (۴۰۱/۵۰۳)،

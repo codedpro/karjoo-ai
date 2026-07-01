@@ -3,7 +3,7 @@ import "server-only";
 /**
  * POST /api/fleet/result
  *
- * نتیجه‌ی یک کارِ اجراشده توسطِ نودِ کارگرِ احرازشده را ثبت می‌کند (Track A، قاعده‌ی ۳).
+ * نتیجه‌ی یک کارِ اجراشده توسطِ نودِ ورکرِ احرازشده را ثبت می‌کند (Track A، قاعده‌ی ۳).
  * recordFleetResult یک ردیفِ applications (channel='worker') و یک ردیفِ audit_events
  * (auto_apply_attempted، channel=worker، nodeId) می‌نویسد — همگی مقید به همان userId.
  *

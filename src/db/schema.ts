@@ -70,7 +70,7 @@ export const applicationStatusEnum = pgEnum("application_status", [
   "failed",
 ]);
 
-/** کانال اجرای اپلای: افزونه‌ی مرورگر کاربر (استاندارد) یا نود کارگر ایرانی (پریمیوم). */
+/** کانال اجرای اپلای: افزونه‌ی مرورگر کاربر (استاندارد) یا نود ورکر ایرانی (پریمیوم). */
 export const applyChannelEnum = pgEnum("apply_channel", ["extension", "worker"]);
 
 /** وضعیت یک ردیف صف (Task). */
@@ -82,7 +82,7 @@ export const taskStatusEnum = pgEnum("task_status", [
   "dead", // بیش از حد تلاش، رهاشده
 ]);
 
-/** سلامت یک نود کارگر. */
+/** سلامت یک نود ورکر. */
 export const workerHealthEnum = pgEnum("worker_health", [
   "online",
   "degraded",
@@ -90,7 +90,7 @@ export const workerHealthEnum = pgEnum("worker_health", [
 ]);
 
 /**
- * فرمانِ سرور به نودِ کارگر (worker_commands) — قاعده‌ی ۴ (به‌روزرسانیِ خودکارِ
+ * فرمانِ سرور به نودِ ورکر (worker_commands) — قاعده‌ی ۴ (به‌روزرسانیِ خودکارِ
  * فرمان‌محورِ سرور). سرور 'update' (اجرای اسکریپتِ به‌روزرسانی: pull+restart) یا
  * 'restart' صادر می‌کند؛ نود poll می‌کند، اجرا و ack می‌دهد و agentVersion را گزارش
  * می‌کند تا سرور وضعیتِ ناوگان را ببیند.
@@ -98,7 +98,7 @@ export const workerHealthEnum = pgEnum("worker_health", [
 export const workerCommandEnum = pgEnum("worker_command", ["update", "restart"]);
 
 /**
- * وضعیتِ یک فرمانِ کارگر در چرخه‌ی عمرش:
+ * وضعیتِ یک فرمانِ ورکر در چرخه‌ی عمرش:
  *   • pending  — صادر شده، هنوز توسطِ نود برداشته نشده.
  *   • acked    — نود فرمان را دریافت و شروعِ اجرا را تأیید کرده (ackedAt).
  *   • done     — اجرا با موفقیت تمام شد (completedAt + result).
@@ -537,7 +537,7 @@ export const applications = pgTable(
 );
 
 /**
- * نود کارگر ایرانی — بی‌حالت و فناپذیر؛ فقط متادیتا/سلامت/اعتبارنامه اینجاست
+ * نود ورکر ایرانی — بی‌حالت و فناپذیر؛ فقط متادیتا/سلامت/اعتبارنامه اینجاست
  * (هرگز نشستِ کاربر؛ نشست فقط در لحظه‌ی dispatch، رمزگشایی‌شده، به نودِ مجاز می‌رود).
  *
  * چرخه‌ی عمرِ نود (WF worker-fleet، قاعده‌ی ۱): نود با یک ENROLLMENT TOKENِ یک‌بارمصرف
@@ -588,7 +588,7 @@ export const workerNodes = pgTable(
 );
 
 /**
- * تخصیصِ نودِ کارگر به کاربر (worker_assignments) — قاعده‌ی ۲ (سقفِ IP بر اساسِ پلن).
+ * تخصیصِ نودِ ورکر به کاربر (worker_assignments) — قاعده‌ی ۲ (سقفِ IP بر اساسِ پلن).
  *
  * «کدام نودها برای کدام کاربر اپلای می‌کنند». یک کاربر حداکثر workerIpLimitFor(plan)
  * نود می‌تواند داشته باشد (Max=۱، MaxPlus=۵؛ Free/Pro=۰). سقف هنگامِ تخصیص اعمال می‌شود
@@ -615,7 +615,7 @@ export const workerAssignments = pgTable(
 );
 
 /**
- * فرمانِ سرور به نودِ کارگر (worker_commands) — قاعده‌ی ۴ (به‌روزرسانیِ فرمان‌محور).
+ * فرمانِ سرور به نودِ ورکر (worker_commands) — قاعده‌ی ۴ (به‌روزرسانیِ فرمان‌محور).
  *
  * سرور یک فرمانِ 'update'/'restart' صادر می‌کند؛ نود pollش می‌کند، اجرا و ack می‌دهد.
  * payload جزئیاتِ اختیاریِ فرمان (مثلاً نسخه‌ی هدف)؛ result خروجیِ اجرای نود (خروجی/خطا).
@@ -1060,9 +1060,9 @@ export type WorkerAssignment = typeof workerAssignments.$inferSelect;
 export type NewWorkerAssignment = typeof workerAssignments.$inferInsert;
 export type WorkerCommandRow = typeof workerCommands.$inferSelect;
 export type NewWorkerCommandRow = typeof workerCommands.$inferInsert;
-/** نوعِ فرمانِ کارگر به‌صورتِ unionِ نوع‌دار (update|restart). */
+/** نوعِ فرمانِ ورکر به‌صورتِ unionِ نوع‌دار (update|restart). */
 export type WorkerCommand = (typeof workerCommandEnum.enumValues)[number];
-/** وضعیتِ فرمانِ کارگر به‌صورتِ unionِ نوع‌دار. */
+/** وضعیتِ فرمانِ ورکر به‌صورتِ unionِ نوع‌دار. */
 export type WorkerCommandStatus = (typeof workerCommandStatusEnum.enumValues)[number];
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;

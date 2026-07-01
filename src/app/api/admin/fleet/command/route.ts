@@ -3,7 +3,7 @@ import "server-only";
 /**
  * POST /api/admin/fleet/command
  *
- * یک فرمانِ 'update'/'restart' برای یک نودِ کارگر صادر می‌کند (Track A، قاعده‌ی ۴ —
+ * یک فرمانِ 'update'/'restart' برای یک نودِ ورکر صادر می‌کند (Track A، قاعده‌ی ۴ —
  * به‌روزرسانیِ فرمان‌محورِ سرور). نود بعداً با GET /api/fleet/commands آن را poll و با
  * /ack اجرا/تأیید می‌کند. برای 'update'، هسته به‌صورتِ advisory مسیرِ اسکریپتِ
  * به‌روزرسانی (fleetUpdateScript) را در payload می‌گذارد اگر داده نشده باشد.

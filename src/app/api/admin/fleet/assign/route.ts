@@ -3,12 +3,12 @@ import "server-only";
 /**
  * POST /api/admin/fleet/assign
  *
- * یک نودِ کارگر را به یک کاربر تخصیص می‌دهد (Track A، قاعده‌ی ۲ — سقفِ IP بر اساسِ پلن).
+ * یک نودِ ورکر را به یک کاربر تخصیص می‌دهد (Track A، قاعده‌ی ۲ — سقفِ IP بر اساسِ پلن).
  * با رازِ مشترکِ داخلی محافظت می‌شود (X-Internal-Secret؛ fail-closed → ۵۰۳).
  *
  * سقفِ IPِ پلن در hسته‌ی assignNodeToUser اعمال می‌شود (Free/Pro=۰، Max=۱، MaxPlus=۵).
  * پلنِ کاربر را اینجا از DB می‌خوانیم و به هسته می‌دهیم. اگر کاربر نباشد → ۴۰۴؛ اگر سقف
- * پر/پلن بی‌کارگر باشد → WorkerIpLimitError → ۴۰۹ (با limit/assigned برای UI).
+ * پر/پلن بی‌ورکر باشد → WorkerIpLimitError → ۴۰۹ (با limit/assigned برای UI).
  *
  * بدنه (JSON): { userId, nodeId }
  */
@@ -59,7 +59,7 @@ export async function POST(request: Request): Promise<Response> {
       return json({ assignment }, 201);
     } catch (err) {
       if (err instanceof WorkerIpLimitError) {
-        // پلنِ بی‌کارگر یا سقفِ پر → ۴۰۹ (تضادِ ظرفیت) با اعدادِ دقیق برای UI.
+        // پلنِ بی‌ورکر یا سقفِ پر → ۴۰۹ (تضادِ ظرفیت) با اعدادِ دقیق برای UI.
         return json(
           {
             error: err.message,

@@ -10,7 +10,7 @@ import "server-only";
  *   ۱) گرنتِ اعتبارِ ماهانه‌ی پلنِ جدید — با grantMonthlyCredits (مالکِ Foundation).
  *      *ایدمپوتنت* است (به‌ازای کاربر و ماه)، پس ارتقا در همان ماه دوبار اعتبار نمی‌دهد و
  *      با اجرای کرانِ ماهانه هم تداخل نمی‌کند.
- *   ۲) یادداشت‌های اثرِ پلن (سهمیه‌ی اپلای، سقفِ IPِ کارگر) — صرفاً *مشتق‌شده* از plans.ts
+ *   ۲) یادداشت‌های اثرِ پلن (سهمیه‌ی اپلای، سقفِ IPِ ورکر) — صرفاً *مشتق‌شده* از plans.ts
  *      برای نمایش/لاگ. سهمیه‌ی اپلای «وضعیت» نیست که reset شود؛ شمارشِ روزانه از
  *      createdAtِ applications مشتق می‌شود (apply-quota.ts)، پس صرفِ تغییرِ پلن، سقفِ
  *      جدید را بلافاصله و بدونِ هیچ نوشتنی اعمال می‌کند. این یادداشت‌ها برای شفافیت‌اند.
@@ -34,7 +34,7 @@ export interface PlanEffectNotes {
   planLabelFa: string;
   /** سقفِ اپلای روزانه — null برای نامحدود (پلن‌های پولی). */
   applyQuotaPerDay: number | null;
-  /** سقفِ IPِ کارگرِ auto-apply (free/pro=۰، max=۱، maxplus=۵). */
+  /** سقفِ IPِ ورکرِ auto-apply (free/pro=۰، max=۱، maxplus=۵). */
   workerIpLimit: number;
   /** آیا «تماسِ مستقیم» دارد. */
   directContact: boolean;

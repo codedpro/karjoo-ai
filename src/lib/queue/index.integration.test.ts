@@ -84,8 +84,8 @@ d("صف Postgres (integration، نیازمندِ DATABASE_URL)", () => {
 
     // دو claim به‌صورت موازی؛ مجموعِ ردیف‌های برداشته‌شده باید دقیقاً ۱ باشد.
     // نکته: leased_by یک uuid (FK → worker_nodes.id) است؛ برای مصرف‌کننده‌ی
-    // غیرکارگری (مثلِ این تست) null پاس می‌دهیم — claim همین را می‌پذیرد و رفتارِ
-    // SKIP LOCKED مستقل از هویتِ کارگر است.
+    // غیرِ ورکر (مثلِ این تست) null پاس می‌دهیم — claim همین را می‌پذیرد و رفتارِ
+    // SKIP LOCKED مستقل از هویتِ ورکر است.
     const [a, b] = await Promise.all([
       mod.claim(null, 5),
       mod.claim(null, 5),

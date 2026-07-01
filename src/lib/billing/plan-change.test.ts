@@ -4,7 +4,7 @@
  * تضمین‌ها:
  *   • applyPlanChange گرنتِ پلنِ *جدید* را می‌دهد و یادداشت‌های مشتق را برمی‌گرداند.
  *   • ایدمپوتنسی: ارتقا + اجرای کرانِ ماهانه در یک ماه ⇒ تنها یک گرنت (no double-grant).
- *   • planEffectNotes از plans.ts درست مشتق می‌شود (سهمیه/کارگر/تماسِ مستقیم).
+ *   • planEffectNotes از plans.ts درست مشتق می‌شود (سهمیه/ورکر/تماسِ مستقیم).
  */
 import { describe, expect, it } from "vitest";
 
@@ -14,7 +14,7 @@ import { grantMonthlyCredits, inMemoryGrantStore } from "@/lib/billing/grants";
 const JUNE = Date.UTC(2026, 5, 10); // 2026-06
 
 describe("planEffectNotes", () => {
-  it("Free: سقفِ ۱۰۰ اپلای، بدونِ کارگر/تماسِ مستقیم", () => {
+  it("Free: سقفِ ۱۰۰ اپلای، بدونِ ورکر/تماسِ مستقیم", () => {
     expect(planEffectNotes("free")).toEqual({
       planLabelFa: "رایگان",
       applyQuotaPerDay: 100,
@@ -23,7 +23,7 @@ describe("planEffectNotes", () => {
     });
   });
 
-  it("MaxPlus: نامحدود، ۵ IPِ کارگر، تماسِ مستقیم", () => {
+  it("MaxPlus: نامحدود، ۵ IPِ ورکر، تماسِ مستقیم", () => {
     expect(planEffectNotes("maxplus")).toEqual({
       planLabelFa: "مکس پلاس",
       applyQuotaPerDay: null,

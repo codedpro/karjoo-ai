@@ -128,12 +128,12 @@ const envSchema = z.object({
   // سقفِ بازه‌ی jitterِ ادبِ اپلای خودکار، به میلی‌ثانیه (advisory برای افزونه). پیش‌فرض ۸۰۰۰.
   KARJOO_AUTO_APPLY_JITTER_MS_MAX: optionalNonEmpty(z.coerce.number().int().min(0)),
 
-  // ── ناوگانِ کارگر (worker fleet — Max/Max+، قاعده‌های ۱ و ۴) ────────────────
+  // ── ناوگانِ اپلای (worker fleet — Max/Max+، قاعده‌های ۱ و ۴) ────────────────
   // رازِ مشترکِ یک‌بارمصرفِ ثبت‌نام که نودها برای enroll ارائه می‌دهند. اختیاری در بوت:
   // اگر تنظیم نشده باشد، ثبت‌نام «بسته» است و enrollNode با خطای روشن (۵۰۳) رد می‌شود —
   // یعنی هیچ نودِ جدیدی نمی‌تواند بدونِ این راز ثبت‌نام کند (fail-closed). حداقل ۱۶ کاراکتر.
   KARJOO_FLEET_ENROLLMENT_TOKEN: optionalNonEmpty(z.string().min(16)),
-  // مسیرِ اسکریپتی که نودِ کارگر هنگامِ فرمانِ 'update' اجرا می‌کند (pull+restart،
+  // مسیرِ اسکریپتی که نودِ ورکر هنگامِ فرمانِ 'update' اجرا می‌کند (pull+restart،
   // مستقل از روشِ استقرار). فقط advisory است: سرور آن را به نود گزارش می‌کند؛ خودِ
   // سرور چیزی اجرا نمی‌کند. اختیاری؛ پیش‌فرض './update.sh'.
   KARJOO_FLEET_UPDATE_SCRIPT: optionalNonEmpty(z.string().min(1)),
@@ -164,7 +164,7 @@ export const DEFAULT_AUTO_APPLY_JITTER_MS_MIN = 2_000;
 /** سقفِ پیش‌فرضِ بازه‌ی jitterِ ادبِ اپلای خودکار، به میلی‌ثانیه. */
 export const DEFAULT_AUTO_APPLY_JITTER_MS_MAX = 8_000;
 
-/* ─────────────  پیش‌فرض‌های ناوگانِ کارگر (worker fleet)  ──────────────────── */
+/* ─────────────  پیش‌فرض‌های ناوگانِ اپلای (worker fleet)  ──────────────────── */
 
 /** اسکریپتِ پیش‌فرضِ به‌روزرسانیِ نود (advisory) اگر env تنظیم نشده باشد. */
 export const DEFAULT_FLEET_UPDATE_SCRIPT = "./update.sh";
@@ -368,7 +368,7 @@ export function isVaultConfigured(): boolean {
   return Boolean(env.KARJOO_VAULT_KEY);
 }
 
-/* ─────────────  حل‌کننده‌های ناوگانِ کارگر (worker fleet)  ─────────────────── */
+/* ─────────────  حل‌کننده‌های ناوگانِ اپلای (worker fleet)  ─────────────────── */
 
 /**
  * رازِ ثبت‌نامِ ناوگان (KARJOO_FLEET_ENROLLMENT_TOKEN) را برمی‌گرداند، یا `null` اگر

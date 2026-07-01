@@ -4,7 +4,7 @@
  * این فایل «خالص» است (بدونِ DB، بدونِ راز، بدونِ I/O) تا هم در سرور و هم در UI/تست
  * بدونِ اصطکاک قابلِ استفاده باشد — به همین خاطر "server-only" نیست.
  *
- * قاعده‌ی قفل‌شده (CONTEXT بخش C): پلن، *گرنت/سهمیه/کارگرها* را تعیین می‌کند، نه یک
+ * قاعده‌ی قفل‌شده (CONTEXT بخش C): پلن، *گرنت/سهمیه/ورکرها* را تعیین می‌کند، نه یک
  * بلاکِ سراسریِ هوش مصنوعی. گیتِ هوش مصنوعی روی *موجودیِ کیف‌پول* است (هر پلنی با
  * موجودی > ۰ می‌تواند از AI استفاده کند) — به entitlement.assertCanUsePaidAi نگاه کنید.
  *
@@ -34,7 +34,7 @@ export interface PlanDefinition {
    * apply-quota.assertApplyQuota این را اعمال می‌کند.
    */
   applyQuotaPerDay: number | null;
-  /** تعدادِ IPِ کارگرِ auto-apply مجاز — free/pro = ۰، max = ۱، maxplus = ۵. */
+  /** تعدادِ IPِ ورکرِ auto-apply مجاز — free/pro = ۰، max = ۱، maxplus = ۵. */
   workerIpLimit: number;
   /** آیا «تماسِ مستقیم» (پشتیبانی/کانال اختصاصی) دارد؟ */
   directContact: boolean;
@@ -46,8 +46,8 @@ export interface PlanDefinition {
  * تعریفِ پلن‌ها — مرجعِ واحد (CONTEXT بخش C):
  *   • Free    = ۰        | بدونِ اعتبارِ AI | ۱۰۰ اپلای/روز | همه‌ی قابلیت‌های غیر-AI
  *   • Pro     = ۲۹۹۰۰۰   | +۱۰۰۰۰۰ اعتبارِ ماهانه | اپلای نامحدود (افزونه) | اعتبارِ بیشتر خریدنی
- *   • Max     = ۹۹۹۰۰۰   | +۵۰۰۰۰۰ اعتبار | نامحدود | کارگرِ auto-apply با ۱ IP
- *   • MaxPlus = ۱۹۹۰۰۰۰  | +۲۰۰۰۰۰۰ اعتبار | نامحدود | ۵ IPِ کارگر | تماسِ مستقیم
+ *   • Max     = ۹۹۹۰۰۰   | +۵۰۰۰۰۰ اعتبار | نامحدود | ورکرِ auto-apply با ۱ IP
+ *   • MaxPlus = ۱۹۹۰۰۰۰  | +۲۰۰۰۰۰۰ اعتبار | نامحدود | ۵ IPِ ورکر | تماسِ مستقیم
  */
 export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
   free: {
@@ -90,7 +90,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     features: [
       "اعتبارِ ماهانه‌ی هوش مصنوعی ۵۰۰٬۰۰۰ تومان",
       "اپلای نامحدود",
-      "اپلای خودکارِ کارگر با ۱ IP",
+      "اپلای خودکارِ ورکر با ۱ IP",
     ],
   },
   maxplus: {
@@ -104,7 +104,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     features: [
       "اعتبارِ ماهانه‌ی هوش مصنوعی ۲٬۰۰۰٬۰۰۰ تومان",
       "اپلای نامحدود",
-      "اپلای خودکارِ کارگر با ۵ IP",
+      "اپلای خودکارِ ورکر با ۵ IP",
       "تماسِ مستقیم و پشتیبانیِ اختصاصی",
     ],
   },
@@ -141,7 +141,7 @@ export function planFor(plan: Plan | string): PlanDefinition {
   return PLAN_DEFINITIONS[normalizePlanKey(plan)];
 }
 
-/** سقفِ IPِ کارگرِ این پلن (free/pro = ۰، max = ۱، maxplus = ۵). */
+/** سقفِ IPِ ورکرِ این پلن (free/pro = ۰، max = ۱، maxplus = ۵). */
 export function workerIpLimitFor(plan: Plan | string): number {
   return planFor(plan).workerIpLimit;
 }

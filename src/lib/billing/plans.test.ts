@@ -1,7 +1,7 @@
 /**
  * تست‌های تعریفِ پلن (plans.ts) — تابعِ خالص، بدونِ DB/شبکه.
  *
- * تضمین می‌کند مقادیرِ قفل‌شده‌ی CONTEXT (قیمت/اعتبار/سهمیه/کارگر) دست‌نخورده بمانند و
+ * تضمین می‌کند مقادیرِ قفل‌شده‌ی CONTEXT (قیمت/اعتبار/سهمیه/ورکر) دست‌نخورده بمانند و
  * نگاشتِ پلن‌های تاریخی (payg/premium) درست کار کند.
  */
 import { describe, expect, it } from "vitest";
@@ -18,7 +18,7 @@ import {
 } from "@/lib/billing/plans";
 
 describe("PLAN_DEFINITIONS — مقادیرِ قفل‌شده (CONTEXT بخش C)", () => {
-  it("Free: ۰ تومان، بدونِ اعتبار، ۱۰۰ اپلای/روز، بدونِ کارگر", () => {
+  it("Free: ۰ تومان، بدونِ اعتبار، ۱۰۰ اپلای/روز، بدونِ ورکر", () => {
     const p = PLAN_DEFINITIONS.free;
     expect(p.priceToman).toBe(0);
     expect(p.monthlyCreditToman).toBe(0);
@@ -27,7 +27,7 @@ describe("PLAN_DEFINITIONS — مقادیرِ قفل‌شده (CONTEXT بخش C)
     expect(p.directContact).toBe(false);
   });
 
-  it("Pro: ۲۹۹۰۰۰ تومان، +۱۰۰۰۰۰ اعتبار، اپلای نامحدود، بدونِ کارگر", () => {
+  it("Pro: ۲۹۹۰۰۰ تومان، +۱۰۰۰۰۰ اعتبار، اپلای نامحدود، بدونِ ورکر", () => {
     const p = PLAN_DEFINITIONS.pro;
     expect(p.priceToman).toBe(299_000);
     expect(p.monthlyCreditToman).toBe(100_000);
@@ -36,7 +36,7 @@ describe("PLAN_DEFINITIONS — مقادیرِ قفل‌شده (CONTEXT بخش C)
     expect(p.directContact).toBe(false);
   });
 
-  it("Max: ۹۹۹۰۰۰ تومان، +۵۰۰۰۰۰ اعتبار، نامحدود، ۱ IPِ کارگر", () => {
+  it("Max: ۹۹۹۰۰۰ تومان، +۵۰۰۰۰۰ اعتبار، نامحدود، ۱ IPِ ورکر", () => {
     const p = PLAN_DEFINITIONS.max;
     expect(p.priceToman).toBe(999_000);
     expect(p.monthlyCreditToman).toBe(500_000);

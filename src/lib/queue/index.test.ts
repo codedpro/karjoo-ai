@@ -154,7 +154,7 @@ describe("claim", () => {
     expect(fake.calls).toHaveLength(0);
   });
 
-  it("workerId می‌تواند null باشد (مصرف‌کننده‌ی غیرکارگری مثل افزونه)", async () => {
+  it("workerId می‌تواند null باشد (مصرف‌کننده‌ی غیرِ ورکر مثل افزونه)", async () => {
     const fake = new FakeQueueDb([[sampleTask({ status: "leased" })]]);
     const tasks = await claim(null, 1, fake);
     expect(tasks).toHaveLength(1);

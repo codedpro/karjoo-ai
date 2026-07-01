@@ -1,7 +1,7 @@
 import "server-only";
 
 /**
- * نمای عمومیِ امنِ یک ردیفِ نودِ کارگر برای بدنه‌ی پاسخِ API (Track A).
+ * نمای عمومیِ امنِ یک ردیفِ نودِ ورکر برای بدنه‌ی پاسخِ API (Track A).
  *
  * ردیفِ خامِ worker_nodes شاملِ `credentialHash` و `enrollmentTokenHash` است — این‌ها
  * رازهای داخلی‌اند (هشِ اعتبارنامه/توکن) و هرگز نباید در پاسخِ هیچ مسیری بیرون بروند،
@@ -10,7 +10,7 @@ import "server-only";
  */
 import type { WorkerNode } from "@/db/schema";
 
-/** نودِ کارگر بدونِ هیچ فیلدِ راز (hashها حذف). */
+/** نودِ ورکر بدونِ هیچ فیلدِ راز (hashها حذف). */
 export type PublicWorkerNode = Omit<
   WorkerNode,
   "credentialHash" | "enrollmentTokenHash"

@@ -1,12 +1,12 @@
 import "server-only";
 
 /**
- * تخصیصِ نودِ کارگر به کاربر (server-only) — قاعده‌ی ۲ (سقفِ IP بر اساسِ پلن).
+ * تخصیصِ نودِ ورکر به کاربر (server-only) — قاعده‌ی ۲ (سقفِ IP بر اساسِ پلن).
  *
  * یک نود به کاربر تخصیص می‌یابد تا «به‌جای او» اپلای کند. هر کاربر حداکثر
  * workerIpLimitFor(plan) نود می‌تواند داشته باشد (Max=۱، MaxPlus=۵؛ Free/Pro=۰ → هیچ
- * اپلای خودکارِ کارگری، فقط افزونه). سقف *هنگامِ تخصیص* اعمال می‌شود:
- *   • اگر سقفِ پلن ۰ باشد → WorkerIpLimitError (این پلن کارگر ندارد).
+ * اپلای خودکارِ ورکری، فقط افزونه). سقف *هنگامِ تخصیص* اعمال می‌شود:
+ *   • اگر سقفِ پلن ۰ باشد → WorkerIpLimitError (این پلن ورکر ندارد).
  *   • اگر تعدادِ تخصیص‌های فعلیِ کاربر ≥ سقف باشد → WorkerIpLimitError.
  *
  * مرزِ ایمنی: شمارش و تخصیص در یک تراکنش انجام می‌شوند تا دو تخصیصِ همزمان نتوانند هر دو
@@ -28,12 +28,12 @@ import { workerIpLimitFor } from "@/lib/billing/plans";
 export type FleetAssignDb = typeof defaultDb;
 
 /**
- * خطای typed: تخصیص از سقفِ IPِ پلن عبور می‌کند (یا پلن اصلاً کارگر ندارد). مسیر باید
+ * خطای typed: تخصیص از سقفِ IPِ پلن عبور می‌کند (یا پلن اصلاً ورکر ندارد). مسیر باید
  * این را به ۴۰۳/۴۰۹ نگاشت کند. limit/assigned برای پیامِ دقیقِ UI حمل می‌شوند.
  */
 export class WorkerIpLimitError extends Error {
   readonly code = "worker_ip_limit_exceeded" as const;
-  /** سقفِ IPِ کارگرِ این پلن (Free/Pro=۰، Max=۱، MaxPlus=۵). */
+  /** سقفِ IPِ ورکرِ این پلن (Free/Pro=۰، Max=۱، MaxPlus=۵). */
   readonly limit: number;
   /** تعدادِ نودهای از پیش‌تخصیص‌یافته به این کاربر. */
   readonly assigned: number;
@@ -42,8 +42,8 @@ export class WorkerIpLimitError extends Error {
     super(
       args.message ??
         (args.limit === 0
-          ? "پلنِ این کاربر اپلای خودکارِ کارگر ندارد (سقفِ IP = ۰)."
-          : `به سقفِ نودهای کارگرِ این پلن رسیده‌اید (${args.assigned}/${args.limit}).`),
+          ? "پلنِ این کاربر اپلای خودکارِ ورکر ندارد (سقفِ IP = ۰)."
+          : `به سقفِ نودهای ورکرِ این پلن رسیده‌اید (${args.assigned}/${args.limit}).`),
     );
     this.name = "WorkerIpLimitError";
     this.limit = args.limit;
@@ -55,7 +55,7 @@ export class WorkerIpLimitError extends Error {
  * یک نود را به کاربر تخصیص می‌دهد و سقفِ IPِ پلن را اعمال می‌کند.
  *
  * گام‌ها (در یک تراکنش، اتمیک):
- *   ۱) سقفِ پلن را از workerIpLimitFor بگیر؛ اگر ۰ بود → WorkerIpLimitError (پلن بی‌کارگر).
+ *   ۱) سقفِ پلن را از workerIpLimitFor بگیر؛ اگر ۰ بود → WorkerIpLimitError (پلن بی‌ورکر).
  *   ۲) تخصیص‌های فعلیِ کاربر را بشمار؛ اگر ≥ سقف → WorkerIpLimitError.
  *   ۳) ردیفِ تخصیص را درج کن (یکتا روی (userId, nodeId) — تخصیصِ تکراری idempotent است).
  *
@@ -65,9 +65,9 @@ export class WorkerIpLimitError extends Error {
  * می‌بیند، پس re-assign هرگز از سقف رد نمی‌شود.
  *
  * @param userId کاربری که نود برایش اپلای می‌کند (همیشه از نشست — قاعده‌ی امنیت).
- * @param nodeId نودِ کارگر (worker_nodes.id).
+ * @param nodeId نودِ ورکر (worker_nodes.id).
  * @param plan   پلنِ کاربر (از users.plan) — سقف از plans.ts.
- * @throws WorkerIpLimitError اگر پلن کارگر نداشته باشد یا سقف پر باشد.
+ * @throws WorkerIpLimitError اگر پلن ورکر نداشته باشد یا سقف پر باشد.
  */
 export async function assignNodeToUser(
   userId: string,
@@ -91,7 +91,7 @@ export async function assignNodeToUser(
       .limit(1);
     if (existing) return existing;
 
-    // پلنِ بی‌کارگر → همیشه رد (حتی اولین نود).
+    // پلنِ بی‌ورکر → همیشه رد (حتی اولین نود).
     if (limit <= 0) {
       throw new WorkerIpLimitError({ limit, assigned: 0 });
     }

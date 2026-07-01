@@ -3,7 +3,7 @@ import "server-only";
 /**
  * POST /api/fleet/heartbeat
  *
- * heartbeatِ یک نودِ کارگرِ احرازشده را ثبت می‌کند (Track A، قاعده‌ی ۱) و خلاصه‌ای از
+ * heartbeatِ یک نودِ ورکرِ احرازشده را ثبت می‌کند (Track A، قاعده‌ی ۱) و خلاصه‌ای از
  * فرمان‌های pendingِ آن نود را برمی‌گرداند تا نود بداند کاری برای poll دارد یا نه.
  *
  * احراز: اعتبارنامه‌ی نود در هدرِ Authorization (requireNodeCredential). نودِ هدف *همیشه*
