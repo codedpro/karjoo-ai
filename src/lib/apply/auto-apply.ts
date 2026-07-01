@@ -19,13 +19,16 @@ import { db as defaultDb } from "@/db";
 import {
   auditEvents,
   userAutoApply,
+  userServerAutoApply,
   type Plan,
   type UserAutoApplyRow,
+  type UserServerAutoApplyRow,
 } from "@/db/schema";
 import {
   assertApplyQuota,
   type ApplyQuotaStatus,
 } from "@/lib/billing/apply-quota";
+import { workerIpLimitFor } from "@/lib/billing/plans";
 
 /** آستانه‌ی پیش‌فرضِ امتیازِ تطبیق اگر کاربر تنظیمی نداشته باشد (هم‌راستا با schema default). */
 export const DEFAULT_AUTO_APPLY_MIN_SCORE = 0.7;
@@ -229,14 +232,220 @@ export async function assertAutoApplyAllowed(
   return { minScore: settings.minScore, quota };
 }
 
+/* ══════════════  سطحِ «سرور» (پَسیو، ناوگانِ ۲۴/۷ — پلن Max/Max+)  ══════════════
+
+   یک سطحِ *مستقلِ* دوم (GOAL 3). این‌ها آینه‌ی helperهای بالا هستند اما روی جدولِ
+   user_server_auto_apply و با یک گاردِ اضافه‌ی «پلن دارای ورکر» (workerIpLimit > ۰).
+   src/lib/fleet/dispatch.ts باید از assertServerAutoApplyAllowed استفاده کند (نه گیتِ
+   افزونه) تا ناوگان فقط برای کاربرانی که تاگلِ سرور را روشن کرده‌اند و پلنشان ورکر دارد
+   کار کند. تاگلِ افزونه (بالا) به این مسیر ربطی ندارد.
+   ────────────────────────────────────────────────────────────────────────────── */
+
+/** ردیفِ تنظیماتِ اپلای خودکارِ *سرورِ* این کاربر را می‌خواند (یا null اگر ست نشده). */
+async function readServerAutoApplyRow(
+  userId: string,
+  db: AutoApplyDb,
+): Promise<UserServerAutoApplyRow | null> {
+  const [row] = await db
+    .select()
+    .from(userServerAutoApply)
+    .where(eq(userServerAutoApply.userId, userId))
+    .limit(1);
+  return row ?? null;
+}
+
+/** وابستگی‌های قابلِ تزریقِ خواندنِ تنظیماتِ سرور — برای تستِ بدونِ DB. */
+export interface ServerAutoApplySettingsDeps {
+  db?: AutoApplyDb;
+  /** خواننده‌ی ردیفِ تنظیماتِ سرور (پیش‌فرض از جدولِ user_server_auto_apply). */
+  readRow?: (userId: string) => Promise<UserServerAutoApplyRow | null>;
+}
+
+/**
+ * تنظیماتِ مؤثرِ اپلای خودکارِ *سرورِ* کاربر را برمی‌گرداند. پیش‌فرضِ محتاطانه (نبودِ
+ * ردیف): enabled=false و minScore پیش‌فرض — کاربری که هرگز تاگلِ سرور را روشن نکرده،
+ * هرگز اپلایِ سرور نمی‌گیرد.
+ */
+export async function getServerAutoApplySettings(
+  userId: string,
+  deps: ServerAutoApplySettingsDeps = {},
+): Promise<AutoApplySettings> {
+  const db = deps.db ?? defaultDb;
+  const read = deps.readRow ?? ((id: string) => readServerAutoApplyRow(id, db));
+  const row = await read(userId);
+  if (!row) {
+    return { enabled: false, minScore: DEFAULT_AUTO_APPLY_MIN_SCORE };
+  }
+  return { enabled: row.enabled, minScore: row.minScore };
+}
+
+/** آیا تاگلِ اپلای خودکارِ *سرورِ* این کاربر روشن است؟ (بدونِ چکِ پلن — فقط تاگل). */
+export async function isServerAutoApplyEnabled(
+  userId: string,
+  deps: ServerAutoApplySettingsDeps = {},
+): Promise<boolean> {
+  const { enabled } = await getServerAutoApplySettings(userId, deps);
+  return enabled;
+}
+
+/**
+ * تاگلِ اپلای خودکارِ *سرور* را روشن/خاموش می‌کند (upsert روی user_server_auto_apply،
+ * یکتا روی userId). صدازننده (route: PUT /api/server-auto-apply) باید رویدادِ ممیزیِ
+ * متناظر (server_auto_apply_enabled/disabled) را با recordAutoApplyAudit بنویسد.
+ *
+ * توجه: این تابع *پلن را چک نمی‌کند* — صرفاً حالتِ رضایت را ذخیره می‌کند. اعمالِ پلن‌گِیت
+ * در assertServerAutoApplyAllowed (نقطه‌ی مصرفِ ناوگان) و در route (پیش از upsert) انجام
+ * می‌شود. @returns تنظیماتِ مؤثرِ پس از تغییر.
+ */
+export async function setServerAutoApplyEnabled(
+  userId: string,
+  enabled: boolean,
+  opts: { minScore?: number; db?: AutoApplyDb } = {},
+): Promise<AutoApplySettings> {
+  const db = opts.db ?? defaultDb;
+  const now = new Date();
+  const clampedScore =
+    opts.minScore === undefined ? undefined : clampScore(opts.minScore);
+
+  const [row] = await db
+    .insert(userServerAutoApply)
+    .values({
+      userId,
+      enabled,
+      ...(clampedScore === undefined ? {} : { minScore: clampedScore }),
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: userServerAutoApply.userId,
+      set: {
+        enabled,
+        ...(clampedScore === undefined ? {} : { minScore: clampedScore }),
+        updatedAt: now,
+      },
+    })
+    .returning();
+
+  return { enabled: row.enabled, minScore: row.minScore };
+}
+
+/**
+ * کدهای پایدارِ ردِ گیتِ اپلای خودکارِ *سرور*. مثلِ گیتِ افزونه، به‌علاوه‌ی `not_entitled`
+ * برای پلن‌های بدونِ ورکر (Free/Pro) که حتی با تاگلِ روشن هم مجاز نیستند.
+ */
+export type ServerAutoApplyDenialCode =
+  | "disabled"
+  | "not_entitled"
+  | "quota_exceeded";
+
+/**
+ * خطای typed: گیتِ اپلای خودکارِ *سرور* اجازه نداد. مسیرِ dispatch با گرفتنِ این خطا باید
+ * آن کاربر را بی‌سروصدا رد کند (نه کلِ نود را بلاک کند).
+ */
+export class ServerAutoApplyNotAllowedError extends Error {
+  readonly code: ServerAutoApplyDenialCode;
+  /** در not_entitled: سقفِ ورکرِ پلن (۰) — برای پیام/UI. */
+  readonly workerIpLimit?: number;
+  /** در quota_exceeded: سقف/مصرفِ امروز. */
+  readonly usedToday?: number;
+  readonly limit?: number | null;
+
+  constructor(args: {
+    code: ServerAutoApplyDenialCode;
+    message?: string;
+    workerIpLimit?: number;
+    usedToday?: number;
+    limit?: number | null;
+  }) {
+    super(
+      args.message ??
+        (args.code === "disabled"
+          ? "اپلای خودکارِ سرور برای این کاربر روشن نیست (تاگلِ رضایتِ سرور خاموش است)."
+          : args.code === "not_entitled"
+            ? "اپلای خودکارِ سرور نیازمندِ پلنِ Max یا Max+ است (پلنِ فعلی ورکر ندارد)."
+            : "به سقفِ اپلای روزانه رسیده‌اید؛ اپلای خودکارِ سرور تا فردا متوقف است."),
+    );
+    this.name = "ServerAutoApplyNotAllowedError";
+    this.code = args.code;
+    this.workerIpLimit = args.workerIpLimit;
+    this.usedToday = args.usedToday;
+    this.limit = args.limit;
+  }
+}
+
+/** وابستگی‌های قابلِ تزریقِ گیتِ سرور. */
+export interface AssertServerAutoApplyDeps {
+  db?: AutoApplyDb;
+  /** خواننده‌ی ردیفِ تنظیماتِ سرور (پیش‌فرض از DB). */
+  readRow?: (userId: string) => Promise<UserServerAutoApplyRow | null>;
+  /** خواننده‌ی شمارشِ اپلای‌های امروز (پیش‌فرض countAppliesToday). */
+  readCountToday?: (userId: string) => Promise<number>;
+}
+
+/**
+ * گیتِ مرکزیِ سطحِ *سرور* که مسیرِ dispatchِ ناوگان پیش از برگرداندنِ کار صدا می‌زند.
+ *
+ * گاردها (به‌ترتیب، fail-closed):
+ *   ۱) پلنِ بدونِ ورکر (workerIpLimitFor(plan) === ۰ → Free/Pro) →
+ *      ServerAutoApplyNotAllowedError('not_entitled'). *پیش از* خواندنِ تاگل چک می‌شود تا
+ *      پلن‌های بی‌حق حتی اگر ردیفِ روشن داشته باشند، کار نگیرند.
+ *   ۲) تاگلِ سرور خاموش → ServerAutoApplyNotAllowedError('disabled').
+ *   ۳) سقفِ روزانه پر → ServerAutoApplyNotAllowedError('quota_exceeded').
+ *   ۴) در غیرِ این صورت → { minScore, quota } برگردانده می‌شود (شکلِ AutoApplyAllowance،
+ *      سازگار با امضای assertAllowed در claimFleetJobs).
+ *
+ * @param userId کاربری که کار برایش claim می‌شود (همیشه از تخصیصِ نود، نه از بدنه).
+ * @param plan   پلنِ کاربر — سقفِ ورکر و سقفِ روزانه از plans.ts.
+ */
+export async function assertServerAutoApplyAllowed(
+  userId: string,
+  plan: Plan,
+  deps: AssertServerAutoApplyDeps = {},
+): Promise<AutoApplyAllowance> {
+  // ۱) پلن‌گِیت — پلنِ بدونِ ورکر (Free/Pro) اصلاً حقِ سطحِ سرور ندارد.
+  const workerIpLimit = workerIpLimitFor(plan);
+  if (workerIpLimit <= 0) {
+    throw new ServerAutoApplyNotAllowedError({ code: "not_entitled", workerIpLimit });
+  }
+
+  // ۲) تاگلِ رضایتِ سرور.
+  const settings = await getServerAutoApplySettings(userId, deps);
+  if (!settings.enabled) {
+    throw new ServerAutoApplyNotAllowedError({ code: "disabled" });
+  }
+
+  // ۳) سقفِ روزانه (پلن‌های پولی نامحدودند و کوئریِ شمارش نمی‌زنند).
+  let quota: ApplyQuotaStatus;
+  try {
+    quota = await assertApplyQuota(userId, plan, deps);
+  } catch (err) {
+    const e = err as { usedToday?: number; limit?: number };
+    throw new ServerAutoApplyNotAllowedError({
+      code: "quota_exceeded",
+      usedToday: e.usedToday,
+      limit: e.limit,
+    });
+  }
+
+  // ۴) مجاز — آستانه‌ی مؤثرِ سطحِ سرور + سهمیه.
+  return { minScore: settings.minScore, quota };
+}
+
 /* ──────────────────────────  ممیزی (audit trail)  ──────────────────────── */
 
-/** نوعِ رویدادِ اپلای خودکار — زیرمجموعه‌ی auditEventTypeEnum. */
+/**
+ * نوعِ رویدادِ اپلای خودکار — زیرمجموعه‌ی auditEventTypeEnum.
+ *
+ * دو سطحِ مستقل (GOAL 3): کدهای بی‌پیشوند سطحِ «افزونه» (اپلای در مرورگر) و
+ * `attempted/skipped` مشترکِ مسیرهای اجرا؛ کدهای `server_auto_apply_*` سطحِ «سرور»
+ * (تاگلِ پَسیوِ ناوگان). صدازننده باید کدِ درستِ سطحِ خود را بنویسد.
+ */
 export type AutoApplyAuditEvent =
   | "auto_apply_enabled"
   | "auto_apply_disabled"
   | "auto_apply_attempted"
-  | "auto_apply_skipped";
+  | "auto_apply_skipped"
+  | "server_auto_apply_enabled"
+  | "server_auto_apply_disabled";
 
 /** ورودیِ نوشتنِ یک ردیفِ ممیزیِ اپلای خودکار. */
 export interface AutoApplyAuditInput {

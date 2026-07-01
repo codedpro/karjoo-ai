@@ -78,6 +78,13 @@
       "when": 1782903060833,
       "tag": "0010_freezing_wolverine",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782906577278,
+      "tag": "0011_fluffy_shen",
+      "breakpoints": true
     }
   ]
 }

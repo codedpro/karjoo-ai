@@ -121,10 +121,18 @@ export const auditEventTypeEnum = pgEnum("audit_event_type", [
   "apply_submitted",
   "apply_failed",
   // اپلای خودکار (WF auto-apply، قاعده‌ی ۱): هر تلاش/تصمیمِ اپلایِ خودکار یک ردیف می‌نویسد.
-  "auto_apply_enabled", // کاربر تاگلِ اپلای خودکار را روشن کرد (رضایت).
-  "auto_apply_disabled", // کاربر تاگل را خاموش کرد (لغوِ رضایت).
-  "auto_apply_attempted", // یک آیتمِ اپلایِ خودکار از صف برداشته شد (claim).
+  //
+  // دو سطحِ مستقل داریم (GOAL 3): تاگلِ «افزونه» (اپلای در مرورگرِ خودِ کاربر) و تاگلِ
+  // «سرور» (اپلای پَسیو روی ناوگانِ سرور، پلن‌های Max/Max+). این چهار کدِ *بی‌پیشوند* اکنون
+  // به‌طورِ خاص برای سطحِ «افزونه» می‌مانند (سازگاریِ عقب‌رو با ردیف‌های موجود)؛ کدهای
+  // `server_auto_apply_*` برای سطحِ «سرور» جدا اضافه شده‌اند تا ممیزی دو مسیر تفکیک بماند.
+  "auto_apply_enabled", // [افزونه] کاربر تاگلِ اپلای خودکارِ مرورگر را روشن کرد (رضایت).
+  "auto_apply_disabled", // [افزونه] کاربر تاگلِ مرورگر را خاموش کرد (لغوِ رضایت).
+  "auto_apply_attempted", // یک آیتمِ اپلایِ خودکار از صف برداشته شد (claim) — افزونه یا ورکر.
   "auto_apply_skipped", // آیتم به‌دلیلِ آستانه/سقف/خاموش‌بودنِ تاگل رد شد.
+  // سطحِ «سرور» (پَسیو، ناوگانِ ۲۴/۷ — پلن‌های Max/Max+): تفکیکِ ممیزیِ تاگلِ سرور.
+  "server_auto_apply_enabled", // [سرور] کاربر تاگلِ اپلای خودکارِ سرور را روشن کرد (رضایت).
+  "server_auto_apply_disabled", // [سرور] کاربر تاگلِ سرور را خاموش کرد (لغوِ رضایت).
 ]);
 
 /** نوعِ یک نشستِ احرازهویت: وب (داشبورد) یا افزونه‌ی مرورگر. */
@@ -1073,16 +1081,21 @@ export const appSettings = pgTable(
   (t) => [uniqueIndex("app_settings_key_uq").on(t.key)],
 );
 
-/* ─────────────────  Auto-apply: تاگلِ رضایت + آستانه (قاعده‌ی ۱)  ────────── */
+/* ────────  Auto-apply: دو سطحِ مستقل — افزونه (مرورگر) و سرور (پَسیو)  ──────── */
 
 /**
- * تنظیماتِ «اپلای خودکار» به‌ازای هر کاربر (کاربر × یک ردیف، یکتا روی userId).
+ * تنظیماتِ «اپلای خودکار در مرورگر» (سطحِ افزونه) به‌ازای هر کاربر — یکتا روی userId.
  *
- * قاعده‌ی ۱ (CONTEXT/§۱۰): هیچ‌چیز به‌صورت خودکار اپلای نمی‌شود مگر کاربر این تاگل را
+ * قاعده‌ی ۱ (CONTEXT/§۱۰): هیچ‌چیز به‌صورتِ خودکار اپلای نمی‌شود مگر کاربر این تاگل را
  * صریحاً روشن کند (رضایتِ یک‌باره، قابلِ لغو در هر زمان). پیش‌فرضِ `enabled` = false.
+ *
+ * دامنه (GOAL 3): این جدول اکنون *به‌طورِ خاص* تاگلِ سطحِ «افزونه» است — اپلای در مرورگرِ
+ * خودِ کاربر (حلقه‌ی chrome.alarms). در دسترسِ *همه‌ی* پلن‌هاست. سطحِ «سرور» (ناوگانِ
+ * پَسیوِ ۲۴/۷) تاگلِ جداگانه‌ی خود را در `user_server_auto_apply` دارد و پلن‌گِیت است.
+ *
  * `minScore` آستانه‌ی امتیازِ تطبیق است که هر اپلایِ خودکار باید از آن بگذرد (پیش‌فرض
  * ۰٫۷). سقفِ روزانه جداگانه از طریقِ apply-quota (پلن) اعمال می‌شود؛ اینجا فقط تاگل و
- * آستانه نگه‌داری می‌شود. هر تغییرِ تاگل یک ردیفِ audit_events می‌نویسد.
+ * آستانه نگه‌داری می‌شود. هر تغییرِ تاگل یک ردیفِ audit_events (auto_apply_*) می‌نویسد.
  */
 export const userAutoApply = pgTable(
   "user_auto_apply",
@@ -1091,7 +1104,7 @@ export const userAutoApply = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** تاگلِ رضایتِ اپلای خودکار — پیش‌فرض خاموش (هیچ اپلای خودکاری بدونِ روشن‌کردنِ صریح). */
+    /** تاگلِ رضایتِ اپلای خودکارِ *مرورگر* — پیش‌فرض خاموش (بدونِ روشن‌کردنِ صریح، هیچ). */
     enabled: boolean("enabled").notNull().default(false),
     /** آستانه‌ی امتیازِ تطبیق (۰..۱) که هر اپلایِ خودکار باید از آن بگذرد. پیش‌فرض ۰٫۷. */
     minScore: doublePrecision("min_score").notNull().default(0.7),
@@ -1101,6 +1114,39 @@ export const userAutoApply = pgTable(
   (t) => [
     // یک ردیفِ تنظیمات به‌ازای هر کاربر.
     uniqueIndex("user_auto_apply_user_uq").on(t.userId),
+  ],
+);
+
+/**
+ * تنظیماتِ «اپلای خودکار روی سرور» (سطحِ پَسیو/ناوگان) به‌ازای هر کاربر — یکتا روی userId.
+ *
+ * این تاگلِ *مستقلِ* دیگری است (GOAL 3): وقتی روشن باشد، ناوگانِ سرورِ کارجو (نودهای
+ * ایرانی، ۲۴/۷، بدونِ نیاز به مرورگرِ باز) اپلای را برای کاربر انجام می‌دهد. برخلافِ
+ * تاگلِ افزونه، این سطح *پلن‌گِیت* است: فقط پلن‌هایی با workerIpLimit > ۰ (Max/Max+)
+ * می‌توانند آن را مؤثر روشن کنند؛ برای Free/Pro گِیتِ سرور (assertServerAutoApplyAllowed)
+ * حتی با enabled=true هم رد می‌کند (پرامتِ ارتقا در UI).
+ *
+ * پیش‌فرضِ `enabled` = false (fail-closed). `minScore` آستانه‌ی سطحِ سرور است (پیش‌فرض
+ * ۰٫۷)، جدا از آستانه‌ی افزونه تا هر مسیر تنظیمِ مستقل داشته باشد. هر تغییرِ تاگل یک
+ * ردیفِ audit_events با kindِ server_auto_apply_* می‌نویسد.
+ */
+export const userServerAutoApply = pgTable(
+  "user_server_auto_apply",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** تاگلِ رضایتِ اپلای خودکارِ *سرور* — پیش‌فرض خاموش. پلن‌گِیت هنگامِ اعمال. */
+    enabled: boolean("enabled").notNull().default(false),
+    /** آستانه‌ی امتیازِ تطبیقِ سطحِ سرور (۰..۱). پیش‌فرض ۰٫۷ (هم‌راستا با افزونه). */
+    minScore: doublePrecision("min_score").notNull().default(0.7),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // یک ردیفِ تنظیماتِ سرور به‌ازای هر کاربر.
+    uniqueIndex("user_server_auto_apply_user_uq").on(t.userId),
   ],
 );
 
@@ -1172,3 +1218,5 @@ export type AppSettingsRow = typeof appSettings.$inferSelect;
 export type NewAppSettingsRow = typeof appSettings.$inferInsert;
 export type UserAutoApplyRow = typeof userAutoApply.$inferSelect;
 export type NewUserAutoApplyRow = typeof userAutoApply.$inferInsert;
+export type UserServerAutoApplyRow = typeof userServerAutoApply.$inferSelect;
+export type NewUserServerAutoApplyRow = typeof userServerAutoApply.$inferInsert;
