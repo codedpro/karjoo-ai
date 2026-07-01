@@ -3,39 +3,30 @@ import "server-only";
 /**
  * چسبِ نازکِ HTTP برای احراز هویت کارجو — بین route handlerها و هسته‌ی auth.
  *
- * این فایل «منطقِ خالصِ» احراز هویت (otp/verify/session/pairing) را از هسته
- * (`@/lib/auth/core`, `pairing`, `sms`) مصرف می‌کند و فقط مسئولیت‌های مخصوصِ HTTP را
+ * هویتِ کاربر با **ورود با Google** تعیین می‌شود (نه OTPِ پیامکی). این فایل منطقِ خالصِ
+ * نشست (issue/verify از `@/lib/auth/core`) را مصرف می‌کند و مسئولیت‌های مخصوصِ HTTP را
  * می‌افزاید که هسته عمداً ندارد:
  *   • مدیریتِ کوکیِ نشست (httpOnly + secure + sameSite) با `next/headers`.
- *   • محدودسازیِ نرخِ درخواستِ OTP (in-memory، سطلِ کوچک) تا اسپمِ پیامک گرفته شود.
- *   • گردشِ کارِ «درخواست/راستی‌آزماییِ OTP» روی DB (پیدا/ساختِ کاربر، ذخیره‌ی هش،
- *     سقفِ تلاش، مصرفِ یک‌بارمصرف) — همه قابل‌تزریق برای تستِ بدونِ DB/شبکه.
+ *   • پیدا/ساختِ کاربر از پروفایلِ Google (findOrCreateUserByGoogle).
+ *   • محدودسازیِ نرخِ درخواست (in-memory) — برای اندپوینتِ «شروعِ جریانِ OAuth».
  *
  * این لایه هسته را *ویرایش نمی‌کند*؛ فقط آن را صدا می‌زند. همه‌ی وابستگی‌ها (db, now,
- * pepper, random, sms) قابلِ تزریق‌اند تا route handlerها نازک و تست‌پذیر بمانند.
+ * pepper, random) قابلِ تزریق‌اند تا route handlerها نازک و تست‌پذیر بمانند.
  */
 import { cookies } from "next/headers";
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
-import { otpCodes, users } from "@/db/schema";
+import { users } from "@/db/schema";
 import type { User } from "@/db/schema";
-import { getSmsConfig, requireAuthPepper } from "@/lib/env";
+import { requireAuthPepper } from "@/lib/env";
 import {
-  OTP_LENGTH,
-  OTP_TTL_MS,
-  generateOtp,
-  hashOtp,
-  issueSession,
   revokeSession,
-  verifyOtp,
   verifySessionToken,
   type AuthDb,
   type Clock,
-  type IssuedSession,
   type RandomBytes,
 } from "@/lib/auth/core";
-import { sendOtpSms, type SendOtpOptions, type SendOtpResult } from "@/lib/auth/sms";
 
 /* ─────────────────────────────  کوکیِ نشست  ─────────────────────────────── */
 
@@ -45,7 +36,7 @@ export const SESSION_COOKIE = "karjoo_session";
 /**
  * یک کوکیِ نشستِ امن می‌نویسد. توکن مات است (نه JWT) و فقط هشش در DB است؛ پس کوکی
  * تنها حاملِ راز است → httpOnly (دور از JS کلاینت) + secure در پروداکشن + sameSite=lax
- * (تا ناوبریِ بالا-سطح کار کند ولی CSRF سخت شود).
+ * (تا ناوبریِ بالا-سطح — مثلِ بازگشت از Google — کار کند ولی CSRF سخت شود).
  */
 export async function setSessionCookie(token: string, maxAgeMs: number): Promise<void> {
   const store = await cookies();
@@ -72,7 +63,7 @@ export async function readSessionToken(): Promise<string | null> {
 
 /* ──────────────────────────  کاربرِ احرازشده  ───────────────────────────── */
 
-/** هندلِ کمینه‌ی DB که این لایه نیاز دارد (همان AuthDb + خواندنِ users/otp). */
+/** هندلِ کمینه‌ی DB که این لایه نیاز دارد (همان AuthDb + خواندنِ users). */
 export type AuthHttpDb = AuthDb;
 
 /** وابستگی‌های قابل‌تزریقِ گردشِ کارِ احراز هویت (تست). */
@@ -122,25 +113,109 @@ export async function getCurrentUser(opts: AuthHttpDeps = {}): Promise<User | nu
 /** فقط فیلدهای غیرحساسِ کاربر برای بدنه‌ی پاسخ (هرگز چیزی فراتر از این لو نده). */
 export function publicUser(user: User): {
   id: string;
-  phone: string;
-  fullName: string | null;
+  email: string | null;
+  name: string | null;
+  avatarUrl: string | null;
 } {
-  return { id: user.id, phone: user.phone, fullName: user.fullName ?? null };
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    name: user.name ?? null,
+    avatarUrl: user.avatarUrl ?? null,
+  };
 }
 
-/* ───────────────────────  محدودسازیِ نرخِ درخواستِ OTP  ──────────────────── */
+/* ──────────────────────  پیدا/ساختِ کاربر از Google  ─────────────────────── */
 
-/** پیکربندیِ محدودساز: حداکثر `max` درخواست در پنجره‌ی `windowMs`. */
+/** پروفایلِ نرمال‌شده‌ی Google که برای پیدا/ساختِ کاربر لازم است. */
+export interface GoogleIdentity {
+  /** claim `sub` — شناسه‌ی پایدارِ Google (هویتِ اصلی). */
+  sub: string;
+  email: string;
+  name?: string | null;
+  avatarUrl?: string | null;
+}
+
+/**
+ * کاربرِ متناظر با یک هویتِ Google را برمی‌گرداند یا (در صورتِ نبودن) می‌سازد.
+ *
+ * قواعد:
+ *   • ابتدا با `googleSub` جست‌وجو می‌شود (هویتِ پایدار). اگر نبود، fallback با `email`
+ *     تا کاربرانی که قبلاً با ایمیل شناخته شده‌اند دوباره ساخته نشوند؛ در این حالت
+ *     `googleSub` روی همان ردیف تثبیت می‌شود.
+ *   • در هر ورود، `name`/`avatarUrl` (و در fallback، `googleSub`) به‌روزرسانی می‌شوند تا
+ *     پروفایل تازه بماند. مقادیرِ خالی/undefined با مقدارِ قبلی جایگزین نمی‌شوند مگر
+ *     Google مقدارِ تازه بدهد.
+ *   • کاربرِ تازه فعال (isActive=true، پیش‌فرضِ schema) و با پلنِ free ساخته می‌شود.
+ *
+ * همه‌ی وابستگی‌ها قابلِ تزریق‌اند (تستِ بدونِ DB/شبکه).
+ */
+export async function findOrCreateUserByGoogle(
+  identity: GoogleIdentity,
+  opts: AuthHttpDeps = {},
+): Promise<User> {
+  const db = opts.db ?? defaultDb;
+  const now = opts.now ?? defaultNow;
+
+  const name = identity.name ?? null;
+  const avatarUrl = identity.avatarUrl ?? null;
+
+  // ۱) با googleSub (هویتِ پایدار).
+  const [bySub] = await db
+    .select()
+    .from(users)
+    .where(eq(users.googleSub, identity.sub))
+    .limit(1);
+
+  if (bySub) {
+    const [updated] = await db
+      .update(users)
+      .set({ name, avatarUrl, email: identity.email, updatedAt: new Date(now()) })
+      .where(eq(users.id, bySub.id))
+      .returning();
+    return updated ?? bySub;
+  }
+
+  // ۲) fallback با email (کاربرِ موجودی که هنوز به این googleSub گره نخورده).
+  const [byEmail] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, identity.email))
+    .limit(1);
+
+  if (byEmail) {
+    const [updated] = await db
+      .update(users)
+      .set({ googleSub: identity.sub, name, avatarUrl, updatedAt: new Date(now()) })
+      .where(eq(users.id, byEmail.id))
+      .returning();
+    return updated ?? byEmail;
+  }
+
+  // ۳) کاربرِ تازه.
+  const [created] = await db
+    .insert(users)
+    .values({ googleSub: identity.sub, email: identity.email, name, avatarUrl })
+    .returning();
+  return created;
+}
+
+/* ───────────────────────  محدودسازیِ نرخِ درخواست  ───────────────────────── */
+
+/**
+ * سطلِ ساده‌ی درون‌حافظه‌ای per-key. در اصل برای OTP بود؛ اکنون اندپوینتِ «شروعِ جریانِ
+ * OAuth» (برای مثال کلید = IPِ کلاینت) از آن استفاده می‌کند تا از اسپمِ redirect جلوگیری شود.
+ * در پروداکشنِ چندنمونه‌ای باید به Redis منتقل شود.
+ */
 export const OTP_RATE_LIMIT_MAX = 5;
 export const OTP_RATE_LIMIT_WINDOW_MS = 10 * 60_000; // ۱۰ دقیقه
 
-/** سطلِ ساده‌ی درون‌حافظه‌ای per-key (در پروداکشنِ چندنمونه‌ای باید به Redis برود). */
 type RateBucket = { count: number; resetAt: number };
 const rateBuckets = new Map<string, RateBucket>();
 
 /**
- * یک محدودساز نرخِ سبک. اگر کلید (مثلاً شماره) از سقف بگذرد false برمی‌گرداند.
- * قابلِ تزریقِ زمان برای تست؛ حالتش بین فراخوانی‌ها در همان فرایند می‌ماند.
+ * یک محدودساز نرخِ سبک. اگر کلید از سقف بگذرد false برمی‌گرداند. قابلِ تزریقِ زمان برای
+ * تست؛ حالتش بین فراخوانی‌ها در همان فرایند می‌ماند.
  */
 export function checkOtpRateLimit(
   key: string,
@@ -163,17 +238,6 @@ export function resetOtpRateLimit(): void {
   rateBuckets.clear();
 }
 
-/* ── محدودیتِ نرخِ سخت‌گیرانه‌تر بر اساسِ IP ─────────────────────────────────
- * دفاع در برابرِ یک IP که چند شماره/کد را می‌کوبد (مکملِ محدودیتِ per-phone). همه از
- * همان سطلِ درون‌حافظه‌ایِ checkOtpRateLimit استفاده می‌کنند؛ در پروداکشنِ چندنمونه‌ای
- * باید به Redis منتقل شود. */
-/** سقفِ «درخواستِ کد» از یک IP در پنجره‌ی ۱۰ دقیقه. */
-export const OTP_REQUEST_IP_MAX = 15;
-/** سقفِ «راستی‌آزماییِ کد» از یک IP در پنجره‌ی ۱۰ دقیقه. */
-export const OTP_VERIFY_IP_MAX = 20;
-/** سقفِ «راستی‌آزماییِ کد» روی یک شماره در پنجره‌ی ۱۰ دقیقه (مکملِ سقفِ ۵-تلاشِ per-code). */
-export const OTP_VERIFY_PHONE_MAX = 8;
-
 /**
  * IPِ کلاینت را از هدرهای proxy می‌خواند (پشتِ reverse-proxy: اولین مقدارِ
  * x-forwarded-for، سپس x-real-ip، وگرنه 'unknown'). برای کلیدِ محدودساز.
@@ -185,163 +249,6 @@ export function clientIp(request: Request): string {
     if (first) return first;
   }
   return request.headers.get("x-real-ip")?.trim() || "unknown";
-}
-
-/* ─────────────────────────────  درخواستِ OTP  ───────────────────────────── */
-
-/** سقفِ تلاشِ راستی‌آزمایی روی یک کدِ OTP پیش از باطل‌شدنش. */
-export const OTP_MAX_ATTEMPTS = 5;
-
-/** آپشن‌های `requestOtp` — وابستگی‌ها + override برای ارسالِ پیامک. */
-export interface RequestOtpOptions extends AuthHttpDeps {
-  /** override ارسالِ پیامک (تست). پیش‌فرض: sendOtpSms واقعی. */
-  sendOtp?: (phone: string, code: string, smsOpts?: SendOtpOptions) => Promise<SendOtpResult>;
-  /** آپشن‌های پاس‌شده به لایه‌ی پیامک (مثلِ config/logger در تست). */
-  smsOptions?: SendOtpOptions;
-}
-
-/**
- * یک OTPِ لاگین برای یک شماره می‌سازد، هشش را ذخیره می‌کند و از طریقِ پیامک می‌فرستد
- * (در نبودِ providerِ پیامک، لاگ می‌شود — حالتِ توسعه). کاربرِ تازه ساخته نمی‌شود اینجا؛
- * هویت هنگامِ verify (یا ساختِ کاربر) قطعی می‌شود تا شمارش/ساختِ زودهنگام رخ ندهد.
- *
- * هرگز فاش نمی‌کند که شماره وجود دارد یا نه — صدازننده‌ی route همیشه پاسخِ عمومی می‌دهد.
- */
-export async function requestOtp(
-  phone: string,
-  opts: RequestOtpOptions = {},
-): Promise<{ sms: SendOtpResult }> {
-  const db = opts.db ?? defaultDb;
-  const now = opts.now ?? defaultNow;
-  const pepper = opts.pepper ?? requireAuthPepper();
-  const send = opts.sendOtp ?? sendOtpSms;
-
-  // حالتِ توسعه: اگر هیچ providerِ پیامکی پیکربندی نشده باشد، از کدِ ثابتِ توسعه (همه ۱)
-  // استفاده می‌کنیم تا بدونِ دیدنِ کنسولِ سرور هم بشود وارد شد. به‌محضِ پیکربندیِ SMS
-  // (Kavenegar/generic) خودکار به کدِ تصادفیِ امن برمی‌گردد.
-  const code =
-    getSmsConfig() === null ? "1".repeat(OTP_LENGTH) : generateOtp(OTP_LENGTH);
-  const codeHash = hashOtp(code, pepper);
-  const expiresAt = new Date(now() + OTP_TTL_MS);
-
-  await db
-    .insert(otpCodes)
-    .values({ phone, codeHash, purpose: "login", expiresAt })
-    .returning();
-
-  const sms = await send(phone, code, opts.smsOptions);
-  return { sms };
-}
-
-/* ──────────────────────────────  راستی‌آزماییِ OTP  ─────────────────────── */
-
-/** نتیجه‌ی typed راستی‌آزماییِ OTP — موفقیت با کاربر+نشست، یا یک علتِ شکست. */
-export type VerifyOtpOutcome =
-  | { ok: true; user: User; session: IssuedSession }
-  | { ok: false; reason: "no_code" | "expired" | "too_many_attempts" | "mismatch" };
-
-/** آپشن‌های `verifyOtpAndLogin`. */
-export interface VerifyOtpOptions extends AuthHttpDeps {
-  userAgent?: string | null;
-}
-
-/**
- * یک کدِ OTP را برای یک شماره راستی‌آزمایی می‌کند و در صورتِ موفقیت، کاربر را
- * (در صورتِ نبودن) می‌سازد و یک نشستِ 'web' صادر می‌کند. قواعد:
- *   • فقط جدیدترین کدِ مصرف‌نشده‌ی همان شماره بررسی می‌شود.
- *   • منقضی‌شده → شکست (`expired`).
- *   • سقفِ تلاش رد شده → شکست (`too_many_attempts`).
- *   • کدِ غلط → attempts++ و شکست (`mismatch`).
- *   • کدِ درست → مصرفِ کد (یک‌بارمصرف)، پیدا/ساختِ کاربر، صدورِ نشست.
- *
- * هیچ توکنِ خامی ذخیره نمی‌شود؛ مقایسه‌ها طول‌ثابت‌اند (در هسته).
- */
-export async function verifyOtpAndLogin(
-  phone: string,
-  code: string,
-  opts: VerifyOtpOptions = {},
-): Promise<VerifyOtpOutcome> {
-  const db = opts.db ?? defaultDb;
-  const now = opts.now ?? defaultNow;
-  const pepper = opts.pepper ?? requireAuthPepper();
-
-  // کدهای مصرف‌نشده‌ی این شماره را بگیر و جدیدترین (بزرگ‌ترین createdAt) را انتخاب کن.
-  // عمداً مرتب‌سازیِ سمتِ DB استفاده نمی‌کنیم تا منطق مستقل از ترتیبِ بازگشتِ ردیف‌ها
-  // باشد؛ انتخابِ جدیدترین در کد قطعی است (هم با Postgres، هم با فیکسچرِ تست).
-  const candidates = await db
-    .select()
-    .from(otpCodes)
-    .where(and(eq(otpCodes.phone, phone), isNull(otpCodes.consumedAt)));
-
-  const otp = candidates.reduce<(typeof candidates)[number] | undefined>(
-    (newest, row) =>
-      !newest || row.createdAt.getTime() > newest.createdAt.getTime() ? row : newest,
-    undefined,
-  );
-
-  if (!otp) return { ok: false, reason: "no_code" };
-
-  if (otp.expiresAt.getTime() <= now()) {
-    return { ok: false, reason: "expired" };
-  }
-
-  if (otp.attempts >= OTP_MAX_ATTEMPTS) {
-    return { ok: false, reason: "too_many_attempts" };
-  }
-
-  if (!verifyOtp(code, otp.codeHash, pepper)) {
-    // تلاشِ ناموفق را بشمار (سقفِ حدسِ متوالی).
-    await db
-      .update(otpCodes)
-      .set({ attempts: otp.attempts + 1 })
-      .where(eq(otpCodes.id, otp.id));
-    return { ok: false, reason: "mismatch" };
-  }
-
-  // کدِ درست → یک‌بارمصرف: همین‌حالا مصرفش کن (با شرطِ هنوز-مصرف‌نشده، race-safe).
-  const consumed = await db
-    .update(otpCodes)
-    .set({ consumedAt: new Date(now()) })
-    .where(and(eq(otpCodes.id, otp.id), isNull(otpCodes.consumedAt)))
-    .returning();
-
-  // اگر کسِ دیگری همزمان مصرفش کرد، این درخواست بازنده است (دوباره استفاده نشود).
-  if (!consumed || consumed.length === 0) {
-    return { ok: false, reason: "mismatch" };
-  }
-
-  const user = await findOrCreateUserByPhone(phone, { db, now });
-  const session = await issueSession(user.id, "web", {
-    db,
-    now,
-    pepper,
-    userAgent: opts.userAgent ?? null,
-    ...(opts.randomBytesImpl ? { randomBytesImpl: opts.randomBytesImpl } : {}),
-  });
-
-  return { ok: true, user, session };
-}
-
-/**
- * کاربرِ یک شماره را برمی‌گرداند یا (در صورتِ نبودن) می‌سازد. شماره شناسه‌ی یکتای هویت
- * است (users_phone_uq). کاربرِ تازه فعال (isActive=true، پیش‌فرضِ schema) است.
- */
-export async function findOrCreateUserByPhone(
-  phone: string,
-  opts: AuthHttpDeps = {},
-): Promise<User> {
-  const db = opts.db ?? defaultDb;
-
-  const [existing] = await db
-    .select()
-    .from(users)
-    .where(eq(users.phone, phone))
-    .limit(1);
-
-  if (existing) return existing;
-
-  const [created] = await db.insert(users).values({ phone }).returning();
-  return created;
 }
 
 /* ─────────────────────────────  خروج (logout)  ──────────────────────────── */

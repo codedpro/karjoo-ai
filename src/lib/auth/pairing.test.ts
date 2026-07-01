@@ -1,7 +1,7 @@
 /**
  * تست‌های واحدِ هندآفِ اتصالِ دستگاه (pairing) — بدون شبکه/DB زنده، زمان/تصادف کنترل‌شده.
  *
- * قاعده‌ی کلیدی (CONTEXT ۵): redeem یک نشستِ 'extension' می‌سازد، بدون OTP دوم، و
+ * قاعده‌ی کلیدی (CONTEXT ۵): redeem یک نشستِ 'extension' می‌سازد، بدون ورودِ دوم، و
  * کدِ جفت‌سازی یک‌بارمصرف است.
  */
 import { describe, expect, it } from "vitest";
@@ -67,7 +67,7 @@ describe("createPairingCode", () => {
 });
 
 describe("redeemPairingCode", () => {
-  it("یک نشستِ extension می‌سازد و لینک را linked می‌کند (بدون OTP دوم)", async () => {
+  it("یک نشستِ extension می‌سازد و لینک را linked می‌کند (بدون ورودِ دوم)", async () => {
     const { db, fake } = makeDb();
     const now = () => 1_000;
     const { code } = await createPairingCode("user-7", {
