@@ -127,12 +127,6 @@ export const auditEventTypeEnum = pgEnum("audit_event_type", [
   "auto_apply_skipped", // آیتم به‌دلیلِ آستانه/سقف/خاموش‌بودنِ تاگل رد شد.
 ]);
 
-/** هدفِ یک کد OTP — ورود/ثبت‌نام یا اتصال یک حساب سایت کاریابی. */
-export const otpPurposeEnum = pgEnum("otp_purpose", [
-  "login", // ورود/ثبت‌نام با شماره موبایل
-  "connect_board", // تأیید برای اتصال یک حساب سایت کاریابی (در صورت نیاز)
-]);
-
 /** نوعِ یک نشستِ احرازهویت: وب (داشبورد) یا افزونه‌ی مرورگر. */
 export const authSessionKindEnum = pgEnum("auth_session_kind", ["web", "extension"]);
 
@@ -219,12 +213,34 @@ export const usageKindEnum = pgEnum("usage_kind", [
 
 /* ───────────────────────────────  Tables  ──────────────────────────────── */
 
-/** کاربر — احراز هویت با OTP پیامکی (شماره موبایل ایران). */
+/**
+ * کاربر — احراز هویت با Google OAuth (هویتِ پایدارِ کاربر = حسابِ Googleِ او).
+ *
+ * هویتِ کاربر «Google sub» (شناسه‌ی پایدارِ Google، هرگز تغییر نمی‌کند) به‌علاوه‌ی
+ * ایمیل است — نه شماره‌ی موبایل. `googleSub` و `email` هر دو یکتا هستند؛ هنگامِ ورود،
+ * ابتدا با googleSub و سپس (fallback) با email جست‌وجو می‌شود. `name`/`avatarUrl` از
+ * پروفایلِ Google در هر ورود به‌روزرسانی می‌شوند.
+ *
+ * ستونِ `phone` عمداً nullable و «بدونِ یکتایی» نگه داشته شده تا ردیف‌های موجودِ dev و
+ * کدِ پایین‌دستی نشکند؛ اما دیگر مسیرِ ورود نیست (بعد از حذفِ OTP بلااستفاده است).
+ */
 export const users = pgTable(
   "users",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    phone: text("phone").notNull(), // E.164، مثلاً +98912...
+    /** شناسه‌ی پایدارِ Google (claim `sub`) — هویتِ اصلیِ کاربر. یکتا. */
+    googleSub: text("google_sub"),
+    /** ایمیلِ کاربر از Google — یکتا. کلیدِ ثانویه‌ی هویت (fallback هنگامِ ورود). */
+    email: text("email"),
+    /** نامِ نمایشیِ کاربر از پروفایلِ Google (name claim). */
+    name: text("name"),
+    /** آدرسِ آواتارِ کاربر از پروفایلِ Google (picture claim). */
+    avatarUrl: text("avatar_url"),
+    /**
+     * شماره‌ی موبایل — دیگر مسیرِ هویت نیست (میراثِ OTP). nullable و بدونِ یکتایی؛
+     * صرفاً برای سازگاریِ عقب‌رو نگه داشته شده. E.164، مثلاً +98912...
+     */
+    phone: text("phone"),
     fullName: text("full_name"),
     /** پلنِ اشتراکِ کاربر — پیش‌فرض رایگان (free). */
     plan: planEnum("plan").notNull().default("free"),
@@ -232,38 +248,13 @@ export const users = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("users_phone_uq").on(t.phone)],
+  (t) => [
+    uniqueIndex("users_google_sub_uq").on(t.googleSub),
+    uniqueIndex("users_email_uq").on(t.email),
+  ],
 );
 
 /* ───────────────────────────  Auth (احراز هویت)  ───────────────────────── */
-
-/**
- * کدهای یک‌بارمصرفِ OTP (احراز هویت با شماره موبایل).
- *
- * قاعده‌ی ایمنی: هرگز کدِ خام ذخیره نمی‌شود — فقط hash آن (با pepper سرور). جدول
- * بر اساس شماره می‌تواند چند ردیفِ تاریخی داشته باشد؛ ردیفِ مصرف‌شده با consumedAt
- * علامت می‌خورد و دیگر معتبر نیست. attempts برای محدودسازی حدس متوالی است.
- */
-export const otpCodes = pgTable(
-  "otp_codes",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    phone: text("phone").notNull(), // E.164 — همان قالبِ users.phone
-    /** هشِ کدِ OTP (sha256 با pepper سرور) — هرگز متنِ خام. */
-    codeHash: text("code_hash").notNull(),
-    purpose: otpPurposeEnum("purpose").notNull().default("login"),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    /** زمانِ مصرف موفق — پس از آن کد دیگر معتبر نیست (یک‌بارمصرف). */
-    consumedAt: timestamp("consumed_at", { withTimezone: true }),
-    /** تعدادِ تلاشِ ناموفقِ راستی‌آزمایی روی این کد (برای سقف حدس). */
-    attempts: integer("attempts").notNull().default(0),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    index("otp_codes_phone_idx").on(t.phone),
-    index("otp_codes_expires_idx").on(t.expiresAt),
-  ],
-);
 
 /**
  * نشستِ احرازهویت‌شده (وب یا افزونه). توکنِ نشست یک رشته‌ی تصادفیِ مات (opaque)
@@ -1043,8 +1034,6 @@ export const userAutoApply = pgTable(
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
-export type OtpCode = typeof otpCodes.$inferSelect;
-export type NewOtpCode = typeof otpCodes.$inferInsert;
 export type AuthSession = typeof authSessions.$inferSelect;
 export type NewAuthSession = typeof authSessions.$inferInsert;
 export type DeviceLink = typeof deviceLinks.$inferSelect;

@@ -56,7 +56,19 @@ const envSchema = z.object({
   // حداقل ۱۶ کاراکتر تا entropy کافی داشته باشد.
   AUTH_TOKEN_PEPPER: optionalNonEmpty(z.string().min(16)),
 
-  // ── ارائه‌دهنده‌ی پیامک (SMS — برای ارسال OTP) ───────────────────────────
+  // ── ورود با Google (OAuth2 Authorization-Code) ───────────────────────────
+  // شناسه/رازِ کلاینتِ Google (server-only). مثلِ ONEXAI: اختیاری در بوت (تا لندینگ/بلاگ
+  // بدونِ آن‌ها بالا بیایند) ولی اجباری هنگامِ شروعِ جریانِ OAuth یا تبادلِ کد —
+  // requireGoogleOAuth() اگر هر کدام تنظیم نشده باشد fail-closed می‌کند. رشته‌ی خالی ⇒
+  // تنظیم‌نشده (تا کپیِ .env.example بوت را نشکند). این‌ها را *هرگز لاگ نکنید*.
+  GOOGLE_CLIENT_ID: optionalNonEmpty(z.string().min(1)),
+  GOOGLE_CLIENT_SECRET: optionalNonEmpty(z.string().min(1)),
+  // override اختیاریِ redirect_uri. اگر تنظیم نشود، از NEXT_PUBLIC_SITE_URL مشتق می‌شود:
+  // <NEXT_PUBLIC_SITE_URL>/api/auth/callback/google. باید *دقیقاً* با redirect URIِ مجاز
+  // روی کلاینتِ Google یکی باشد (https://karjooai.itmaster.uk/api/auth/callback/google).
+  GOOGLE_REDIRECT_URI: optionalNonEmpty(z.string().url()),
+
+  // ── ارائه‌دهنده‌ی پیامک (SMS — میراثِ OTP، بلااستفاده پس از مهاجرت به Google) ─
   // همه اختیاری‌اند: اگر هیچ‌کدام تنظیم نشده باشد، sendOtpSms در حالت توسعه کد را
   // در کنسول لاگ می‌کند (به‌جای ارسال واقعی) و یک نشانه‌ی "dev_mode" برمی‌گرداند —
   // پس اپ بدون هیچ providerِ واقعی هم بوت و کار می‌کند (قاعده‌ی ۶ بخش CONTEXT).
@@ -233,6 +245,64 @@ export function requireAuthPepper(): string {
     );
   }
   return env.AUTH_TOKEN_PEPPER;
+}
+
+/* ─────────────  حل‌کننده‌های ورود با Google (OAuth2)  ─────────────────────── */
+
+/** مسیرِ callbackِ Google — باید *دقیقاً* با redirect URIِ مجازِ کلاینتِ Google یکی باشد. */
+export const GOOGLE_CALLBACK_PATH = "/api/auth/callback/google";
+
+/** آدرسِ پیش‌فرضِ عمومیِ سایت (برای مشتق‌کردنِ redirect_uri) — هم‌راستا با src/lib/site.ts. */
+const DEFAULT_SITE_URL = "https://karjoo.ai";
+
+/**
+ * `redirect_uri`ِ جریانِ OAuthِ Google را حل می‌کند.
+ *
+ * ترتیب: اگر GOOGLE_REDIRECT_URI صریحاً تنظیم شده باشد همان؛ وگرنه از
+ * NEXT_PUBLIC_SITE_URL (یا پیش‌فرضِ برند) + GOOGLE_CALLBACK_PATH مشتق می‌شود. این مقدار
+ * باید در «شروعِ جریان» و «تبادلِ کد» *یکسان* باشد و *دقیقاً* با redirect URIِ مجاز روی
+ * کلاینتِ Google بخورد؛ وگرنه Google با redirect_uri_mismatch رد می‌کند. هرگز throw
+ * نمی‌کند (فقط رشته‌ای بی‌راز می‌سازد).
+ */
+export function resolveGoogleRedirectUri(): string {
+  if (env.GOOGLE_REDIRECT_URI) return env.GOOGLE_REDIRECT_URI;
+  const base = (process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
+  return `${base}${GOOGLE_CALLBACK_PATH}`;
+}
+
+/**
+ * اعتبارنامه‌ی تأییدشده‌ی کلاینتِ Google. این را در مسیرِ شروع/تبادلِ OAuth صدا بزنید
+ * (نه در بوت): اگر هر یک از GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET تنظیم نشده باشد، خطای
+ * روشن می‌دهد تا توسعه‌دهنده بداند کدام متغیر کم است — به‌جای یک ۴۰۰/۴۰۱ مبهم از Google.
+ * secret را *هرگز لاگ نکنید*. redirectUri همان‌جا حل و برگردانده می‌شود تا فراخواننده هم
+ * شروعِ جریان و هم تبادلِ کد را با «یک» مقدار انجام دهد.
+ */
+export function requireGoogleOAuth(): {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+} {
+  const missing: string[] = [];
+  if (!env.GOOGLE_CLIENT_ID) missing.push("GOOGLE_CLIENT_ID");
+  if (!env.GOOGLE_CLIENT_SECRET) missing.push("GOOGLE_CLIENT_SECRET");
+
+  if (missing.length > 0) {
+    throw new Error(
+      `ورود با Google پیکربندی نشده است؛ این متغیرها لازم‌اند: ${missing.join(", ")}. ` +
+        "این‌ها را در محیطِ سرور (server-only) ست کنید تا جریانِ OAuth فعال شود.",
+    );
+  }
+
+  return {
+    clientId: env.GOOGLE_CLIENT_ID!,
+    clientSecret: env.GOOGLE_CLIENT_SECRET!,
+    redirectUri: resolveGoogleRedirectUri(),
+  };
+}
+
+/** آیا ورود با Google پیکربندی شده است؟ (برای پاسخِ سریعِ «پیکربندی‌نشده» بدونِ throw). */
+export function isGoogleOAuthConfigured(): boolean {
+  return Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 }
 
 /**
