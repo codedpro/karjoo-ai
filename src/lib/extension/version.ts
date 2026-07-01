@@ -16,7 +16,7 @@
  */
 
 /** نسخه‌ی جاریِ افزونه (semver «MAJOR.MINOR.PATCH»). = extension/manifest.json#version */
-export const KARJOO_EXTENSION_VERSION = "0.2.0";
+export const KARJOO_EXTENSION_VERSION = "0.2.1";
 
 /** مسیرِ دانلودِ ZIPِ افزونه (نسبی به ریشه‌ی سایت؛ در public سرو می‌شود). */
 export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
@@ -26,4 +26,4 @@ export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
  * اگر خالی بماند، `notes` در پاسخِ مسیر حذف می‌شود.
  */
 export const KARJOO_EXTENSION_RELEASE_NOTES =
-  "رفعِ اشکالِ باز شدنِ پنجره‌ی افزونه، آیکنِ برند، و افزودنِ اعلانِ نسخه‌ی جدید.";
+  "لوگوی تازه‌ی کارجو، رفعِ کاملِ باز شدنِ پنجره و کارکردِ دکمه‌ها (اتصال/درون‌ریزی)، و اعلانِ نسخه‌ی جدید.";

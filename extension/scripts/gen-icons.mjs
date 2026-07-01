@@ -25,46 +25,43 @@ const ACCENT = "#06b6d4";
 const ACCENT2 = "#67e8f9";
 
 /**
- * Full-detail mark (48×48 coord space, from logo.tsx KafSparkMark) — used for
- * 32/48/128 where the thin stroke + inner cut-out render cleanly.
+ * Karjoo badge mark (64×64 coord space, matches logo.tsx KarjooBadge) — brand
+ * gradient rounded square + white "K" monogram + a cyan spark dot. Used for
+ * 32/48/128 where the strokes render cleanly.
  */
 function markSvg(px) {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 48 48">
+<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 64 64">
   <defs>
     <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="${BRAND}"/>
       <stop offset="1" stop-color="${BRAND2}"/>
     </linearGradient>
-    <linearGradient id="bolt" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="${ACCENT}"/>
-      <stop offset="1" stop-color="${ACCENT2}"/>
-    </linearGradient>
   </defs>
-  <path d="M24 4C12.954 4 4 12.954 4 24s8.954 20 20 20 20-8.954 20-20a19.9 19.9 0 0 0-1.06-6.44l-7.9 5.2A11.98 11.98 0 1 1 24 12c1.61 0 3.15.32 4.56.9l4.7-6.35A19.9 19.9 0 0 0 24 4Z" fill="url(#brand)"/>
-  <path d="M25 15 21 26h5l-3 9 13-15h-6l6-8-11 3Z" fill="url(#bolt)" stroke="#ffffff" stroke-width="0.75" stroke-linejoin="round"/>
+  <rect x="4" y="4" width="56" height="56" rx="18" fill="url(#brand)"/>
+  <path d="M23 15V49" stroke="#ffffff" stroke-width="6.5" stroke-linecap="round"/>
+  <path d="M43.5 15 27.5 32 43.5 49" fill="none" stroke="#ffffff" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="45.5" cy="13.5" r="4.6" fill="${ACCENT}"/>
 </svg>`;
 }
 
 /**
- * Simplified high-contrast mark for 16px: solid brand disc (no thin ring cut),
- * bolder spark with a white outline so the bolt reads at toolbar size.
+ * Simplified high-contrast mark for 16px: fuller badge, bolder "K" strokes and a
+ * brighter, larger spark dot so the monogram reads at toolbar size.
  */
 function markSvg16() {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 48 48">
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 64 64">
   <defs>
     <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="${BRAND}"/>
       <stop offset="1" stop-color="${BRAND2}"/>
     </linearGradient>
-    <linearGradient id="bolt" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="${ACCENT2}"/>
-      <stop offset="1" stop-color="${ACCENT}"/>
-    </linearGradient>
   </defs>
-  <circle cx="24" cy="24" r="21" fill="url(#brand)"/>
-  <path d="M26 12 19 27h6l-4 11 15-19h-7l7-9-14 2Z" fill="url(#bolt)" stroke="#ffffff" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#brand)"/>
+  <path d="M24 14V50" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
+  <path d="M44 14 28 32 44 50" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="46.5" cy="13" r="6" fill="${ACCENT2}"/>
 </svg>`;
 }
 
