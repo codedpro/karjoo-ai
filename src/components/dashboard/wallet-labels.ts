@@ -33,12 +33,12 @@ export const PLAN_BADGE: Record<Plan, { label: string; tone: Tone; title: string
   max: {
     label: "مکس",
     tone: "accent",
-    title: "اعتبارِ ماهانه‌ی بیشتر + اپلای نامحدود + اپلای خودکارِ کارگر.",
+    title: "اعتبارِ ماهانه‌ی بیشتر + اپلای نامحدود + اپلای خودکارِ ورکر.",
   },
   maxplus: {
     label: "مکس پلاس",
     tone: "accent",
-    title: "بیشترین اعتبارِ ماهانه + چند IPِ کارگر + تماسِ مستقیم.",
+    title: "بیشترین اعتبارِ ماهانه + چند IPِ ورکر + تماسِ مستقیم.",
   },
 };
 

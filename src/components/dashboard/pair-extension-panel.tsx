@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from "react";
 
-import { toFaDigits } from "./ui";
+import { Button, Card, toFaDigits } from "./ui";
 
 interface PairResponse {
   /** کدِ جفت‌سازیِ خام برای واردکردن در افزونه (فیلدِ قراردادِ مسیرِ pair). */
@@ -94,17 +94,20 @@ export function PairExtensionPanel() {
   const timeLabel = `${toFaDigits(mm)}:${toFaDigits(String(ss).padStart(2, "0"))}`;
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-6">
+    <Card padded>
       <div className="flex items-start gap-3">
-        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand/10 text-2xl">
+        <div
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-brand/10 text-2xl"
+          aria-hidden
+        >
           🧩
         </div>
         <div className="min-w-0">
-          <h3 className="text-base font-bold">اتصال افزونه‌ی مرورگر</h3>
-          <p className="mt-1 text-sm leading-7 text-muted">
+          <h3 className="text-balance text-base font-bold">اتصالِ افزونه‌ی مرورگر</h3>
+          <p className="mt-1 text-pretty text-sm leading-7 text-muted">
             افزونه‌ی کارجو در مرورگرِ خودتان، با تأییدِ شما اپلای را پیش‌نویس می‌کند.
             برای اتصال، یک کدِ یک‌بارمصرف بسازید و آن را در افزونه وارد کنید — نیازی به
-            ورودِ دوباره‌ی شماره نیست.
+            ورودِ دوباره نیست.
           </p>
         </div>
       </div>
@@ -124,30 +127,32 @@ export function PairExtensionPanel() {
             <code className="ltr-nums select-all break-all text-sm font-bold tracking-wide text-foreground">
               {code}
             </code>
-            <button
+            <Button
               type="button"
               onClick={copy}
-              className="shrink-0 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+              variant="primary"
+              size="sm"
+              className="shrink-0"
             >
               {copied ? "کپی شد ✓" : "کپی"}
-            </button>
+            </Button>
           </div>
           <p className="mt-2 text-xs text-muted">
             این کد یک‌بارمصرف است و تا{" "}
-            <span className="ltr-nums font-medium text-foreground">{timeLabel}</span> دیگر
-            معتبر است.
+            <span className="ltr-nums font-medium text-foreground">{timeLabel}</span>{" "}
+            دیگر معتبر است.
           </p>
         </div>
       ) : (
-        <button
+        <Button
           type="button"
           onClick={generate}
           disabled={pending}
-          className="mt-5 w-full rounded-full bg-gradient-to-l from-brand to-brand-2 px-6 py-2.5 text-sm font-bold text-white shadow-sm shadow-brand/30 transition-transform hover:-translate-y-0.5 disabled:opacity-60 sm:w-auto sm:px-8"
+          className="mt-5 w-full sm:w-auto"
         >
-          {pending ? "در حال ساخت…" : "ساخت کد اتصال"}
-        </button>
+          {pending ? "در حالِ ساخت…" : "ساخت کدِ اتصال"}
+        </Button>
       )}
-    </div>
+    </Card>
   );
 }

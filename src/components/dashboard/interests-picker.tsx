@@ -5,12 +5,16 @@
  *
  * دسته‌ها و انتخاب‌های اولیه از سرور (RSC) می‌آیند؛ این کامپوننت فقط حالتِ انتخاب را
  * مدیریت و با PUT /api/interests ذخیره می‌کند. سرور منبعِ حقیقت است: پاسخِ PUT
- * slugهای واقعاً اعمال‌شده را برمی‌گرداند و ما همان را می‌نشانیم. هیچ داده‌ی حساسی اینجا
+ * slugهای واقعاً اعمال‌شده را برمی‌گرداند و ما همان را می‌نشانیم. هیچ داده‌ی حساسی این‌جا
  * نیست — فقط slug/برچسبِ عمومیِ تاکسونومی + انتخابِ همین کاربر.
+ *
+ * زبانِ بصری روی پرایمیتیوهای مشترک (Button/EmptyState/Badge) و آیکن‌های SVG سوار است
+ * (بدونِ ایموجی). چیپ‌ها با `focus-ring` و `whitespace-nowrap` قابلِ‌دسترس و بی‌شکستِ متن‌اند.
  */
 import { useMemo, useState } from "react";
 
-import { toFaDigits } from "./ui";
+import { Badge, Button, EmptyState, cn, toFaDigits } from "./ui";
+import { IconCheck, IconStar } from "./track-icons";
 
 /** یک دسته‌ی تاکسونومی که UI لازم دارد (زیرمجموعه‌ی CategoryRow). */
 export interface PickerCategory {
@@ -92,30 +96,47 @@ export function InterestsPicker({
     }
   }
 
+  // حالتِ خالی: هنوز تاکسونومی‌ای نیست (نادر، ولی حالتِ درست را نشان می‌دهیم).
+  if (totalCount === 0) {
+    return (
+      <EmptyState
+        icon={<IconStar className="h-7 w-7 text-brand" />}
+        title="هنوز دسته‌بندی‌ای در دسترس نیست"
+        body="به‌زودی زمینه‌های شغلی این‌جا اضافه می‌شوند تا بتوانید علاقه‌مندی‌هایتان را انتخاب کنید."
+      />
+    );
+  }
+
   return (
     <div>
-      {/* نوارِ وضعیت + ذخیره (چسبان در بالا) */}
-      <div className="sticky top-20 z-10 mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card/90 px-4 py-3 backdrop-blur-md">
+      {/* نوارِ وضعیت + ذخیره (چسبان زیرِ هدرِ ۶۴px + کمی فاصله) */}
+      <div className="sticky top-18 z-20 mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card/90 px-4 py-3 shadow-sm backdrop-blur-md">
         <p className="text-sm text-muted">
           <span className="ltr-nums font-bold text-foreground">
             {toFaDigits(selected.size)}
           </span>{" "}
-          از{" "}
-          <span className="ltr-nums">{toFaDigits(totalCount)}</span> دسته انتخاب شده
+          از <span className="ltr-nums">{toFaDigits(totalCount)}</span> دسته انتخاب شده
         </p>
         <div className="flex items-center gap-3">
-          {error ? <span className="text-sm text-rose-500">{error}</span> : null}
-          {done && !dirty ? (
-            <span className="text-sm text-emerald-500">ذخیره شد ✓</span>
+          {error ? (
+            <span role="alert" className="text-sm text-rose-500">
+              {error}
+            </span>
           ) : null}
-          <button
+          {done && !dirty ? (
+            <Badge tone="green">
+              <IconCheck className="h-3.5 w-3.5" />
+              ذخیره شد
+            </Badge>
+          ) : null}
+          <Button
             type="button"
             onClick={save}
             disabled={pending || !dirty}
-            className="rounded-full bg-gradient-to-br from-brand to-brand-2 px-5 py-2 text-sm font-bold text-white transition-opacity disabled:opacity-50"
+            size="sm"
           >
             {pending ? "در حال ذخیره…" : "ذخیره‌ی علاقه‌مندی‌ها"}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -137,14 +158,15 @@ export function InterestsPicker({
                     type="button"
                     onClick={() => toggle(cat.slug)}
                     aria-pressed={isOn}
-                    className={`rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+                    className={cn(
+                      "focus-ring inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-[background-color,border-color,color,transform] active:translate-y-px",
                       isOn
                         ? "border-brand/50 bg-brand/10 text-brand"
-                        : "border-border bg-card text-muted hover:border-foreground/20 hover:text-foreground"
-                    }`}
+                        : "border-border bg-card text-muted hover:border-foreground/20 hover:text-foreground",
+                    )}
                   >
+                    {isOn ? <IconCheck className="h-4 w-4" /> : null}
                     <span>{cat.labelFa}</span>
-                    {isOn ? <span className="ms-1.5">✓</span> : null}
                   </button>
                 );
               })}

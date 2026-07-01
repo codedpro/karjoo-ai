@@ -1,17 +1,19 @@
 /**
- * خانه‌ی داشبورد (server component) — gate شده با نشست.
+ * خانه‌ی داشبورد (Server component) — الگوی مرجعِ همه‌ی صفحه‌های داشبورد.
  *
- * اگر نشستِ معتبر نباشد → redirect به /login. در غیرِ این صورت: خوشامد + کارت‌های
- * خلاصه + بهترین تطبیق‌ها + پنلِ اتصالِ افزونه. بخش‌های وابسته به DB در Suspense
- * پیچیده شده‌اند تا پوسته فوراً نمایش داده شود (streaming).
+ * الگوی Next 16 که این صفحه نشان می‌دهد:
+ *   • پوسته (هدر/ناوبری) در `dashboard/layout.tsx` استاتیک و فوری است — این صفحه فقط
+ *     محتوا می‌دهد (دیگر `<DashboardShell>` لازم نیست).
+ *   • حضورِ نشست پیش‌تر در `proxy.ts` (لبه، بدونِ DB) چک شده؛ این‌جا فقط `userId` را
+ *     می‌گیریم (راستی‌آزماییِ کامل در session/چیپِ کاربر است).
+ *   • هر بخشِ وابسته به DB داخلِ `<Suspense>` با اسکلتِ **هم‌شکلِ محتوا** استریم می‌شود
+ *     (کارت‌های آمار → SkeletonStat، فهرستِ تطبیق → SkeletonList) — نه بلاکِ خاکستریِ کلی.
  */
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { AiMaintenanceBanner } from "@/components/dashboard/ai-maintenance-banner";
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import {
   getDashboardCounts,
   getMatchesForUser,
@@ -20,11 +22,22 @@ import {
 import { MatchCard } from "@/components/dashboard/match-card";
 import { PairExtensionPanel } from "@/components/dashboard/pair-extension-panel";
 import { getDashboardUser } from "@/components/dashboard/session";
-import { Card, EmptyState, SectionHeading, Skeleton, toFaDigits } from "@/components/dashboard/ui";
+import {
+  IconCheck,
+  IconSend,
+  IconTarget,
+} from "@/components/dashboard/track-icons";
+import {
+  ButtonLink,
+  EmptyState,
+  PageHeader,
+  SkeletonList,
+  SkeletonStat,
+  StatCard,
+} from "@/components/dashboard/ui";
 
-// راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node و رندرِ پویا (وابسته به کوکی).
+// راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node.
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "داشبورد",
@@ -35,38 +48,43 @@ export default async function DashboardHomePage() {
   const user = await getDashboardUser();
   if (!user) redirect("/login");
 
+  const userId = user.userId;
+  const fallbackName = user.fullName ?? user.name;
+
   return (
-    <DashboardShell active="home">
-      {/* بنرِ نگه‌داریِ هوش مصنوعی — فقط در حالتِ نگه‌داری (سقفِ بودجه/پرچمِ دستی) دیده می‌شود. */}
-      <div className="mb-6 empty:hidden">
+    <div className="space-y-8">
+      {/* بنرِ نگه‌داریِ هوش مصنوعی — فقط در حالتِ نگه‌داری دیده می‌شود. */}
+      <div className="empty:hidden">
         <AiMaintenanceBanner />
       </div>
 
-      <Suspense fallback={<HeadingSkeleton />}>
-        <Welcome userId={user.userId} fallbackName={user.fullName ?? user.name} />
-      </Suspense>
+      {/* خوشامد + کارت‌های آمار (استریم؛ اسکلتِ هم‌شکلِ StatCard) */}
+      <section>
+        <Suspense fallback={<WelcomeSkeleton />}>
+          <Welcome userId={userId} fallbackName={fallbackName} />
+        </Suspense>
+      </section>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <div className="mb-4 flex items-center justify-between">
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* بهترین تطبیق‌ها */}
+        <section className="lg:col-span-2">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-lg font-bold">بهترین تطبیق‌های شما</h2>
-            <Link
-              href="/dashboard/matches"
-              className="text-sm font-medium text-brand hover:underline"
-            >
+            <ButtonLink href="/dashboard/matches" variant="ghost" size="sm">
               مشاهده‌ی همه
-            </Link>
+            </ButtonLink>
           </div>
-          <Suspense fallback={<MatchesSkeleton />}>
-            <TopMatches userId={user.userId} />
+          <Suspense fallback={<SkeletonList rows={3} />}>
+            <TopMatches userId={userId} />
           </Suspense>
-        </div>
+        </section>
 
-        <div className="space-y-6">
+        {/* اتصالِ افزونه */}
+        <aside className="space-y-6">
           <PairExtensionPanel />
-        </div>
+        </aside>
       </div>
-    </DashboardShell>
+    </div>
   );
 }
 
@@ -87,28 +105,32 @@ async function Welcome({
   const name = profile?.fullName ?? fallbackName ?? "کاربر کارجو";
 
   return (
-    <div>
-      <SectionHeading
-        title={`سلام، ${name} 👋`}
-        subtitle="آخرین وضعیتِ تطبیق‌ها و اپلای‌هایت را اینجا دنبال کن."
+    <div className="space-y-6">
+      <PageHeader
+        title={
+          <>
+            سلام، <span className="text-brand">{name}</span>
+          </>
+        }
+        subtitle="آخرین وضعیتِ تطبیق‌ها و اپلای‌هایت را این‌جا دنبال کن."
       />
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <SummaryCard
-          icon="✅"
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          icon={<IconCheck className="h-5 w-5" />}
           value={counts.drafted}
           label="تطبیقِ آماده‌ی اپلای"
           tone="brand"
         />
-        <SummaryCard
-          icon="🎯"
+        <StatCard
+          icon={<IconTarget className="h-5 w-5" />}
           value={counts.totalMatches}
           label="تطبیق‌های بررسی‌شده"
           tone="accent"
           href="/dashboard/matches"
         />
-        <SummaryCard
-          icon="📨"
+        <StatCard
+          icon={<IconSend className="h-5 w-5" />}
           value={counts.totalApplications}
           label="اپلای‌های ثبت‌شده"
           tone="muted"
@@ -125,9 +147,9 @@ async function TopMatches({ userId }: { userId: string }) {
   if (matches.length === 0) {
     return (
       <EmptyState
-        icon="🧭"
+        icon={<IconTarget className="h-7 w-7 text-brand" />}
         title="هنوز تطبیقی نداریم"
-        body="به‌محض اینکه پروفایلت با آگهی‌های تازه تطبیق داده شود، بهترین فرصت‌ها همین‌جا ظاهر می‌شوند."
+        body="به‌محضِ اینکه پروفایلت با آگهی‌های تازه تطبیق داده شود، بهترین فرصت‌ها همین‌جا ظاهر می‌شوند."
       />
     );
   }
@@ -141,70 +163,20 @@ async function TopMatches({ userId }: { userId: string }) {
   );
 }
 
-/* ─────────────────────────────── اجزای کوچک ────────────────────────────────── */
+/* ─────────────────────────── اسکلتِ خوشامد (هم‌شکل) ─────────────────────────── */
 
-function SummaryCard({
-  icon,
-  value,
-  label,
-  tone,
-  href,
-}: {
-  icon: string;
-  value: number | string;
-  label: string;
-  tone: "brand" | "accent" | "muted";
-  href?: string;
-}) {
-  const toneRing =
-    tone === "brand"
-      ? "bg-brand/10"
-      : tone === "accent"
-        ? "bg-accent/10"
-        : "bg-foreground/5";
-
-  const inner = (
-    <Card className="flex items-center gap-4 p-5 transition-colors hover:border-brand/40">
-      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl text-2xl ${toneRing}`}>
-        {icon}
-      </div>
-      <div>
-        <div className="ltr-nums text-2xl font-extrabold">
-          {typeof value === "number" ? toFaDigits(value) : value}
-        </div>
-        <div className="text-xs text-muted">{label}</div>
-      </div>
-    </Card>
-  );
-
-  return href ? (
-    <Link href={href} className="block">
-      {inner}
-    </Link>
-  ) : (
-    inner
-  );
-}
-
-function HeadingSkeleton() {
+function WelcomeSkeleton() {
   return (
-    <div>
-      <Skeleton className="h-8 w-64" />
-      <Skeleton className="mt-3 h-4 w-80" />
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <Skeleton className="h-20" />
-        <Skeleton className="h-20" />
-        <Skeleton className="h-20" />
+    <div className="space-y-6" aria-hidden>
+      <div className="space-y-2">
+        <div className="skeleton-shimmer h-8 w-64 rounded-lg bg-foreground/[0.06]" />
+        <div className="skeleton-shimmer h-4 w-80 max-w-full rounded bg-foreground/[0.06]" />
       </div>
-    </div>
-  );
-}
-
-function MatchesSkeleton() {
-  return (
-    <div className="space-y-4">
-      <Skeleton className="h-36" />
-      <Skeleton className="h-36" />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <SkeletonStat />
+        <SkeletonStat />
+        <SkeletonStat />
+      </div>
     </div>
   );
 }

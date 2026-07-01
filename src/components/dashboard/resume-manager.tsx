@@ -11,11 +11,21 @@
  *
  * این کامپوننت هیچ توکن/رازی نمی‌بیند؛ فقط با نشستِ کوکیِ httpOnly کار می‌کند (مرورگر
  * خودش کوکی را می‌فرستد). پس از ذخیره، router.refresh تا RSCها داده‌ی تازه را بخوانند.
+ *
+ * زبانِ بصری روی پرایمیتیوهای مشترک (Card/Button) و آیکن‌های SVG سوار است (بدونِ ایموجی)؛
+ * هر گام شماره‌ی گامِ خودش را در یک نشانِ گِرد دارد تا سلسله‌مراتب روشن باشد.
  */
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 
-import { toFaDigits } from "./ui";
+import { Card, cn, toFaDigits } from "./ui";
+import {
+  IconClose,
+  IconDoc,
+  IconPlus,
+  IconSparkle,
+  IconUpload,
+} from "./track-icons";
 import { CostHint, FreeBadge, TopupPrompt } from "./paid-action";
 import { AiMaintenanceBanner } from "./ai-maintenance-banner";
 import {
@@ -74,6 +84,18 @@ function fromApiProfile(p: ApiProfile): EditableProfile {
       typeof p.yearsExperience === "number" ? String(p.yearsExperience) : "",
     skills: Array.isArray(p.skills) ? p.skills : [],
   };
+}
+
+/** نشانِ شماره‌ی گام — دایره‌ی برندی با رقمِ فارسی، برای سلسله‌مراتبِ روشنِ گام‌ها. */
+function StepBadge({ n }: { n: number }) {
+  return (
+    <span
+      className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand/12 text-sm font-bold text-brand"
+      aria-hidden
+    >
+      {toFaDigits(n)}
+    </span>
+  );
 }
 
 export function ResumeManager({
@@ -266,18 +288,20 @@ export function ResumeManager({
     setProfile((p) => ({ ...p, skills: p.skills.filter((s) => s !== skill) }));
   }
 
+  const parseDisabled = busy !== null || !resumeFileId || aiMaintenance;
+
   return (
     <div className="space-y-6">
       {error ? (
         <div
           role="alert"
-          className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400"
+          className="text-pretty rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm leading-6 text-rose-600 dark:text-rose-400"
         >
           {error}
         </div>
       ) : null}
       {notice ? (
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+        <div className="text-pretty rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm leading-6 text-emerald-700 dark:text-emerald-400">
           {notice}
         </div>
       ) : null}
@@ -299,19 +323,22 @@ export function ResumeManager({
       ) : null}
 
       {/* ───── گام ۱ و ۲: آپلود + پردازش ───── */}
-      <div className="rounded-2xl border border-border bg-card p-6">
+      <Card padded>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base font-bold">۱. آپلودِ رزومه (PDF)</h3>
+          <h3 className="flex items-center gap-2.5 text-balance text-base font-bold">
+            <StepBadge n={1} />
+            آپلودِ رزومه (PDF)
+          </h3>
           {/* آپلود + استخراجِ متن همیشه رایگان است (CONTEXT: FREE_ACTIONS). */}
           <FreeBadge />
         </div>
-        <p className="mt-1 text-sm text-muted">
+        <p className="mt-2 text-pretty text-sm leading-7 text-muted">
           فایلِ PDF رزومه‌تان را انتخاب کنید (حداکثر ۵ مگابایت). متنِ آن استخراج می‌شود و
           سپس می‌توانید با هوش مصنوعی فیلدها را بسازید. آپلود و استخراجِ متن رایگان است؛
           فقط «پردازش با هوش مصنوعی» (گامِ ۲) پولی است.
         </p>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <input
             ref={fileInputRef}
             type="file"
@@ -327,8 +354,9 @@ export function ResumeManager({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={busy !== null}
-            className="rounded-full border border-border bg-card px-5 py-2.5 text-sm font-medium transition-colors hover:border-brand disabled:opacity-60"
+            className="focus-ring inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-border bg-card px-5 py-2.5 text-sm font-medium transition-colors hover:border-brand hover:text-foreground active:translate-y-px disabled:pointer-events-none disabled:opacity-60"
           >
+            <IconUpload className="h-4 w-4" />
             {busy === "upload" ? "در حال آپلود…" : "انتخابِ فایلِ PDF"}
           </button>
 
@@ -336,126 +364,137 @@ export function ResumeManager({
             <button
               type="button"
               onClick={() => void handleParse()}
-              disabled={busy !== null || !resumeFileId || aiMaintenance}
+              disabled={parseDisabled}
               title={
                 aiMaintenance
                   ? "سرویسِ هوش مصنوعی موقتاً در دسترس نیست."
-                  : undefined
+                  : !resumeFileId
+                    ? "ابتدا یک فایلِ PDF آپلود کنید."
+                    : undefined
               }
-              className="rounded-full bg-gradient-to-l from-brand to-brand-2 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand/30 transition-transform hover:-translate-y-0.5 disabled:opacity-60"
+              className="focus-ring inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-l from-brand to-brand-2 px-5 py-2.5 text-sm font-semibold text-white shadow-brand transition-[transform,opacity] hover:-translate-y-0.5 hover:opacity-95 active:translate-y-px disabled:pointer-events-none disabled:opacity-55"
             >
+              <IconSparkle className="h-4 w-4" />
               {busy === "parse" ? "در حال پردازش…" : "۲. پردازش با هوش مصنوعی"}
             </button>
             {/* تخمینِ هزینه‌ی پردازشِ پولی (پیش از کنش). */}
             <CostHint estimate={parseCostEstimate} />
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* ───── گام ۳: ویرایش و ذخیره ───── */}
+      {/* از خودِ form به‌عنوانِ کارت استفاده می‌کنیم تا سمانتیکِ form حفظ شود (نه div تودرتو). */}
       <form
         onSubmit={handleSave}
-        className="rounded-2xl border border-border bg-card p-6"
+        className="rounded-2xl border border-border bg-card p-5 shadow-xs sm:p-6"
       >
-        <h3 className="text-base font-bold">۳. بررسی و ذخیره‌ی فیلدها</h3>
-        <p className="mt-1 text-sm text-muted">
-          فیلدهای استخراج‌شده را بررسی و در صورتِ نیاز تصحیح کنید، سپس ذخیره بزنید.
-        </p>
+          <h3 className="flex items-center gap-2.5 text-balance text-base font-bold">
+            <StepBadge n={3} />
+            بررسی و ذخیره‌ی فیلدها
+          </h3>
+          <p className="mt-2 text-pretty text-sm leading-7 text-muted">
+            فیلدهای استخراج‌شده را بررسی و در صورتِ نیاز تصحیح کنید، سپس ذخیره بزنید.
+          </p>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <Field
-            id="fullName"
-            label="نام و نام‌خانوادگی"
-            value={profile.fullName}
-            onChange={(v) => setProfile((p) => ({ ...p, fullName: v }))}
-            required
-          />
-          <Field
-            id="headline"
-            label="عنوانِ حرفه‌ای"
-            value={profile.headline}
-            onChange={(v) => setProfile((p) => ({ ...p, headline: v }))}
-            placeholder="مثل: توسعه‌دهنده‌ی فرانت‌اند"
-          />
-          <Field
-            id="city"
-            label="شهر"
-            value={profile.city}
-            onChange={(v) => setProfile((p) => ({ ...p, city: v }))}
-          />
-          <Field
-            id="yearsExperience"
-            label="سال‌های سابقه"
-            value={profile.yearsExperience}
-            onChange={(v) => setProfile((p) => ({ ...p, yearsExperience: v }))}
-            inputMode="numeric"
-            dir="ltr"
-            placeholder="۰"
-          />
-        </div>
-
-        {/* مهارت‌ها */}
-        <div className="mt-5">
-          <label htmlFor="skill" className="mb-1.5 block text-sm font-medium">
-            مهارت‌ها
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="skill"
-              type="text"
-              value={skillDraft}
-              onChange={(e) => setSkillDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addSkill();
-                }
-              }}
-              placeholder="یک مهارت بنویسید و Enter بزنید"
-              className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm outline-none transition-colors focus:border-brand"
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            <Field
+              id="fullName"
+              label="نام و نام‌خانوادگی"
+              value={profile.fullName}
+              onChange={(v) => setProfile((p) => ({ ...p, fullName: v }))}
+              required
             />
-            <button
-              type="button"
-              onClick={addSkill}
-              className="shrink-0 rounded-xl border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:border-brand"
-            >
-              افزودن
-            </button>
+            <Field
+              id="headline"
+              label="عنوانِ حرفه‌ای"
+              value={profile.headline}
+              onChange={(v) => setProfile((p) => ({ ...p, headline: v }))}
+              placeholder="مثل: توسعه‌دهنده‌ی فرانت‌اند"
+            />
+            <Field
+              id="city"
+              label="شهر"
+              value={profile.city}
+              onChange={(v) => setProfile((p) => ({ ...p, city: v }))}
+            />
+            <Field
+              id="yearsExperience"
+              label="سال‌های سابقه"
+              value={profile.yearsExperience}
+              onChange={(v) => setProfile((p) => ({ ...p, yearsExperience: v }))}
+              inputMode="numeric"
+              dir="ltr"
+              placeholder="۰"
+            />
           </div>
 
-          {profile.skills.length > 0 ? (
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {profile.skills.map((skill) => (
-                <li
-                  key={skill}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-3 py-1 text-sm text-brand"
-                >
-                  {skill}
-                  <button
-                    type="button"
-                    onClick={() => removeSkill(skill)}
-                    aria-label={`حذفِ ${skill}`}
-                    className="text-brand/70 transition-colors hover:text-brand"
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-3 text-xs text-muted">هنوز مهارتی اضافه نشده است.</p>
-          )}
-        </div>
+          {/* مهارت‌ها */}
+          <div className="mt-5">
+            <label htmlFor="skill" className="mb-1.5 block text-sm font-medium">
+              مهارت‌ها
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="skill"
+                type="text"
+                value={skillDraft}
+                onChange={(e) => setSkillDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addSkill();
+                  }
+                }}
+                placeholder="یک مهارت بنویسید و Enter بزنید"
+                className="focus-ring w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm outline-none transition-colors focus:border-brand"
+              />
+              <button
+                type="button"
+                onClick={addSkill}
+                className="focus-ring inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:border-brand active:translate-y-px"
+              >
+                <IconPlus className="h-4 w-4" />
+                افزودن
+              </button>
+            </div>
 
-        <div className="mt-6 flex justify-end">
-          <button
-            type="submit"
-            disabled={busy !== null}
-            className="rounded-full bg-gradient-to-l from-brand to-brand-2 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand/30 transition-transform hover:-translate-y-0.5 disabled:opacity-60"
-          >
-            {busy === "save" ? "در حال ذخیره…" : "ذخیره‌ی پروفایل"}
-          </button>
-        </div>
+            {profile.skills.length > 0 ? (
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {profile.skills.map((skill) => (
+                  <li
+                    key={skill}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-brand/10 py-1 pe-1.5 ps-3 text-sm text-brand ring-1 ring-inset ring-brand/15"
+                  >
+                    <span className="truncate" title={skill}>
+                      {skill}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeSkill(skill)}
+                      aria-label={`حذفِ ${skill}`}
+                      className="focus-ring grid h-5 w-5 shrink-0 place-items-center rounded-full text-brand/70 transition-colors hover:bg-brand/15 hover:text-brand"
+                    >
+                      <IconClose className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-xs text-muted">هنوز مهارتی اضافه نشده است.</p>
+            )}
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button
+              type="submit"
+              disabled={busy !== null}
+              className="focus-ring inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-l from-brand to-brand-2 px-6 py-2.5 text-sm font-semibold text-white shadow-brand transition-[transform,opacity] hover:-translate-y-0.5 hover:opacity-95 active:translate-y-px disabled:pointer-events-none disabled:opacity-55"
+            >
+              <IconDoc className="h-4 w-4" />
+              {busy === "save" ? "در حال ذخیره…" : "ذخیره‌ی پروفایل"}
+            </button>
+          </div>
       </form>
     </div>
   );
@@ -485,7 +524,12 @@ function Field({
     <div>
       <label htmlFor={id} className="mb-1.5 block text-sm font-medium">
         {label}
-        {required ? <span className="text-rose-500"> *</span> : null}
+        {required ? (
+          <span className="text-rose-500" aria-hidden>
+            {" "}
+            *
+          </span>
+        ) : null}
       </label>
       <input
         id={id}
@@ -495,7 +539,11 @@ function Field({
         placeholder={placeholder}
         inputMode={inputMode}
         dir={dir}
-        className="w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm outline-none transition-colors focus:border-brand"
+        required={required}
+        className={cn(
+          "focus-ring w-full rounded-xl border border-border bg-background px-4 py-2.5 text-sm outline-none transition-colors focus:border-brand",
+          dir === "ltr" && "ltr-nums",
+        )}
       />
     </div>
   );

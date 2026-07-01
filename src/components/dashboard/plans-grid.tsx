@@ -13,7 +13,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Badge, Card, toFaDigits } from "./ui";
+import { Badge, Button, Card, cn, toFaDigits } from "./ui";
 import { formatToman } from "./wallet-format";
 import {
   PLAN_TONE,
@@ -99,34 +99,43 @@ export function PlansGrid({
           return (
             <Card
               key={plan.key}
-              className={`relative flex flex-col p-6 ${
-                isCurrent ? "ring-2 ring-brand" : ""
-              } ${featured && !isCurrent ? "ring-1 ring-brand/40" : ""}`}
+              className={cn(
+                "relative flex flex-col p-6",
+                isCurrent
+                  ? "ring-2 ring-brand"
+                  : featured
+                    ? "ring-1 ring-brand/40"
+                    : "",
+              )}
             >
-              {/* نشانِ گوشه: پلنِ فعلی یا محبوب */}
+              {/* نشانِ گوشه: پلنِ فعلی یا محبوب — end-4 برای RTL درست می‌نشیند */}
               {isCurrent ? (
-                <span className="absolute -top-2.5 right-4 rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-bold text-white">
+                <span className="absolute -top-2.5 inset-e-4 whitespace-nowrap rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-bold text-white shadow-brand">
                   پلنِ فعلی
                 </span>
               ) : featured ? (
-                <span className="absolute -top-2.5 right-4 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-white">
+                <span className="absolute -top-2.5 inset-e-4 whitespace-nowrap rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-white">
                   پیشنهادی
                 </span>
               ) : null}
 
-              {/* عنوان + لحن */}
+              {/* عنوان + کلیدِ پلن */}
               <div className="flex items-center justify-between gap-2">
-                <h3 className="text-lg font-extrabold">{plan.labelFa}</h3>
-                <Badge tone={PLAN_TONE[plan.key]}>{plan.key}</Badge>
+                <h3 className="text-balance text-lg font-extrabold">
+                  {plan.labelFa}
+                </h3>
+                <Badge tone={PLAN_TONE[plan.key]} className="uppercase">
+                  {plan.key}
+                </Badge>
               </div>
 
               {/* قیمت */}
-              <div className="mt-4 flex items-baseline gap-1.5">
+              <div className="mt-4 flex items-baseline gap-1.5 whitespace-nowrap">
                 {isFree ? (
                   <span className="text-2xl font-extrabold">رایگان</span>
                 ) : (
                   <>
-                    <span className="ltr-nums text-2xl font-extrabold">
+                    <span className="ltr-nums text-2xl font-extrabold tracking-tight">
                       {toFaDigits(formatToman(plan.priceToman))}
                     </span>
                     <span className="text-sm text-muted">تومان / ماه</span>
@@ -135,11 +144,11 @@ export function PlansGrid({
               </div>
 
               {/* اعتبارِ ماهانه‌ی هوش مصنوعی */}
-              <div className="mt-4 rounded-xl border border-border bg-card/60 px-3.5 py-2.5">
+              <div className="mt-4 rounded-xl border border-border bg-surface/60 px-3.5 py-2.5">
                 <p className="text-xs text-muted">اعتبارِ ماهانه‌ی هوش مصنوعی</p>
                 <p className="mt-0.5 text-sm font-bold">
                   {plan.monthlyCreditToman > 0 ? (
-                    <span className="ltr-nums">
+                    <span className="ltr-nums whitespace-nowrap">
                       {toFaDigits(formatToman(plan.monthlyCreditToman))} تومان
                     </span>
                   ) : (
@@ -155,7 +164,7 @@ export function PlansGrid({
                   value={toFaDigits(applyQuotaLabel(plan.applyQuotaPerDay))}
                 />
                 <SpecRow
-                  label="IPِ کارگرِ اپلای خودکار"
+                  label="IPِ ورکرِ اپلای خودکار"
                   value={toFaDigits(workerIpLabel(plan.workerIpLimit))}
                 />
                 <SpecRow
@@ -168,28 +177,25 @@ export function PlansGrid({
               <ul className="mt-4 space-y-1.5 text-xs leading-6 text-muted">
                 {plan.features.map((f) => (
                   <li key={f} className="flex gap-2">
-                    <span className="mt-0.5 text-brand">✓</span>
-                    <span>{toFaDigits(f)}</span>
+                    <CheckIcon />
+                    <span className="text-pretty">{toFaDigits(f)}</span>
                   </li>
                 ))}
               </ul>
 
               {/* CTA */}
-              <button
+              <Button
                 type="button"
                 onClick={() => changePlan(plan)}
                 disabled={isCurrent || busy || busyKey !== null}
                 aria-current={isCurrent ? "true" : undefined}
-                className={`mt-6 w-full rounded-xl px-4 py-2.5 text-sm font-bold transition-opacity disabled:opacity-60 ${
-                  isCurrent
-                    ? "cursor-default border border-border bg-card text-muted"
-                    : "bg-brand text-white hover:opacity-90"
-                }`}
+                variant={isCurrent ? "secondary" : "primary"}
+                className={cn("mt-6 w-full", isCurrent && "cursor-default")}
               >
                 {busy
                   ? "در حال تغییر…"
                   : ctaLabel(isCurrent, isUpgrade, plan.labelFa)}
-              </button>
+              </Button>
             </Card>
           );
         })}
@@ -197,20 +203,29 @@ export function PlansGrid({
 
       {/* پیام‌ها */}
       {error ? (
-        <p className="mt-5 rounded-xl bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400">
+        <p
+          role="alert"
+          className="mt-5 text-pretty rounded-xl bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400"
+        >
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p className="mt-5 rounded-xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
+        <p
+          role="status"
+          className="mt-5 text-pretty rounded-xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400"
+        >
           {notice}
         </p>
       ) : null}
 
       {/* یادآوریِ DEV: پرداختِ واقعی هنوز فعال نیست */}
-      <p className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs leading-6 text-amber-700 dark:text-amber-400">
-        ⚠️ درگاهِ پرداختِ واقعی (زرین‌پال) به‌زودی فعال می‌شود. در این نسخه‌ی آزمایشی،
-        تغییرِ پلن بدونِ پرداختِ واقعی اعمال می‌شود تا سرویس قابلِ آزمایش باشد.
+      <p className="mt-5 flex items-start gap-2 text-pretty rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs leading-6 text-amber-700 dark:text-amber-400">
+        <WarnIcon />
+        <span>
+          درگاهِ پرداختِ واقعی (زرین‌پال) به‌زودی فعال می‌شود. در این نسخه‌ی آزمایشی،
+          تغییرِ پلن بدونِ پرداختِ واقعی اعمال می‌شود تا سرویس قابلِ آزمایش باشد.
+        </span>
       </p>
     </div>
   );
@@ -221,7 +236,53 @@ function SpecRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <dt className="text-muted">{label}</dt>
-      <dd className="font-medium">{value}</dd>
+      <dd className="whitespace-nowrap font-medium">{value}</dd>
     </div>
+  );
+}
+
+/** آیکنِ تیکِ سبز کنارِ هر قابلیت (SVG، بدونِ ایموجی). */
+function CheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand"
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M3 8.5 6.5 12 13 4.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** آیکنِ هشدار برای نوارِ DEV (SVG، بدونِ ایموجی). */
+function WarnIcon() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className="mt-0.5 h-4 w-4 shrink-0"
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M10 2.5 18.5 17.5H1.5L10 2.5Z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M10 8v3.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <circle cx="10" cy="14.4" r="0.9" fill="currentColor" />
+    </svg>
   );
 }

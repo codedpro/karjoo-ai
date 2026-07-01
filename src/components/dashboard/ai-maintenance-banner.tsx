@@ -70,25 +70,46 @@ export function AiMaintenanceBanner({
   return (
     <div
       role="alert"
-      className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"
+      className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 shadow-xs"
     >
       <div className="flex items-start gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-xl">
-          🛠️
+        <span
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          aria-hidden
+        >
+          <WrenchIcon />
         </span>
         <div className="min-w-0 flex-1">
-          <h4 className="text-sm font-bold text-amber-800 dark:text-amber-300">
+          <h4 className="text-balance text-sm font-bold text-amber-800 dark:text-amber-300">
             سرویسِ هوش مصنوعی موقتاً در دسترس نیست
           </h4>
-          <p className="mt-1 text-sm leading-7 text-amber-700/90 dark:text-amber-200/80">
+          <p className="mt-1 text-pretty text-sm leading-7 text-amber-700/90 dark:text-amber-200/80">
             {maintenanceMessage(status.reason)}
           </p>
-          <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-200/70">
+          <p className="mt-1 text-pretty text-xs leading-6 text-amber-700/80 dark:text-amber-200/70">
             بقیه‌ی قابلیت‌ها (آپلودِ رزومه، اپلای، ایمپورت و داشبورد) عادی کار می‌کنند.
             کنش‌های هوش مصنوعی به‌محضِ رفعِ محدودیت دوباره فعال می‌شوند.
           </p>
         </div>
       </div>
     </div>
+  );
+}
+
+/** آیکنِ آچار (SVGِ درون‌خطی) — به‌جای ایموجی، هماهنگ با زبانِ بصریِ ناوبری. */
+function WrenchIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5"
+      aria-hidden
+    >
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2.4-.6-.6-2.4 2.3-2.3Z" />
+    </svg>
   );
 }

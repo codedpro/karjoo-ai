@@ -1,26 +1,33 @@
 /**
- * نمای «کیف‌پول و صورتحساب» (server component) — gate شده با نشست.
+ * نمای «کیف‌پول و صورتحساب» (Server component) — الگوی Next 16 (پوسته‌ی فوری + استریم).
  *
- * موجودیِ کیف‌پول (تومان) + نشانِ پلن + CTAِ شارژ (stubِ توسعه‌ای)، فهرستِ تراکنش‌های
+ * موجودیِ کیف‌پول (تومان) + نشانِ پلن + شارژ (stubِ توسعه‌ای)، فهرستِ تراکنش‌های
  * کیف‌پول، و جدولِ تاریخچه‌ی مصرفِ هوش مصنوعی با هزینه‌ی هر فراخوانی.
  *
- * داده مستقیم از DB (RSC) و مقید به userIdِ نشست خوانده می‌شود (قاعده‌ی ۴: دادهٔ هر
- * کاربر فقط برای همان کاربر). بخش‌های وابسته به DB در Suspense‌اند تا پوسته فوراً بیاید.
+ * الگو: پوسته (هدر/ناوبری) در `dashboard/layout.tsx` استاتیک و فوری است؛ این صفحه فقط
+ * محتوا می‌دهد. حضورِ نشست پیش‌تر در `proxy.ts` (لبه، بدونِ DB) چک شده؛ این‌جا فقط
+ * `userId` را می‌گیریم. هر بخشِ وابسته به DB داخلِ `<Suspense>` با اسکلتِ **هم‌شکلِ
+ * محتوا** استریم می‌شود (کارتِ کیف‌پول، جدولِ مصرف) — نه بلاکِ خاکستریِ کلی. داده مقید
+ * به userIdِ نشست خوانده می‌شود (قاعده‌ی ۴: دادهٔ هر کاربر فقط برای همان کاربر).
  */
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
-import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { getDashboardUser } from "@/components/dashboard/session";
 import { getUsageForUser, getWalletForUser } from "@/components/dashboard/wallet-data";
 import { LedgerList, UsageTable } from "@/components/dashboard/wallet-history";
 import { WalletPanel } from "@/components/dashboard/wallet-panel";
-import { SectionHeading, Skeleton } from "@/components/dashboard/ui";
+import {
+  ButtonLink,
+  PageHeader,
+  SectionHeading,
+  Skeleton,
+  SkeletonTable,
+} from "@/components/dashboard/ui";
 
-// راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node و رندرِ پویا (وابسته به کوکی).
+// راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (دیگر force-dynamic لازم نیست).
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "کیف‌پول و صورتحساب",
@@ -31,30 +38,43 @@ export default async function BillingPage() {
   const user = await getDashboardUser();
   if (!user) redirect("/login");
 
+  const { userId } = user;
+
   return (
-    <DashboardShell active="billing">
-      <SectionHeading
+    <div className="space-y-8">
+      <PageHeader
         title="کیف‌پول و صورتحساب"
-        subtitle="موجودیِ خود را مدیریت کنید و هزینه‌ی هر فراخوانیِ هوش مصنوعی را ببینید. آپلودِ رزومه و استخراجِ متن همیشه رایگان است؛ تطبیق، انگیزه‌نامه و پردازشِ هوشمندِ رزومه به‌میزانِ مصرف از کیف‌پول کسر می‌شوند."
+        subtitle="موجودی‌ات را شارژ کن و هزینه‌ی هر فراخوانیِ هوش مصنوعی را ببین. آپلودِ رزومه و استخراجِ متن همیشه رایگان است؛ تطبیق، انگیزه‌نامه و پردازشِ هوشمندِ رزومه به‌میزانِ مصرف از کیف‌پول کسر می‌شوند."
+        actions={
+          <ButtonLink href="/dashboard/plans" variant="secondary" size="sm">
+            پلن‌ها و ارتقا
+          </ButtonLink>
+        }
       />
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3">
         {/* ستونِ کیف‌پول + تراکنش‌ها */}
-        <div className="space-y-6">
-          <Suspense fallback={<Skeleton className="h-72" />}>
-            <WalletSection userId={user.userId} />
+        <div className="space-y-6 lg:col-span-1">
+          <Suspense fallback={<WalletSkeleton />}>
+            <WalletSection userId={userId} />
           </Suspense>
         </div>
 
         {/* ستونِ تاریخچه‌ی مصرف */}
         <div className="lg:col-span-2">
-          <h2 className="mb-4 text-lg font-bold">تاریخچه‌ی مصرفِ هوش مصنوعی</h2>
-          <Suspense fallback={<UsageSkeleton />}>
-            <UsageSection userId={user.userId} />
-          </Suspense>
+          <SectionHeading
+            as="h2"
+            title="تاریخچه‌ی مصرفِ هوش مصنوعی"
+            subtitle="هزینه‌ی هر فراخوانی — بر اساسِ مصرفِ واقعیِ توکن، از کیف‌پول کسر شده."
+          />
+          <div className="mt-5">
+            <Suspense fallback={<SkeletonTable rows={6} cols={5} />}>
+              <UsageSection userId={userId} />
+            </Suspense>
+          </div>
         </div>
       </div>
-    </DashboardShell>
+    </div>
   );
 }
 
@@ -75,13 +95,43 @@ async function UsageSection({ userId }: { userId: string }) {
   return <UsageTable rows={usage} />;
 }
 
-function UsageSkeleton() {
+/* ─────────────────────── اسکلتِ کیف‌پول (هم‌شکلِ WalletPanel) ─────────────────────── */
+
+/** اسکلتِ ستونِ کیف‌پول — کارتِ موجودی/شارژ + کارتِ تراکنش‌ها، هم‌ابعادِ محتوای واقعی. */
+function WalletSkeleton() {
   return (
-    <div className="space-y-3">
-      <Skeleton className="h-10" />
-      <Skeleton className="h-10" />
-      <Skeleton className="h-10" />
-      <Skeleton className="h-10" />
+    <div className="space-y-6" aria-hidden>
+      {/* کارتِ موجودی + شارژ */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-3.5 w-24" />
+            <Skeleton className="h-9 w-40" />
+          </div>
+          <Skeleton className="h-6 w-20 rounded-full" />
+        </div>
+        <div className="mt-6 border-t border-border pt-5">
+          <Skeleton className="h-4 w-28" />
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-10" />
+            ))}
+          </div>
+          <Skeleton className="mt-4 h-11 w-full rounded-xl" />
+        </div>
+      </div>
+      {/* کارتِ تراکنش‌ها */}
+      <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
+        <Skeleton className="h-5 w-40" />
+        <div className="mt-4 space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between gap-3">
+              <Skeleton className="h-8 w-1/2" />
+              <Skeleton className="h-8 w-20" />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

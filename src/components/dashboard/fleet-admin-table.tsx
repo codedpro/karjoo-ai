@@ -8,12 +8,20 @@
  * server actionها (fleet-admin-actions) انجام می‌شوند که سمتِ سرور با نگهبانِ ادمین محافظت‌اند —
  * این کامپوننت *هیچ رازی نمی‌بیند* و فقط شناسه‌ها را به اکشن می‌دهد.
  *
- * نگاشت/فرمت‌ها از fleet-labels (خالص) می‌آیند؛ اعداد با toFaDigits فارسی می‌شوند.
+ * نگاشت/فرمت‌ها از fleet-labels (خالص) می‌آیند؛ اعداد با toFaDigits فارسی می‌شوند. زبانِ بصری
+ * روی پرایمیتیوهای مشترک (Card/Badge/Button/EmptyState) و آیکن‌های SVG (بدونِ ایموجی) سوار است.
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge, Card, toFaDigits } from "./ui";
+import { Badge, Button, Card, EmptyState, cn, toFaDigits } from "./ui";
+import {
+  IconClose,
+  IconPlus,
+  IconPower,
+  IconRefresh,
+  IconServer,
+} from "./track-icons";
 import {
   agentVersionLabel,
   isNodeStale,
@@ -34,16 +42,11 @@ export function FleetAdminTable({ nodes }: { nodes: FleetNodeRow[] }) {
 
   if (nodes.length === 0) {
     return (
-      <Card className="p-10 text-center">
-        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand/10 text-3xl">
-          🖥️
-        </div>
-        <h3 className="mt-4 text-lg font-bold">هنوز نودی ثبت‌نام نشده</h3>
-        <p className="mx-auto mt-2 max-w-sm text-sm leading-7 text-muted">
-          نودهای کارگر با توکنِ ثبت‌نام enroll می‌شوند و سپس اینجا با سلامت و کاربرانِ
-          تخصیص‌یافته‌شان دیده می‌شوند.
-        </p>
-      </Card>
+      <EmptyState
+        icon={<IconServer className="h-7 w-7 text-brand" />}
+        title="هنوز سروری ثبت‌نام نشده"
+        body="سرورهای اپلای با توکنِ ثبت‌نام enroll می‌شوند و سپس این‌جا با سلامت و کاربرانِ تخصیص‌یافته‌شان دیده می‌شوند."
+      />
     );
   }
 
@@ -51,11 +54,13 @@ export function FleetAdminTable({ nodes }: { nodes: FleetNodeRow[] }) {
     <div className="space-y-4">
       {notice ? (
         <p
-          className={`rounded-xl px-4 py-3 text-sm ${
+          role="status"
+          className={cn(
+            "text-pretty rounded-xl px-4 py-3 text-sm",
             notice.ok
-              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-              : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-          }`}
+              ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+              : "border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+          )}
         >
           {notice.message}
         </p>
@@ -91,44 +96,70 @@ function FleetNodeCard({
   }
 
   return (
-    <Card className="p-5">
+    <Card padded>
       {/* ───── سرسطرِ نود: سلامت + کلید + region ───── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-sm font-bold" title={node.nodeKey}>
+            <span
+              className="ltr-nums font-mono text-sm font-bold"
+              dir="ltr"
+              title={node.nodeKey}
+            >
               {shortNodeKey(node.nodeKey)}
             </span>
             <Badge tone={health.tone}>
-              <span aria-hidden>{health.icon}</span> {health.label}
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  health.tone === "green"
+                    ? "bg-emerald-500"
+                    : health.tone === "amber"
+                      ? "bg-amber-500"
+                      : health.tone === "rose"
+                        ? "bg-rose-500"
+                        : "bg-muted",
+                )}
+                aria-hidden
+              />
+              {health.label}
             </Badge>
-            {stale ? <Badge tone="rose">heartbeat قطع</Badge> : null}
+            {stale ? <Badge tone="rose">قطعِ ارتباط</Badge> : null}
             {!node.enrolled ? <Badge tone="amber">ثبت‌نام‌نشده</Badge> : null}
           </div>
-          <p className="mt-1 text-xs text-muted">
-            {node.region ?? "منطقه‌ی نامشخص"}
-            {node.ipAddress ? <span className="ltr-nums"> · {node.ipAddress}</span> : null}
+          <p className="mt-1.5 text-xs text-muted">
+            <span className="text-pretty">{node.region ?? "منطقه‌ی نامشخص"}</span>
+            {node.ipAddress ? (
+              <span className="ltr-nums" dir="ltr">
+                {" · "}
+                {node.ipAddress}
+              </span>
+            ) : null}
           </p>
         </div>
 
         {/* صدورِ فرمان */}
         <div className="flex shrink-0 gap-2">
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             disabled={pending}
             onClick={() => run(() => issueCommandAction(node.id, "update"))}
-            className="rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-foreground/5 disabled:opacity-60"
           >
-            🔄 به‌روزرسانی
-          </button>
-          <button
+            <IconRefresh className="h-4 w-4" />
+            به‌روزرسانی
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             disabled={pending}
             onClick={() => run(() => issueCommandAction(node.id, "restart"))}
-            className="rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-muted transition-colors hover:bg-foreground/5 disabled:opacity-60"
           >
-            ⏻ ری‌استارت
-          </button>
+            <IconPower className="h-4 w-4" />
+            ری‌استارت
+          </Button>
         </div>
       </div>
 
@@ -142,34 +173,46 @@ function FleetNodeCard({
 
       {/* ───── کاربرانِ تخصیص‌یافته ───── */}
       <div className="mt-4 border-t border-border/70 pt-4">
-        <p className="text-xs font-medium text-muted">
-          کاربرانِ تخصیص‌یافته ({toFaDigits(node.assignedUsers.length)})
+        <p className="text-xs font-semibold text-muted">
+          کاربرانِ تخصیص‌یافته (
+          <span className="ltr-nums">{toFaDigits(node.assignedUsers.length)}</span>)
         </p>
         {node.assignedUsers.length === 0 ? (
-          <p className="mt-2 text-xs text-muted">هیچ کاربری به این نود تخصیص نیافته است.</p>
+          <p className="mt-2 text-xs text-muted">
+            هیچ کاربری به این سرور تخصیص نیافته است.
+          </p>
         ) : (
           <ul className="mt-2 space-y-2">
             {node.assignedUsers.map((u) => (
               <li
                 key={u.userId}
-                className="flex items-center justify-between gap-2 rounded-xl border border-border px-3 py-2"
+                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface/40 px-3 py-2"
               >
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-medium" dir="ltr">
+                  <div
+                    className="truncate text-sm font-medium"
+                    dir="ltr"
+                    title={u.email ?? u.name ?? undefined}
+                  >
                     {u.email ?? u.name ?? "بدونِ ایمیل"}
                   </div>
-                  <div className="text-xs text-muted">
-                    {u.name ?? u.fullName ?? "بدونِ نام"} · پلن: {u.plan}
+                  <div className="truncate text-xs text-muted">
+                    {u.name ?? u.fullName ?? "بدونِ نام"}
+                    {" · پلن: "}
+                    {u.plan}
                   </div>
                 </div>
-                <button
+                <Button
                   type="button"
+                  variant="danger"
+                  size="sm"
                   disabled={pending}
                   onClick={() => run(() => unassignNodeAction(node.id, u.userId))}
-                  className="shrink-0 rounded-full border border-rose-500/40 px-3 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-500/10 disabled:opacity-60 dark:text-rose-400"
+                  className="shrink-0"
                 >
+                  <IconClose className="h-3.5 w-3.5" />
                   حذفِ تخصیص
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -184,31 +227,47 @@ function FleetNodeCard({
             value={assignUserId}
             onChange={(e) => setAssignUserId(e.target.value.trim())}
             placeholder="شناسه‌ی کاربر (UUID)"
-            className="ltr-nums min-w-0 flex-1 rounded-xl border border-border bg-card px-3 py-2 text-xs outline-none focus:border-brand"
+            className="ltr-nums focus-ring min-w-0 flex-1 rounded-full border border-border bg-card px-4 py-2 text-xs outline-none transition-colors focus:border-brand"
             aria-label="شناسه‌ی کاربر برای تخصیص"
           />
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="sm"
             disabled={pending || assignUserId.length === 0}
             onClick={() => {
               run(() => assignNodeAction(node.id, assignUserId));
               setAssignUserId("");
             }}
-            className="shrink-0 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="shrink-0"
           >
+            <IconPlus className="h-3.5 w-3.5" />
             تخصیص
-          </button>
+          </Button>
         </div>
       </div>
     </Card>
   );
 }
 
-function Stat({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+function Stat({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
-    <div className="rounded-xl border border-border bg-card/60 px-3 py-2">
-      <p className="text-[11px] text-muted">{label}</p>
-      <p className={`mt-0.5 text-sm font-bold ${mono ? "font-mono" : ""}`}>{value}</p>
+    <div className="rounded-xl border border-border bg-surface/40 px-3 py-2">
+      <p className="text-pretty text-[11px] leading-4 text-muted">{label}</p>
+      <p
+        className={cn("mt-0.5 truncate text-sm font-bold", mono && "ltr-nums font-mono")}
+        title={value}
+      >
+        {value}
+      </p>
     </div>
   );
 }

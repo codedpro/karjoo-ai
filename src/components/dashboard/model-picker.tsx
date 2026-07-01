@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * مدل‌پیکرِ هوش مصنوعی (client component, RTL) — Track A.
+ * مدل‌پیکرِ هوش مصنوعی (client component, RTL).
  *
  * کاتالوگِ گروه‌بندی‌شده، انتخابِ اولیه و modelIdِ recommended از سرور (RSC) می‌آیند؛
  * این کامپوننت فقط تب‌های provider، انتخابِ مدل و ذخیره با PUT /api/ai-settings را
@@ -11,7 +11,7 @@
  */
 import { useMemo, useState } from "react";
 
-import { Badge, toFaDigits } from "./ui";
+import { Badge, Button, EmptyState, cn, toFaDigits } from "./ui";
 import { MODEL_TAGS, MODEL_TAG_ORDER } from "./labels";
 
 /** یک مدلِ کاتالوگ که UI لازم دارد (زیرمجموعه‌ی CatalogModel). */
@@ -115,20 +115,22 @@ export function ModelPicker({
 
   if (groups.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-border bg-card/50 px-6 py-14 text-center">
-        <h3 className="text-lg font-bold">هنوز مدلی در دسترس نیست</h3>
-        <p className="mx-auto mt-2 max-w-sm text-sm leading-7 text-muted">
-          کاتالوگِ مدل‌ها هنوز همگام نشده است. کمی بعد دوباره سر بزنید.
-        </p>
-      </div>
+      <EmptyState
+        icon="🧩"
+        title="هنوز مدلی در دسترس نیست"
+        body="کاتالوگِ مدل‌ها هنوز همگام نشده است. کمی بعد دوباره سر بزنید."
+      />
     );
   }
 
   return (
-    <div>
+    <div className="space-y-6">
       {/* وضعیتِ خطا (انتخاب به‌صورتِ خودکار ذخیره می‌شود) */}
       {error ? (
-        <div className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-500">
+        <div
+          role="alert"
+          className="text-pretty rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400"
+        >
           {error}
         </div>
       ) : null}
@@ -149,21 +151,27 @@ export function ModelPicker({
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveProvider(g.provider)}
-              className={`rounded-full border px-4 py-2 text-sm font-bold transition-colors ${
+              className={cn(
+                "focus-ring inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-bold transition-[background-color,border-color,transform] duration-150 active:translate-y-px",
                 isActive
                   ? "border-brand/50 bg-brand/10 text-brand"
-                  : "border-border bg-card text-muted hover:border-foreground/20 hover:text-foreground"
-              }`}
+                  : "border-border bg-card text-muted hover:border-foreground/20 hover:text-foreground",
+              )}
             >
               {g.label}
-              {hasSelected ? <span className="ms-1.5">●</span> : null}
+              {hasSelected ? (
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-brand"
+                  aria-hidden
+                />
+              ) : null}
             </button>
           );
         })}
       </div>
 
       {/* کارت‌های مدلِ گروهِ فعال */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         {activeGroup?.models.map((model) => (
           <ModelCard
             key={model.modelId}
@@ -209,25 +217,33 @@ function ModelCard({
 
   return (
     <div
-      className={`relative flex flex-col rounded-2xl border bg-card p-5 transition-colors ${
+      className={cn(
+        "relative flex flex-col rounded-2xl border bg-card p-5 shadow-xs transition-[border-color,box-shadow]",
         isSelected
           ? "border-brand/60 ring-1 ring-brand/30"
           : isRecommended
-            ? "border-brand/30"
-            : "border-border hover:border-foreground/20"
-      }`}
+            ? "border-brand/30 hover:border-brand/50"
+            : "border-border hover:border-foreground/20",
+      )}
     >
-      {/* سرِ کارت: نام + نشانِ انتخاب‌شده */}
+      {/* سرِ کارت: نام + نشانِ انتخاب‌شده/پیشنهادی */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-base font-bold">{model.displayName}</h3>
-          <p className="ltr-nums mt-0.5 truncate text-xs text-muted" dir="ltr">
+          <h3 className="truncate text-base font-bold" title={model.displayName}>
+            {model.displayName}
+          </h3>
+          <p
+            className="ltr-nums mt-0.5 truncate text-xs text-muted"
+            dir="ltr"
+            title={model.modelId}
+          >
             {model.modelId}
           </p>
         </div>
         {isSaved ? (
-          <span className="shrink-0 rounded-full bg-brand px-2 py-0.5 text-xs font-bold text-white">
-            انتخاب‌شده ✓
+          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand px-2.5 py-0.5 text-xs font-bold text-white">
+            انتخاب‌شده
+            <CheckIcon />
           </span>
         ) : isRecommended ? (
           <Badge tone="brand">پیشنهادی</Badge>
@@ -240,9 +256,9 @@ function ModelCard({
           {orderedTags.map((tag) => {
             const meta = MODEL_TAGS[tag];
             return (
-              <span key={tag} title={meta?.title}>
-                <Badge tone={meta?.tone ?? "muted"}>{meta?.label ?? tag}</Badge>
-              </span>
+              <Badge key={tag} tone={meta?.tone ?? "muted"} title={meta?.title}>
+                {meta?.label ?? tag}
+              </Badge>
             );
           })}
         </div>
@@ -255,28 +271,26 @@ function ModelCard({
       </dl>
       {context ? (
         <p className="mt-3 text-xs text-muted">
-          پنجره‌ی متن: <span className="ltr-nums font-medium">{context}</span>
+          پنجره‌ی متن:{" "}
+          <span className="ltr-nums font-medium text-foreground">{context}</span>
         </p>
       ) : null}
 
       {/* اکشنِ انتخاب */}
-      <button
+      <Button
         type="button"
         onClick={onSelect}
         disabled={isSaved || isPending}
         aria-pressed={isSelected}
-        className={`mt-5 rounded-full px-4 py-2 text-sm font-bold transition-opacity ${
-          isSaved
-            ? "cursor-default bg-brand/10 text-brand"
-            : "bg-gradient-to-br from-brand to-brand-2 text-white disabled:opacity-50"
-        }`}
+        variant={isSaved ? "secondary" : "primary"}
+        className={cn("mt-5 w-full", isSaved && "cursor-default")}
       >
         {isPending
           ? "در حال ذخیره…"
           : isSaved
             ? "مدلِ فعالِ شما"
             : "انتخابِ این مدل"}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -285,10 +299,26 @@ function ModelCard({
 function PriceCell({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl bg-foreground/5 px-3 py-2.5">
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className="ltr-nums mt-0.5 font-bold">
-        {formatToman(value)} <span className="text-xs font-normal text-muted">تومان</span>
+      <dt className="text-pretty text-xs leading-5 text-muted">{label}</dt>
+      <dd className="ltr-nums mt-0.5 whitespace-nowrap font-bold">
+        {formatToman(value)}{" "}
+        <span className="text-xs font-normal text-muted">تومان</span>
       </dd>
     </div>
+  );
+}
+
+/** آیکنِ تیک (SVG، بدونِ ایموجی) — تزئینی، درونِ نشانِ «انتخاب‌شده». */
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" aria-hidden>
+      <path
+        d="M3.5 8.5 6.5 11.5 12.5 4.5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

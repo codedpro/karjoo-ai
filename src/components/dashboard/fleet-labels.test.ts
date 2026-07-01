@@ -2,7 +2,7 @@
  * تست‌های برچسب‌ها/کمک‌کننده‌های نمایشیِ ناوگان (Track C) — خالص، بدونِ I/O.
  *
  * تمرکز:
- *   • نگاشتِ پلن → قابلیتِ کارگرِ سرور (Free/Pro=بدونِ کارگر، Max=۱، MaxPlus=۵؛
+ *   • نگاشتِ پلن → قابلیتِ سرورِ اپلای (Free/Pro=بدونِ ورکر، Max=۱، MaxPlus=۵؛
  *     پلن‌های تاریخی payg/premium نرمال می‌شوند).
  *   • فاصله‌ی زمانیِ نسبی و تشخیصِ نودِ مرده (stale).
  *   • جمع‌بندیِ تازگیِ نشست.
@@ -21,21 +21,21 @@ import {
   workerIpCapacityLabel,
 } from "./fleet-labels";
 
-describe("planFleetCapability — نگاشتِ پلن به قابلیتِ کارگرِ سرور", () => {
-  it("Free: بدونِ کارگرِ سرور (سقفِ IP = ۰)", () => {
+describe("planFleetCapability — نگاشتِ پلن به قابلیتِ سرورِ اپلای", () => {
+  it("Free: بدونِ سرورِ اپلای (سقفِ IP = ۰)", () => {
     const cap = planFleetCapability("free");
     expect(cap.planKey).toBe("free");
     expect(cap.workerIpLimit).toBe(0);
     expect(cap.hasWorkerAutoApply).toBe(false);
   });
 
-  it("Pro: بدونِ کارگرِ سرور (افزونه‌محور)", () => {
+  it("Pro: بدونِ سرورِ اپلای (افزونه‌محور)", () => {
     const cap = planFleetCapability("pro");
     expect(cap.workerIpLimit).toBe(0);
     expect(cap.hasWorkerAutoApply).toBe(false);
   });
 
-  it("Max: یک کارگرِ سرور", () => {
+  it("Max: یک سرورِ اپلای", () => {
     const cap = planFleetCapability("max");
     expect(cap.planKey).toBe("max");
     expect(cap.workerIpLimit).toBe(1);
@@ -43,19 +43,19 @@ describe("planFleetCapability — نگاشتِ پلن به قابلیتِ کار
     expect(cap.planLabelFa).toBe("مکس");
   });
 
-  it("MaxPlus: پنج کارگرِ سرور", () => {
+  it("MaxPlus: پنج سرورِ اپلای", () => {
     const cap = planFleetCapability("maxplus");
     expect(cap.workerIpLimit).toBe(5);
     expect(cap.hasWorkerAutoApply).toBe(true);
   });
 
-  it("پلنِ تاریخیِ payg → free (بدونِ کارگر)", () => {
+  it("پلنِ تاریخیِ payg → free (بدونِ ورکر)", () => {
     const cap = planFleetCapability("payg");
     expect(cap.planKey).toBe("free");
     expect(cap.hasWorkerAutoApply).toBe(false);
   });
 
-  it("پلنِ تاریخیِ premium → pro (بدونِ کارگر)", () => {
+  it("پلنِ تاریخیِ premium → pro (بدونِ ورکر)", () => {
     const cap = planFleetCapability("premium");
     expect(cap.planKey).toBe("pro");
     expect(cap.hasWorkerAutoApply).toBe(false);
@@ -69,12 +69,12 @@ describe("planFleetCapability — نگاشتِ پلن به قابلیتِ کار
 });
 
 describe("workerIpCapacityLabel", () => {
-  it("سقفِ مثبت → «N کارگرِ سرور»", () => {
-    expect(workerIpCapacityLabel(1)).toBe("1 کارگرِ سرور");
-    expect(workerIpCapacityLabel(5)).toBe("5 کارگرِ سرور");
+  it("سقفِ مثبت → «N سرورِ اپلای»", () => {
+    expect(workerIpCapacityLabel(1)).toBe("1 سرورِ اپلای");
+    expect(workerIpCapacityLabel(5)).toBe("5 سرورِ اپلای");
   });
 
-  it("سقفِ صفر/منفی → null (پلن کارگر ندارد)", () => {
+  it("سقفِ صفر/منفی → null (پلن ورکر ندارد)", () => {
     expect(workerIpCapacityLabel(0)).toBeNull();
     expect(workerIpCapacityLabel(-1)).toBeNull();
   });

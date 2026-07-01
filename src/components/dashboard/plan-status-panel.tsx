@@ -1,16 +1,32 @@
 /**
- * پنلِ خلاصه‌ی وضعیتِ پلنِ کاربر (server component) — Track A.
+ * پنلِ خلاصه‌ی وضعیتِ پلنِ کاربر (server component).
  *
  * بالای شبکه‌ی پلن‌ها می‌نشیند و خلاصه‌ی فقط-خواندنیِ وضعیتِ فعلی را نشان می‌دهد:
  * پلنِ فعلی، موجودیِ کیف‌پول، وضعیتِ گرنتِ ماهِ جاری، و اپلای امروز نسبت به سهمیه.
  * هیچ state/کنشی ندارد (تغییرِ پلن در PlansGrid انجام می‌شود)؛ صرفاً نمایش.
  */
-import { Badge, Card, toFaDigits } from "./ui";
+import { Badge, Card, cn, toFaDigits } from "./ui";
 import { formatToman } from "./wallet-format";
 import { applyQuotaLabel } from "./plans-labels";
 import { PLAN_BADGE } from "./wallet-labels";
 import type { UserPlanStatus } from "./plan-data";
 import { planFor } from "@/lib/billing/plans";
+
+/** یک ستونِ متری (برچسبِ کوچک + مقدار) — چیدمانِ یکدستِ چهار خانه‌ی وضعیت. */
+function StatCell({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs text-muted">{label}</p>
+      <div className="mt-1.5">{children}</div>
+    </div>
+  );
+}
 
 export function PlanStatusPanel({ status }: { status: UserPlanStatus }) {
   const def = planFor(status.planKey);
@@ -24,41 +40,37 @@ export function PlanStatusPanel({ status }: { status: UserPlanStatus }) {
       : `${toFaDigits(status.apply.usedToday)} از ${toFaDigits(status.apply.limit)}`;
 
   return (
-    <Card className="p-6">
+    <Card padded>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {/* پلنِ فعلی */}
-        <div>
-          <p className="text-xs text-muted">پلنِ فعلی</p>
-          <div className="mt-1.5">
-            <Badge tone={planBadge.tone}>
-              <span title={planBadge.title}>{def.labelFa}</span>
-            </Badge>
-          </div>
-        </div>
+        <StatCell label="پلنِ فعلی">
+          <Badge tone={planBadge.tone} title={planBadge.title}>
+            {def.labelFa}
+          </Badge>
+        </StatCell>
 
         {/* موجودیِ کیف‌پول */}
-        <div>
-          <p className="text-xs text-muted">موجودیِ کیف‌پول</p>
+        <StatCell label="موجودیِ کیف‌پول">
           <p
-            className={`ltr-nums mt-1.5 text-lg font-extrabold ${
-              lowBalance ? "text-rose-500" : "text-foreground"
-            }`}
+            className={cn(
+              "ltr-nums whitespace-nowrap text-lg font-extrabold",
+              lowBalance ? "text-rose-500" : "text-foreground",
+            )}
           >
             {toFaDigits(formatToman(status.balanceToman))}{" "}
             <span className="text-xs font-normal text-muted">تومان</span>
           </p>
-        </div>
+        </StatCell>
 
         {/* اعتبارِ ماهانه‌ی این ماه */}
-        <div>
-          <p className="text-xs text-muted">اعتبارِ ماهانه‌ی این ماه</p>
-          <p className="mt-1.5 text-sm font-bold">
+        <StatCell label="اعتبارِ ماهانه‌ی این ماه">
+          <p className="text-sm font-bold">
             {status.grant.amountToman <= 0 ? (
-              "بدونِ اعتبار"
+              <span className="text-muted">بدونِ اعتبار</span>
             ) : status.grant.granted ? (
               <span className="text-emerald-600 dark:text-emerald-400">
                 اعمال‌شده (
-                <span className="ltr-nums">
+                <span className="ltr-nums whitespace-nowrap">
                   {toFaDigits(formatToman(status.grant.amountToman))}
                 </span>{" "}
                 تومان)
@@ -69,22 +81,19 @@ export function PlanStatusPanel({ status }: { status: UserPlanStatus }) {
               </span>
             )}
           </p>
-        </div>
+        </StatCell>
 
         {/* اپلای امروز */}
-        <div>
-          <p className="text-xs text-muted">اپلای امروز</p>
-          <p className="mt-1.5 text-sm font-bold">
-            {status.apply.limit === null ? (
-              applyText
-            ) : (
-              <span className="ltr-nums">{applyText}</span>
-            )}
-            <span className="ms-1 text-xs font-normal text-muted">
+        <StatCell label="اپلای امروز">
+          <p className="text-sm font-bold">
+            <span className={status.apply.limit === null ? "" : "ltr-nums"}>
+              {applyText}
+            </span>
+            <span className="ms-1 whitespace-nowrap text-xs font-normal text-muted">
               ({toFaDigits(applyQuotaLabel(def.applyQuotaPerDay))})
             </span>
           </p>
-        </div>
+        </StatCell>
       </div>
     </Card>
   );

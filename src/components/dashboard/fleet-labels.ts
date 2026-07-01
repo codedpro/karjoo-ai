@@ -1,9 +1,9 @@
 /**
- * برچسب‌ها و کمک‌کننده‌های نمایشیِ «ناوگانِ کارگر» (Track C) — خالص، بدونِ I/O/راز.
+ * برچسب‌ها و کمک‌کننده‌های نمایشیِ «ناوگانِ اپلای» (Track C) — خالص، بدونِ I/O/راز.
  *
  * این فایل دو بخش دارد:
- *   ۱) نگاشتِ «پلن → قابلیتِ اپلای خودکارِ کارگر» (planFleetCapability): آیا این پلن
- *      کارگرِ سرور دارد و حداکثر چند IP؟ این تنها منبعِ حقیقتِ نمایش است و سقفِ IP را
+ *   ۱) نگاشتِ «پلن → قابلیتِ اپلای خودکارِ ورکر» (planFleetCapability): آیا این پلن
+ *      سرورِ اپلای دارد و حداکثر چند IP؟ این تنها منبعِ حقیقتِ نمایش است و سقفِ IP را
  *      از خودِ plans.ts (workerIpLimitFor) می‌گیرد تا با Foundation هم‌خوان بماند.
  *   ۲) کمک‌کننده‌های نمایشیِ ادمین: برچسبِ سلامتِ نود، فاصله‌ی زمانیِ «چند پیش»،
  *      وضعیتِ تازگیِ نشست (fresh/stale)، و قالبِ امنِ نسخه/شناسه.
@@ -15,22 +15,22 @@ import { normalizePlanKey, planFor, workerIpLimitFor, type PlanKey } from "@/lib
 
 type Tone = "brand" | "accent" | "muted" | "green" | "amber" | "rose";
 
-/* ───────────────────────  پلن → قابلیتِ کارگرِ سرور  ─────────────────────── */
+/* ───────────────────────  پلن → قابلیتِ سرورِ اپلای  ─────────────────────── */
 
-/** خلاصه‌ی قابلیتِ اپلای خودکارِ کارگرِ یک پلن (برای پنلِ کاربر و دروازه‌بانیِ UI). */
+/** خلاصه‌ی قابلیتِ اپلای خودکارِ ورکرِ یک پلن (برای پنلِ کاربر و دروازه‌بانیِ UI). */
 export interface PlanFleetCapability {
   /** کلیدِ پلنِ نرمال‌شده (payg→free، premium→pro). */
   planKey: PlanKey;
   /** نامِ نمایشیِ فارسیِ پلن. */
   planLabelFa: string;
-  /** سقفِ IPِ کارگر (Free/Pro=۰، Max=۱، MaxPlus=۵). */
+  /** سقفِ IPِ ورکر (Free/Pro=۰، Max=۱، MaxPlus=۵). */
   workerIpLimit: number;
-  /** آیا این پلن اصلاً اپلای خودکارِ کارگرِ سرور دارد؟ (workerIpLimit > 0). */
+  /** آیا این پلن اصلاً اپلای خودکارِ سرورِ اپلای دارد؟ (workerIpLimit > 0). */
   hasWorkerAutoApply: boolean;
 }
 
 /**
- * قابلیتِ کارگرِ سرور را برای پلنِ خامِ کاربر برمی‌گرداند. هرگز throw نمی‌کند:
+ * قابلیتِ سرورِ اپلای را برای پلنِ خامِ کاربر برمی‌گرداند. هرگز throw نمی‌کند:
  * پلن‌های تاریخی/ناشناخته به‌صورتِ دفاعی نرمال می‌شوند (planFor/normalizePlanKey).
  * سقفِ IP از منبعِ حقیقتِ Foundation (workerIpLimitFor) می‌آید — این فایل آن را نمی‌سازد.
  */
@@ -46,12 +46,12 @@ export function planFleetCapability(plan: Plan | string): PlanFleetCapability {
 }
 
 /**
- * متنِ کاربرپسندِ «N IPِ کارگر» برای پنلِ premium — null اگر پلن کارگر نداشته باشد.
+ * متنِ کاربرپسندِ «N IPِ ورکر» برای پنلِ premium — null اگر پلن ورکر نداشته باشد.
  * عدد لاتین می‌ماند تا یک‌جا با toFaDigits فارسی شود.
  */
 export function workerIpCapacityLabel(workerIpLimit: number): string | null {
   if (workerIpLimit <= 0) return null;
-  return `${workerIpLimit} کارگرِ سرور`;
+  return `${workerIpLimit} سرورِ اپلای`;
 }
 
 /* ──────────────────────────  سلامتِ نود (ادمین)  ────────────────────────── */

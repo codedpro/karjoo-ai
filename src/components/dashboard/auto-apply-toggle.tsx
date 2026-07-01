@@ -16,7 +16,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { Card, toFaDigits } from "./ui";
+import { Card, cn, toFaDigits } from "./ui";
+import { IconBolt, IconShield, IconTarget, IconWarn } from "./track-icons";
 
 /** پاسخِ GET/PUT /api/auto-apply. */
 interface AutoApplyResult {
@@ -97,36 +98,54 @@ export function AutoApplyToggle({
   }
 
   return (
-    <Card className="p-6">
+    <Card padded>
       {/* ───── تاگلِ رضایت ───── */}
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h3 className="text-base font-bold">اپلای خودکار</h3>
-          <p className="mt-1 text-sm leading-7 text-muted">
-            با روشن‌کردنِ این گزینه، کارجو از طرفِ شما برای فرصت‌هایی که امتیازِ تطبیقِ
-            آن‌ها از آستانه‌ی شما بالاتر است و در محدوده‌ی سقفِ روزانه قرار دارند،
-            <strong className="text-foreground"> به‌صورت خودکار </strong>
-            اپلای می‌کند. اپلای در مرورگرِ خودتان و با نشستِ خودتان روی سایت‌های متصل
-            انجام می‌شود.
-          </p>
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className={cn(
+              "grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-colors",
+              enabled
+                ? "bg-brand/12 text-brand"
+                : "bg-foreground/5 text-muted",
+            )}
+            aria-hidden
+          >
+            <IconBolt className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-balance text-base font-bold leading-tight">
+              اپلای خودکار
+            </h3>
+            <p className="mt-1.5 text-pretty text-sm leading-7 text-muted">
+              با روشن‌کردنِ این گزینه، کارجو از طرفِ شما برای فرصت‌هایی که امتیازِ تطبیقِ
+              آن‌ها از آستانه بالاتر است و در محدوده‌ی سقفِ روزانه‌اند،{" "}
+              <strong className="font-semibold text-foreground">
+                به‌صورت خودکار
+              </strong>{" "}
+              اپلای می‌کند — در مرورگرِ خودتان و با نشستِ خودتان روی سایت‌های متصل.
+            </p>
+          </div>
         </div>
 
         <button
           type="button"
           role="switch"
           aria-checked={enabled}
-          aria-label="تاگلِ اپلای خودکار"
+          aria-label="روشن/خاموش‌کردنِ اپلای خودکار"
           onClick={onToggle}
           disabled={busy}
-          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
-            enabled ? "bg-brand" : "bg-foreground/15"
-          }`}
+          className={cn(
+            "focus-ring relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors disabled:opacity-60",
+            enabled ? "bg-brand" : "bg-foreground/15",
+          )}
         >
           {/* در RTL، حالتِ روشن دایره را به چپ می‌برد. */}
           <span
-            className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-              enabled ? "-translate-x-6" : "-translate-x-1"
-            }`}
+            className={cn(
+              "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+              enabled ? "-translate-x-6" : "-translate-x-1",
+            )}
           />
         </button>
       </div>
@@ -134,38 +153,52 @@ export function AutoApplyToggle({
       {/* وضعیتِ فعلیِ تاگل */}
       <div className="mt-4">
         <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+          className={cn(
+            "inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset",
             enabled
-              ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
-              : "bg-foreground/5 text-muted"
-          }`}
+              ? "bg-emerald-500/12 text-emerald-600 ring-emerald-500/15 dark:text-emerald-400"
+              : "bg-foreground/5 text-muted ring-foreground/10",
+          )}
         >
-          <span aria-hidden>{enabled ? "🟢" : "⚪"}</span>
-          {enabled ? "روشن — رضایت فعال است" : "خاموش — هیچ اپلای خودکاری انجام نمی‌شود"}
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full",
+              enabled ? "bg-emerald-500" : "bg-muted/60",
+            )}
+            aria-hidden
+          />
+          {enabled ? "روشن — رضایت فعال است" : "خاموش — هیچ اپلایی انجام نمی‌شود"}
         </span>
       </div>
 
       {/* هشدارِ پیش‌نیاز: حسابِ متصلِ آماده */}
       {enabled && !hasReadyBoard ? (
-        <p className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs leading-6 text-amber-700 dark:text-amber-400">
-          ⚠️ هنوز حسابِ متصلِ آماده‌ای ندارید. تا وقتی یک سایتِ پشتیبانی‌شده را با افزونه
-          متصل نکنید، اپلای خودکار عملاً اجرا نمی‌شود.
-        </p>
+        <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-700 dark:text-amber-400">
+          <IconWarn className="mt-0.5 h-4 w-4 shrink-0" />
+          <p className="text-pretty text-xs leading-6">
+            هنوز حسابِ متصلِ آماده‌ای ندارید. تا وقتی یک سایتِ پشتیبانی‌شده را با افزونه
+            متصل نکنید، اپلای خودکار عملاً اجرا نمی‌شود.
+          </p>
+        </div>
       ) : null}
 
       {/* ───── اسلایدرِ آستانه ───── */}
       <div className="mt-6 border-t border-border/70 pt-5">
-        <div className="flex items-center justify-between">
-          <label htmlFor="min-score" className="text-sm font-medium">
+        <div className="flex items-center justify-between gap-3">
+          <label
+            htmlFor="min-score"
+            className="inline-flex items-center gap-2 text-sm font-medium"
+          >
+            <IconTarget className="h-4 w-4 text-muted" />
             آستانه‌ی امتیازِ تطبیق
           </label>
-          <span className="ltr-nums rounded-full bg-brand/10 px-2.5 py-0.5 text-sm font-bold text-brand">
+          <span className="ltr-nums whitespace-nowrap rounded-full bg-brand/10 px-2.5 py-0.5 text-sm font-bold text-brand">
             {toFaDigits(scorePct)}٪
           </span>
         </div>
-        <p className="mt-1 text-xs leading-6 text-muted">
+        <p className="mt-1.5 text-pretty text-xs leading-6 text-muted">
           فقط فرصت‌هایی که امتیازِ تطبیقِ آن‌ها از این مقدار بالاتر باشد به‌صورت خودکار
-          اپلای می‌شوند. مقدارِ بالاتر = اپلای کم‌تر اما دقیق‌تر.
+          اپلای می‌شوند. مقدارِ بالاتر یعنی اپلای کم‌تر اما دقیق‌تر.
         </p>
         <input
           id="min-score"
@@ -178,27 +211,33 @@ export function AutoApplyToggle({
           onPointerUp={onCommitScore}
           onKeyUp={onCommitScore}
           disabled={busy}
-          className="mt-3 w-full accent-[var(--brand)] disabled:opacity-60"
+          className="focus-ring mt-3 w-full accent-brand disabled:opacity-60"
           aria-valuetext={`${scorePct} درصد`}
         />
       </div>
 
       {/* ───── یادآوریِ ToS/لغو ───── */}
-      <p className="mt-5 rounded-xl border border-border bg-card/60 px-4 py-3 text-xs leading-6 text-muted">
-        🔒 این تنظیم هر زمان قابلِ لغو است؛ کافی‌ست تاگل را خاموش کنید. توجه: اپلای خودکار
-        ممکن است با شرایطِ استفاده‌ی برخی سایت‌ها سازگار نباشد و مسئولیتِ حسابِ کاربری بر
-        عهده‌ی شماست. کارجو هرگز از مکانیزمِ تشخیصِ ربات عبور نمی‌کند و فقط با نشستِ واقعیِ
-        خودِ شما عمل می‌کند.
-      </p>
+      <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-border bg-surface/50 px-4 py-3 text-muted">
+        <IconShield className="mt-0.5 h-4 w-4 shrink-0" />
+        <p className="text-pretty text-xs leading-6">
+          این تنظیم هر لحظه قابلِ لغو است؛ کافی‌ست تاگل را خاموش کنید. توجه: اپلای خودکار
+          ممکن است با شرایطِ استفاده‌ی برخی سایت‌ها سازگار نباشد و مسئولیتِ حسابِ کاربری بر
+          عهده‌ی شماست. کارجو هرگز از سازوکارِ تشخیصِ ربات عبور نمی‌کند و فقط با نشستِ واقعیِ
+          خودِ شما عمل می‌کند.
+        </p>
+      </div>
 
       {/* پیام‌ها */}
       {error ? (
-        <p className="mt-4 rounded-xl bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400">
+        <p
+          role="alert"
+          className="mt-4 text-pretty rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400"
+        >
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p className="mt-4 rounded-xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
+        <p className="mt-4 text-pretty rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
           {notice}
         </p>
       ) : null}

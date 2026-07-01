@@ -1,9 +1,9 @@
 /**
- * تست‌های لایه‌ی وضعیتِ کارگرِ سرورِ کاربر (`fleet-status-data.ts`) — Track C.
+ * تست‌های لایه‌ی وضعیتِ سرورِ اپلایِ کاربر (`fleet-status-data.ts`) — Track C.
  *
  * DB، وضعیتِ پلن (getUserPlanStatus) و فهرستِ تخصیص (listAssignments) mock می‌شوند —
  * هیچ DB/شبکه‌ی زنده. تمرکز:
- *   • Free/Pro (بدونِ کارگر): مسیرِ ارزان — تخصیص/نشست اصلاً کوئری نمی‌شود.
+ *   • Free/Pro (بدونِ ورکر): مسیرِ ارزان — تخصیص/نشست اصلاً کوئری نمی‌شود.
  *   • Max: تعدادِ نودهای تخصیص‌یافته و تازگیِ نشست درست جمع می‌شوند.
  *   • قاعده‌ی ۴: داده مقید به همان userId است (پلن/تخصیص با همان id خوانده می‌شوند).
  */
@@ -64,7 +64,7 @@ beforeEach(() => {
 });
 
 describe("getFleetStatusData", () => {
-  it("Free: بدونِ کارگر — مسیرِ ارزان، تخصیص/نشست کوئری نمی‌شود", async () => {
+  it("Free: بدونِ ورکر — مسیرِ ارزان، تخصیص/نشست کوئری نمی‌شود", async () => {
     planMock.mockResolvedValue(planStatus("free"));
 
     const data = await getFleetStatusData("user-1", NOW);
@@ -76,7 +76,7 @@ describe("getFleetStatusData", () => {
     expect(assignMock).not.toHaveBeenCalled();
   });
 
-  it("Pro: بدونِ کارگر — همان مسیرِ ارزان", async () => {
+  it("Pro: بدونِ ورکر — همان مسیرِ ارزان", async () => {
     planMock.mockResolvedValue(planStatus("pro"));
     const data = await getFleetStatusData("user-1", NOW);
     expect(data.capability.hasWorkerAutoApply).toBe(false);

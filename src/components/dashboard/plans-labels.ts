@@ -23,7 +23,7 @@ export function applyQuotaLabel(quotaPerDay: number | null): string {
   return quotaPerDay === null ? "نامحدود" : `${quotaPerDay} در روز`;
 }
 
-/** متنِ تعدادِ IPِ کارگرِ auto-apply (۰ → «—»). */
+/** متنِ تعدادِ IPِ ورکرِ auto-apply (۰ → «—»). */
 export function workerIpLabel(workerIpLimit: number): string {
   return workerIpLimit > 0 ? `${workerIpLimit} IP` : "—";
 }

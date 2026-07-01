@@ -1,28 +1,29 @@
 /**
- * نمای ادمینِ «ناوگانِ کارگر» (server component) — Track C.
+ * نمای ادمینِ «ناوگانِ اپلای» (Server component) — Track C.
  *
  * این صفحه *ادمینی* است (نه کاربری): با نگهبانِ ادمین (isFleetAdmin) محافظت می‌شود که رازِ
  * داخلیِ سرور (INTERNAL_API_SECRET) را سمتِ سرور با کوکیِ ادمین مقایسه می‌کند — راز هرگز به
  * کلاینت نشت نمی‌کند. اگر ادمین نباشد، یک پیامِ «دسترسی ندارید» نشان داده می‌شود (نه افشای
  * وجودِ بخش).
  *
- * فهرستِ نودها، کاربرانِ تخصیص‌یافته، و کنترل‌های تخصیص/حذف/صدورِ فرمان از طریقِ server
- * actionهای محافظت‌شده انجام می‌شوند. داده مستقیم از DB خوانده می‌شود (الگوی RSC).
+ * الگوی Next 16: پوسته/هدر در `dashboard/layout.tsx` استاتیک است؛ این صفحه فقط محتوا می‌دهد و
+ * دیگر containerِ محلی ندارد (بالشتک/عرض را layout مدیریت می‌کند). فهرستِ نودها داخلِ Suspense با
+ * اسکلتِ هم‌شکلِ کارت‌های نود استریم می‌شود؛ کنترل‌ها از server actionهای محافظت‌شده می‌آیند.
  */
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
-import { SectionHeading, Skeleton } from "@/components/dashboard/ui";
+import { Card, PageHeader, SkeletonList } from "@/components/dashboard/ui";
+import { IconLock } from "@/components/dashboard/track-icons";
 import { FleetAdminTable } from "@/components/dashboard/fleet-admin-table";
 import { listFleetNodes } from "@/components/dashboard/fleet-admin-data";
 import { isFleetAdmin } from "@/components/dashboard/fleet-admin-guard";
 
-// راستی‌آزماییِ کوکی + خواندنِ DB → اجرای Node و رندرِ پویا.
+// راستی‌آزماییِ کوکی + خواندنِ DB → اجرای Node (بدونِ force-dynamic؛ استریم با Suspense).
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "ناوگانِ کارگر (ادمین)",
+  title: "ناوگانِ اپلای (ادمین)",
   robots: { index: false, follow: false },
 };
 
@@ -31,31 +32,36 @@ export default async function FleetAdminPage() {
 
   if (!admin) {
     return (
-      <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center px-5 text-center">
-        <div className="grid h-16 w-16 place-items-center rounded-2xl bg-rose-500/10 text-3xl">
-          🔒
+      <Card padded className="mx-auto max-w-md text-center">
+        <div className="flex flex-col items-center py-6">
+          <span
+            className="grid h-14 w-14 place-items-center rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400"
+            aria-hidden
+          >
+            <IconLock className="h-7 w-7" />
+          </span>
+          <h1 className="mt-4 text-balance text-lg font-bold">
+            دسترسیِ ادمین لازم است
+          </h1>
+          <p className="mt-2 max-w-sm text-pretty text-sm leading-7 text-muted">
+            این بخش فقط برای مدیرانِ ناوگان است. برای دسترسی، کوکیِ ادمین باید با رازِ
+            داخلیِ سرور تنظیم شده باشد.
+          </p>
         </div>
-        <h1 className="mt-5 text-xl font-extrabold">دسترسیِ ادمین لازم است</h1>
-        <p className="mt-2 text-sm leading-7 text-muted">
-          این بخش فقط برای مدیرانِ ناوگان است. برای دسترسی، کوکیِ ادمین با رازِ داخلیِ سرور باید
-          تنظیم شده باشد.
-        </p>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-5 py-8">
-      <SectionHeading
-        title="ناوگانِ کارگر"
-        subtitle="وضعیتِ نودهای کارگر (سلامت، نسخه، آخرین دیده‌شدن)، کاربرانِ تخصیص‌یافته، و کنترلِ تخصیص/حذف و صدورِ فرمانِ به‌روزرسانی/ری‌استارت. همه‌ی کنترل‌ها سمتِ سرور با رازِ داخلی محافظت می‌شوند."
+    <div className="space-y-8">
+      <PageHeader
+        title="ناوگانِ اپلای"
+        subtitle="وضعیتِ سرورهای اپلای (سلامت، نسخه، آخرین دیده‌شدن)، کاربرانِ تخصیص‌یافته، و کنترلِ تخصیص/حذف و صدورِ فرمانِ به‌روزرسانی/ری‌استارت. همه‌ی کنترل‌ها سمتِ سرور با رازِ داخلی محافظت می‌شوند."
       />
 
-      <div className="mt-8">
-        <Suspense fallback={<Skeleton className="h-64" />}>
-          <NodesSection />
-        </Suspense>
-      </div>
+      <Suspense fallback={<SkeletonList rows={3} />}>
+        <NodesSection />
+      </Suspense>
     </div>
   );
 }
