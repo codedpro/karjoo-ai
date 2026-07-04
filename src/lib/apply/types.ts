@@ -26,6 +26,22 @@ export interface JobPreferences {
   cities?: string[];
   minSalary?: number;
   employmentTypes?: ("full-time" | "part-time" | "remote" | "contract" | "internship")[];
+  /**
+   * Site job-CATEGORY slugs to target (Jobinja `machine_name` from
+   * /api/v10/job/categories → `filters[job_categories][]`). This is the primary,
+   * NON-AI targeting: the user picks categories the site offers and we apply to
+   * every job in them. AI matching is a separate, optional premium filter on top.
+   */
+  categorySlugs?: string[];
+  /** Site job-TYPE slugs (Jobinja `filters[job_types][]`). */
+  jobTypes?: string[];
+  /** Remote-only jobs (Jobinja `filters[remote]=1`). */
+  remoteOnly?: boolean;
+  /**
+   * Result ordering (Jobinja `sort=`): "relevance_desc" | "published_at_desc"
+   * (newest) | "salary_from_desc" (highest pay). Free-form to stay forward-compatible.
+   */
+  sort?: string;
 }
 
 /** یک آگهی شغلی نرمال‌شده از هر سایت کاریابی. */

@@ -300,6 +300,28 @@ export function buildSearchUrl(prefs: JobPreferences, page: number): string {
       params.append("filters[locations][]", city.trim());
     }
   }
+  // CATEGORY-based targeting (the primary, non-AI flow): each chosen category slug
+  // becomes a Jobinja `filters[job_categories][]`, so the search returns every job
+  // in those categories to apply to.
+  for (const cat of prefs.categorySlugs ?? []) {
+    if (cat && cat.trim().length > 0) {
+      params.append("filters[job_categories][]", cat.trim());
+    }
+  }
+  for (const jt of prefs.jobTypes ?? []) {
+    if (jt && jt.trim().length > 0) {
+      params.append("filters[job_types][]", jt.trim());
+    }
+  }
+  if (prefs.remoteOnly) {
+    params.set("filters[remote]", "1");
+  }
+  if (typeof prefs.minSalary === "number" && prefs.minSalary > 0) {
+    params.set("filters[sal_min]", String(prefs.minSalary));
+  }
+  if (prefs.sort && prefs.sort.trim().length > 0) {
+    params.set("sort", prefs.sort.trim());
+  }
   if (page > 1) {
     params.set("page", String(page));
   }
