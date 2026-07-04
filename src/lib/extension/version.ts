@@ -16,7 +16,7 @@
  */
 
 /** نسخه‌ی جاریِ افزونه (semver «MAJOR.MINOR.PATCH»). = extension/manifest.json#version */
-export const KARJOO_EXTENSION_VERSION = "0.2.5";
+export const KARJOO_EXTENSION_VERSION = "0.2.6";
 
 /** مسیرِ دانلودِ ZIPِ افزونه (نسبی به ریشه‌ی سایت؛ در public سرو می‌شود). */
 export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
@@ -26,4 +26,4 @@ export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
  * اگر خالی بماند، `notes` در پاسخِ مسیر حذف می‌شود.
  */
 export const KARJOO_EXTENSION_RELEASE_NOTES =
-  "راهنمای شروع + لینک‌های داشبورد در افزونه، مدیریتِ نشستِ منقضی (بازگشت به «اتصال»)، صفِ اپلای با توضیحِ روشن، و خوانشِ رزومه‌ی جابینجا از API.";
+  "جریانِ تازه: اپلای انبوه بر پایه‌ی فیلترهای خودِ سایت — از داشبورد دسته/شهر/نوعِ همکاری و مرتب‌سازی را انتخاب کنید و کارجو به همه‌ی آن شغل‌ها اپلای می‌کند (بدونِ نیاز به AI). دکمه‌ی «پیدا کردن شغل‌ها» صف را همان لحظه پر می‌کند و لینکِ «تنظیم فیلترهای اپلای» یک‌کلیک تا داشبورد است. فیلترِ هوشمند (AI) اکنون یک افزودنیِ اختیاریِ پریمیوم است.";

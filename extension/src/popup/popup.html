@@ -69,15 +69,18 @@
 
       <!-- Tab: connect boards -->
       <div class="tab-panel" data-panel="boards">
-        <!-- Onboarding checklist — what to do to actually get jobs. -->
+        <!-- Onboarding checklist — the DEFAULT flow is filter-based bulk apply. -->
         <ol class="onboarding">
+          <li>سایتِ کاریابی‌ات (مثل جابینجا) را همین پایین وصل کن.</li>
           <li>
-            رزومه‌ات را در داشبورد کامل کن —
+            رزومه‌ات را کامل کن —
             <a id="ob-resume" href="#" target="_blank" rel="noopener">رزومه در داشبورد ↗</a>
           </li>
-          <li>سایتِ کاریابی‌ات (مثل جابینجا) را همین پایین وصل کن.</li>
-          <li>«وارد کردن پروفایل» را بزن تا رزومه‌ات به کارجو منتقل شود.</li>
-          <li>«اپلای خودکار در مرورگر» را روشن کن تا کارجو برایت اپلای کند.</li>
+          <li>
+            فیلترهای اپلای را انتخاب کن (دسته، شهر، نوعِ همکاری، مرتب‌سازی) —
+            <a id="ob-filters" href="#" target="_blank" rel="noopener">تنظیم فیلترهای اپلای ↗</a>
+          </li>
+          <li>به تبِ «صف اپلای» برو و «پیدا کردن شغل‌ها» را بزن — کارجو به همه‌ی آن شغل‌ها اپلای می‌کند.</li>
         </ol>
         <p class="hint">
           وضعیت ورود شما به هر سایت <strong>فقط در مرورگر خودتان</strong> بررسی می‌شود.
@@ -101,25 +104,31 @@
         </section>
       </div>
 
-      <!-- Tab: apply queue -->
+      <!-- Tab: apply queue — DEFAULT flow is filter-based bulk apply. -->
       <div class="tab-panel" data-panel="queue" hidden>
         <div class="queue-toolbar">
-          <button id="refresh-queue" class="btn btn-ghost">به‌روزرسانی صف</button>
+          <button id="find-jobs" class="btn btn-primary btn-sm">پیدا کردن شغل‌ها</button>
+          <button id="refresh-queue" class="btn btn-ghost btn-sm">به‌روزرسانی صف</button>
+          <a id="apply-filters-link" class="link-btn" href="#" target="_blank" rel="noopener">تنظیم فیلترهای اپلای ↗</a>
         </div>
+        <p id="find-jobs-status" class="notice" hidden></p>
         <p class="hint">
-          هر اپلای را بررسی کنید. فرم به‌صورت خودکار پر می‌شود، اما
-          <strong>ارسال نهایی فقط با تأیید شما</strong> انجام می‌شود.
+          کارجو بر اساسِ <strong>فیلترهایی که در داشبورد انتخاب می‌کنید</strong> (دسته، شهر، نوعِ همکاری،
+          مرتب‌سازی) شغل‌ها را پیدا می‌کند و <strong>به همه‌ی آن‌ها</strong> اپلای می‌کند — بدونِ نیاز به AI.
+          فرم به‌صورت خودکار پر می‌شود، اما <strong>ارسال نهایی فقط با تأیید شما</strong> انجام می‌شود.
+        </p>
+        <p class="hint hint-muted">
+          «فیلترِ هوشمند (AI)» یک افزودنیِ اختیاریِ پریمیوم است که در داشبورد روشن می‌شود و فهرست را به
+          متناسب‌ترین شغل‌ها باریک می‌کند؛ پیش‌فرض خاموش است و هرگز الزامی نیست.
         </p>
         <div id="queue-list" class="queue-list"></div>
         <div id="queue-empty" class="empty" hidden>
-          <p><strong>هنوز شغلی برای اپلای پیدا نشده.</strong></p>
-          <p class="hint">
-            کارجو شغل‌های متناسب را بر اساسِ <strong>رزومه‌ی شما</strong> پیدا می‌کند. اگر صف خالی است:
-          </p>
+          <p><strong>هنوز شغلی در صف نیست.</strong></p>
+          <p class="hint">در چند گامِ ساده صف را پر کن:</p>
           <ul class="empty-steps">
-            <li>مطمئن شو رزومه‌ات کامل است — <a id="qe-resume" href="#" target="_blank" rel="noopener">رزومه در داشبورد ↗</a></li>
-            <li>اگر تازه رزومه را وارد کرده‌ای، کمی صبر کن تا آگهی‌های متناسب پیدا شوند.</li>
-            <li>می‌توانی خودت هم در سایت‌ها جست‌وجو کنی و اپلای کنی.</li>
+            <li>فیلترهای اپلای‌ات را انتخاب کن (دسته/شهر/نوعِ همکاری) — <a id="qe-filters" href="#" target="_blank" rel="noopener">تنظیم فیلترهای اپلای ↗</a></li>
+            <li>سایتِ کاریابی‌ات را وصل کن و رزومه‌ات را کامل کن — <a id="qe-resume" href="#" target="_blank" rel="noopener">رزومه در داشبورد ↗</a></li>
+            <li>دکمه‌ی «پیدا کردن شغل‌ها» (بالا) را بزن تا شغل‌های فیلترشده اینجا بیایند.</li>
           </ul>
           <a id="qe-dash" class="btn btn-ghost btn-sm" href="#" target="_blank" rel="noopener">رفتن به داشبورد ↗</a>
         </div>

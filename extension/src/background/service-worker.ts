@@ -141,6 +141,18 @@ async function handleClaimQueue(): Promise<ApplyQueueItem[]> {
   return items;
 }
 
+/**
+ * Populate the apply queue on demand from the user's saved FILTER selections
+ * (the pivot's default, NON-AI flow). POSTs /api/apply/find-jobs; the control
+ * plane scrapes the user's filtered search and enqueues every matching listing
+ * (bound to THIS session's user server-side). Returns the newly-queued count so
+ * the popup can report it and then refresh the queue.
+ */
+async function handleFindJobs(): Promise<{ queued: number }> {
+  const api = await apiFromStorage();
+  return api.findJobs();
+}
+
 /** Pre-fill (NEVER submit) the form in the relevant board tab. */
 async function handlePrefill(item: ApplyQueueItem): Promise<{ ok: boolean; filledFields: string[] }> {
   const origin = BOARDS[item.board]?.origin;
@@ -311,6 +323,8 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
       return { ok: true, data: await handleConnectBoard(msg.board, msg.accountLabel) };
     case "CLAIM_QUEUE":
       return { ok: true, data: await handleClaimQueue() };
+    case "FIND_JOBS":
+      return { ok: true, data: await handleFindJobs() };
     case "PREFILL":
       return { ok: true, data: await handlePrefill(msg.item) };
     case "REPORT_RESULT":

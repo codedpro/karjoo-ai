@@ -268,6 +268,40 @@ export class KarjooApi {
   }
 
   /**
+   * Populate the apply queue on demand from the user's saved FILTER selections
+   * (the pivot's default, NON-AI flow). Contract: POST /api/apply/find-jobs
+   * (extension bearer, session-bound server-side) → { queued: number } (the count
+   * of newly-enqueued listings; older/other server shapes may say `count`).
+   *
+   * The server scrapes the user's filtered Jobinja search and enqueues EVERY
+   * matching listing; AI scoring is applied server-side ONLY when the user enabled
+   * the premium AI filter AND is entitled — the extension never decides that.
+   *
+   * Resilient: a 404 means the control plane predates this route (older deploy) —
+   * we surface a clear "update needed" message instead of a generic failure. A 401
+   * still throws ApiError(401) so the worker drops back to the pairing view.
+   */
+  async findJobs(): Promise<{ queued: number }> {
+    const { ok, status, body } = await this.requestRaw("/api/apply/find-jobs", {
+      method: "POST",
+    });
+    if (!ok) {
+      if (status === 404) {
+        throw new ApiError(
+          404,
+          "این نسخه‌ی سرورِ کارجو هنوز «پیدا کردن شغل‌ها» را ندارد. کمی بعد دوباره تلاش کنید.",
+        );
+      }
+      throw new ApiError(status, errorOf(body, status));
+    }
+    // پذیرشِ هر دو شکلِ { queued } (قرارداد) و { count } (اگر سرور این‌طور برگرداند).
+    const b = (body ?? {}) as { queued?: unknown; count?: unknown };
+    const queued =
+      typeof b.queued === "number" ? b.queued : typeof b.count === "number" ? b.count : 0;
+    return { queued };
+  }
+
+  /**
    * Import the user's OWN profile DATA from one board into their Karjoo profile.
    *
    * The body MUST come from buildImportPayload() (the DATA-only chokepoint) — it

@@ -218,6 +218,11 @@ async function wireDashboardLinks() {
   set("import-resume", "/dashboard/resume");
   set("qe-resume", "/dashboard/resume");
   set("qe-dash", "/dashboard");
+  // Filter-picker deep-links (the pivot's default flow): one click to the exact
+  // dashboard page where the user sets category/city/type/sort for bulk apply.
+  set("apply-filters-link", "/dashboard/apply-filters");
+  set("ob-filters", "/dashboard/apply-filters");
+  set("qe-filters", "/dashboard/apply-filters");
 }
 
 /**
@@ -263,6 +268,7 @@ async function enterMain() {
   renderBoards();
   wireImport();
   wireAutoApply();
+  wireFindJobs();
   $("refresh-queue").addEventListener("click", () => void loadQueue());
 
   // Async state loads WITHOUT blocking the render; each is independently guarded so a
@@ -480,6 +486,53 @@ function renderImportResults(listEl: HTMLElement, outcomes: BoardImportOutcome[]
     li.innerHTML = `<span class="import-board">${escapeHtml(name)}</span><span class="import-detail">${escapeHtml(detail)}</span>`;
     listEl.appendChild(li);
   }
+}
+
+/* ── find jobs (filter-based bulk apply — the pivot's DEFAULT, NON-AI flow) ────
+ * Populates the queue on demand from the user's saved dashboard FILTER selections:
+ * asks the background to POST /api/apply/find-jobs (scrape the filtered search →
+ * enqueue every matching listing, bound to this session's user server-side), then
+ * refreshes the queue so the found jobs appear. AI scoring is an OPTIONAL premium
+ * layer applied server-side only when the user enabled it — never decided here.
+ */
+function wireFindJobs() {
+  const btn = $opt<HTMLButtonElement>("find-jobs");
+  if (!btn) return;
+  const statusEl = $opt("find-jobs-status");
+  const setStatusLine = (text: string, cls: "notice" | "error") => {
+    if (!statusEl) return;
+    setText(statusEl, text);
+    statusEl.className = cls;
+    show(statusEl, true);
+  };
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    const original = btn.textContent ?? "پیدا کردن شغل‌ها";
+    btn.textContent = "در حال جست‌وجو…";
+    setStatusLine("در حال پیدا کردنِ شغل‌های فیلترشده…", "notice");
+    try {
+      const res = await send<{ queued: number }>({ type: "FIND_JOBS" });
+      setStatusLine(
+        res.queued > 0
+          ? `${res.queued} شغلِ تازه به صف اضافه شد.`
+          : "شغلِ تازه‌ای پیدا نشد. فیلترهای اپلای‌ات را در داشبورد بررسی کن.",
+        "notice",
+      );
+      // Surface the freshly-queued jobs immediately.
+      await loadQueue();
+    } catch (e) {
+      // A 401 means the extension session died → drop back to pairing (same as elsewhere).
+      if (isAuthError(e)) {
+        void handleSessionExpired();
+        return;
+      }
+      setStatusLine(errMsg(e), "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  });
 }
 
 /* ── apply queue ───────────────────────────────────────────────────────── */

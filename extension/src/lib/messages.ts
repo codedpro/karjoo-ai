@@ -97,6 +97,19 @@ export interface RunAutoApplyNowMsg {
   type: "RUN_AUTO_APPLY_NOW";
 }
 
+/**
+ * Popup → background: populate the apply queue on demand from the user's saved
+ * FILTER selections (the pivot's default, NON-AI flow). The background POSTs
+ * /api/apply/find-jobs; the control plane scrapes the user's filtered Jobinja
+ * search and enqueues EVERY matching listing (AI scoring is an optional premium
+ * layer, applied server-side only when the user enabled it AND is entitled). The
+ * popup then refreshes the queue so the freshly-found jobs appear. Session-bound
+ * server-side (userId from the extension session, never the body).
+ */
+export interface FindJobsMsg {
+  type: "FIND_JOBS";
+}
+
 /* ── background → content ──────────────────────────────────────────────── */
 
 /** Ask a content script whether the user is logged in on this board, locally. */
@@ -159,7 +172,8 @@ export type PopupToBackground =
   | GetAutoApplyMsg
   | SetAutoApplyMsg
   | GetAutoApplyStatusMsg
-  | RunAutoApplyNowMsg;
+  | RunAutoApplyNowMsg
+  | FindJobsMsg;
 
 export type BackgroundToContent =
   | ProbeSessionMsg
