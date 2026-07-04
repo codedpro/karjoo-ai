@@ -43,6 +43,16 @@ function IconTarget({ className }: IconProps) {
     </svg>
   );
 }
+function IconFilters({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={cn(ICON_BASE, className)} aria-hidden>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+      <circle cx="9" cy="6" r="2" fill="var(--card)" />
+      <circle cx="15" cy="12" r="2" fill="var(--card)" />
+      <circle cx="8" cy="18" r="2" fill="var(--card)" />
+    </svg>
+  );
+}
 function IconStar({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={cn(ICON_BASE, className)} aria-hidden>
@@ -119,6 +129,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "خانه", icon: IconHome },
   { href: "/dashboard/matches", label: "تطبیق‌ها", icon: IconTarget },
   { href: "/dashboard/interests", label: "علاقه‌مندی‌ها", icon: IconStar },
+  { href: "/dashboard/apply-filters", label: "فیلترهای اپلای", icon: IconFilters },
   { href: "/dashboard/applications", label: "اپلای‌ها", icon: IconSend },
   { href: "/dashboard/auto-apply", label: "اپلای خودکار", icon: IconBolt },
   { href: "/dashboard/extension", label: "افزونه", icon: IconPuzzle },

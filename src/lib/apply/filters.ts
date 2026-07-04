@@ -1,0 +1,244 @@
+import "server-only";
+
+/**
+ * هِلپرِ «فیلترهای اپلای» — منبعِ حقیقتِ خواندن/نوشتنِ انتخاب‌های فیلترِ کاربر (Foundation).
+ *
+ * پیوُت محصول: انتخابِ اصلیِ کاربر «دسته/فیلترِ خودِ سایت» است (نه AI). این انتخاب‌ها در
+ * jsonbِ موجودِ candidate_profiles.preferences ذخیره می‌شوند — بدونِ ستون/مهاجرتِ جدید.
+ * کلیدهای مالِ این لایه:
+ *   • categorySlugs — machine_nameِ دسته‌های جابینجا (filters[job_categories][]).
+ *   • cities        — شهرها (filters[locations][]).
+ *   • jobTypes      — نوعِ همکاری (filters[job_types][]).
+ *   • remoteOnly    — فقط دورکاری (filters[remote]=1).
+ *   • minSalary     — حداقلِ حقوق (filters[sal_min]).
+ *   • sort          — ترتیبِ نتایج (relevance/newest/highest-pay).
+ *   • aiFilterEnabled — تاگلِ «فیلترِ هوشمند (AI)» (پریمیوم، Phase 4).
+ *
+ * عمداً کلیدهای `titles`/`categories`ِ مشتق از «علاقه‌مندی‌ها» (interests) را دست نمی‌زند
+ * تا آن مسیر نشکند؛ هر دو در همان jsonb کنارِ هم می‌مانند و هر دو به buildSearchUrl تغذیه
+ * می‌شوند. توابعِ نگاشت خالص‌اند (بدونِ DB) تا در route/UI/تست هم استفاده شوند.
+ */
+import { eq } from "drizzle-orm";
+
+import { db as defaultDb } from "@/db";
+import { candidateProfiles } from "@/db/schema";
+import type { JobPreferences } from "@/lib/apply/types";
+
+/** هندلِ کمینه‌ی DB که این لایه لازم دارد — همان کلاینتِ Drizzle. */
+export type FiltersDb = typeof defaultDb;
+
+/**
+ * زیرمجموعه‌ی «فیلترهای اپلای» که این لایه مالکِ نوشتنش است.
+ *
+ * توجه: `titles` (کلیدواژه‌ی جست‌وجو) عمداً اینجا نیست — آن از «علاقه‌مندی‌ها» مشتق و
+ * توسطِ interests store مدیریت می‌شود؛ نگهش می‌داریم تا clobber نشود.
+ */
+export interface ApplyFilters {
+  /** machine_nameِ دسته‌های جابینجا. */
+  categorySlugs: string[];
+  /** شهرها. */
+  cities: string[];
+  /** نوعِ همکاری (اسلاگِ jobinja filters[job_types][]). */
+  jobTypes: string[];
+  /** فقط دورکاری. */
+  remoteOnly: boolean;
+  /** حداقلِ حقوق (تومان). undefined = بدونِ حداقل. */
+  minSalary?: number;
+  /** ترتیبِ نتایج: relevance_desc | published_at_desc | salary_from_desc. */
+  sort?: string;
+  /** تاگلِ فیلترِ هوشمند (AI) — پریمیوم. */
+  aiFilterEnabled: boolean;
+}
+
+/** فیلترِ خالی (پیش‌فرضِ کاربرِ بدونِ انتخاب). */
+export const EMPTY_APPLY_FILTERS: ApplyFilters = {
+  categorySlugs: [],
+  cities: [],
+  jobTypes: [],
+  remoteOnly: false,
+  aiFilterEnabled: false,
+};
+
+/** آرایه‌ی رشته‌ی تمیز و یکتا (trim‌شده، بدونِ خالی، بدونِ تکرار). */
+function cleanStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of v) {
+    if (typeof item !== "string") continue;
+    const t = item.trim();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/** عددِ مثبت یا undefined (حقوقِ حداقلِ نامعتبر/صفر → undefined). */
+function positiveNumber(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
+}
+
+/** رشته‌ی غیرخالیِ trim‌شده یا undefined. */
+function nonEmptyString(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const t = v.trim();
+  return t.length > 0 ? t : undefined;
+}
+
+/**
+ * jsonbِ ذخیره‌شده (preferences) → ApplyFilters نوع‌دار. مقاوم در برابرِ داده‌ی کهنه/بدشکل
+ * (کلیدهای نامعتبر بی‌سروصدا کنار می‌روند). تابعِ خالص.
+ */
+export function parseApplyFilters(
+  raw: Record<string, unknown> | null | undefined,
+): ApplyFilters {
+  if (!raw || typeof raw !== "object") return { ...EMPTY_APPLY_FILTERS };
+  const minSalary = positiveNumber(raw.minSalary);
+  const sort = nonEmptyString(raw.sort);
+  return {
+    categorySlugs: cleanStringArray(raw.categorySlugs),
+    cities: cleanStringArray(raw.cities),
+    jobTypes: cleanStringArray(raw.jobTypes),
+    remoteOnly: raw.remoteOnly === true,
+    ...(minSalary === undefined ? {} : { minSalary }),
+    ...(sort === undefined ? {} : { sort }),
+    aiFilterEnabled: raw.aiFilterEnabled === true,
+  };
+}
+
+/**
+ * jsonbِ ذخیره‌شده (preferences) → JobPreferences کاملِ types.ts برای مصرفِ
+ * buildSearchUrl/scrapePublic. برخلافِ ApplyFilters، این تابع `titles` و
+ * `employmentTypes` (کلیدهای مشتق/میراث) را هم می‌خواند تا URLِ جست‌وجو کامل بماند.
+ * تابعِ خالص.
+ */
+export function toJobPreferences(
+  raw: Record<string, unknown> | null | undefined,
+): JobPreferences {
+  const f = parseApplyFilters(raw);
+  const titles = cleanStringArray(raw?.titles);
+  const employmentTypes = Array.isArray(raw?.employmentTypes)
+    ? (raw?.employmentTypes as JobPreferences["employmentTypes"])
+    : undefined;
+
+  const prefs: JobPreferences = {};
+  if (titles.length > 0) prefs.titles = titles;
+  if (f.cities.length > 0) prefs.cities = f.cities;
+  if (f.categorySlugs.length > 0) prefs.categorySlugs = f.categorySlugs;
+  if (f.jobTypes.length > 0) prefs.jobTypes = f.jobTypes;
+  if (f.remoteOnly) prefs.remoteOnly = true;
+  if (f.minSalary !== undefined) prefs.minSalary = f.minSalary;
+  if (f.sort !== undefined) prefs.sort = f.sort;
+  if (employmentTypes && employmentTypes.length > 0) prefs.employmentTypes = employmentTypes;
+  return prefs;
+}
+
+/**
+ * ApplyFilters را روی preferencesِ موجود merge می‌کند و شیِ کاملِ jsonb را برمی‌گرداند
+ * (بدونِ از دست‌رفتنِ کلیدهای دیگر مثل titles/categories/employmentTypes). فقط کلیدهای
+ * مالِ این لایه بازنویسی می‌شوند. تابعِ خالص.
+ */
+export function mergeApplyFilters(
+  existing: Record<string, unknown> | null | undefined,
+  filters: ApplyFilters,
+): Record<string, unknown> {
+  const base: Record<string, unknown> =
+    existing && typeof existing === "object" ? { ...existing } : {};
+
+  base.categorySlugs = cleanStringArray(filters.categorySlugs);
+  base.cities = cleanStringArray(filters.cities);
+  base.jobTypes = cleanStringArray(filters.jobTypes);
+  base.remoteOnly = filters.remoteOnly === true;
+  base.aiFilterEnabled = filters.aiFilterEnabled === true;
+
+  const minSalary = positiveNumber(filters.minSalary);
+  if (minSalary === undefined) delete base.minSalary;
+  else base.minSalary = minSalary;
+
+  const sort = nonEmptyString(filters.sort);
+  if (sort === undefined) delete base.sort;
+  else base.sort = sort;
+
+  return base;
+}
+
+/* ─────────────────────────────  خواندن/نوشتن (DB)  ──────────────────────── */
+
+/**
+ * فیلترهای اپلای کاربر را از پروفایلش می‌خواند. اگر پروفایلی نباشد → فیلترِ خالی.
+ * فقط-خواندنی و مقید به همان userId (قاعده‌ی ۴).
+ */
+export async function readApplyFilters(
+  userId: string,
+  db: FiltersDb = defaultDb,
+): Promise<ApplyFilters> {
+  const [row] = await db
+    .select({ preferences: candidateProfiles.preferences })
+    .from(candidateProfiles)
+    .where(eq(candidateProfiles.userId, userId))
+    .limit(1);
+  return parseApplyFilters(row?.preferences ?? null);
+}
+
+/** خروجیِ نوشتنِ فیلترها. */
+export interface WriteApplyFiltersResult {
+  filters: ApplyFilters;
+  /** آیا پروفایلِ تازه ساخته شد (کاربر قبلاً پروفایل نداشت)؟ */
+  createdProfile: boolean;
+}
+
+/**
+ * فیلترهای اپلای کاربر را در preferencesِ پروفایلش می‌نویسد (merge؛ کلیدهای دیگر حفظ).
+ *
+ * اگر پروفایلی وجود دارد → فقط preferences به‌روزرسانی می‌شود. اگر نه → یک پروفایلِ
+ * کمینه با fullNameِ fallback ساخته می‌شود تا ذخیره هرگز بی‌صدا شکست نخورد (fullName در
+ * schema NOT NULL است). مقید به همان userId.
+ *
+ * @returns فیلترهای مؤثرِ پس از نوشتن + اینکه آیا پروفایل تازه ساخته شد.
+ */
+export async function writeApplyFilters(
+  userId: string,
+  filters: ApplyFilters,
+  opts: { db?: FiltersDb; fallbackFullName?: string } = {},
+): Promise<WriteApplyFiltersResult> {
+  const db = opts.db ?? defaultDb;
+  const now = new Date();
+
+  const [existing] = await db
+    .select({ id: candidateProfiles.id, preferences: candidateProfiles.preferences })
+    .from(candidateProfiles)
+    .where(eq(candidateProfiles.userId, userId))
+    .limit(1);
+
+  const merged = mergeApplyFilters(existing?.preferences ?? null, filters);
+
+  if (existing) {
+    await db
+      .update(candidateProfiles)
+      .set({ preferences: merged, updatedAt: now })
+      .where(eq(candidateProfiles.id, existing.id));
+    return { filters: parseApplyFilters(merged), createdProfile: false };
+  }
+
+  const fullName = opts.fallbackFullName?.trim() || "کاربر کارجو";
+  await db.insert(candidateProfiles).values({
+    userId,
+    fullName,
+    preferences: merged,
+  });
+  return { filters: parseApplyFilters(merged), createdProfile: true };
+}
+
+/**
+ * فقط تاگلِ فیلترِ هوشمند (AI) را روشن/خاموش می‌کند (بدونِ دست‌زدن به بقیه‌ی فیلترها).
+ * راحتی‌رسانِ Phase 4/Track C. مقید به همان userId.
+ */
+export async function setAiFilterEnabled(
+  userId: string,
+  enabled: boolean,
+  opts: { db?: FiltersDb; fallbackFullName?: string } = {},
+): Promise<WriteApplyFiltersResult> {
+  const current = await readApplyFilters(userId, opts.db ?? defaultDb);
+  return writeApplyFilters(userId, { ...current, aiFilterEnabled: enabled === true }, opts);
+}

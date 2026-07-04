@@ -11,8 +11,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   runAutoApply,
+  runFilterApply,
   DEFAULT_MATCH_THRESHOLD,
   DEFAULT_DAILY_CAP,
+  DEFAULT_FILTER_DAILY_CAP,
+  type LoadedFilterProfile,
 } from "@/lib/apply/orchestrator";
 import type {
   ApplicationResult,
@@ -367,5 +370,193 @@ describe("runAutoApply — قراردادِ pipeline", () => {
     expect(DEFAULT_MATCH_THRESHOLD).toBeGreaterThan(0);
     expect(DEFAULT_MATCH_THRESHOLD).toBeLessThanOrEqual(1);
     expect(DEFAULT_DAILY_CAP).toBeGreaterThan(0);
+  });
+});
+
+/* ─────────────────────────  runFilterApply (فیلترمود)  ──────────────────── */
+
+describe("runFilterApply — فیلترمود (بدونِ AI)", () => {
+  let enqueueFn: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    enqueueFn = vi.fn(async (input: { idempotencyKey: string; matchId: string }) => ({
+      task: { id: `task-${input.matchId}` },
+      created: true,
+    }));
+  });
+
+  /** loadProfile تزریقی: پروفایلِ ثابت + ترجیحات (بدونِ DB). */
+  const loadProfile = async (): Promise<LoadedFilterProfile> => ({
+    profile,
+    prefs: { categorySlugs: ["وب،‌-برنامه‌نویسی-و-نرم‌افزار"], cities: ["تهران"] },
+  });
+
+  it("همه‌ی آگهی‌های فیلترشده را بدونِ امتیازدهی وارد صف می‌کند (mode='filter')", async () => {
+    const conn = makeFakeDb({});
+    const connector = fakeConnector([listing("a"), listing("b"), listing("c")]);
+    const scoreFn = vi.fn(); // نباید صدا شود در فیلترمود
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      connectors: { jobinja: connector },
+      scoreFn: scoreFn as never,
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+    });
+
+    expect(report.aiFilter).toBe(false);
+    expect(report.ingested).toBe(3);
+    expect(report.persistedListings).toBe(3);
+    expect(report.queued).toBe(3);
+    expect(report.scored).toBe(0);
+    expect(scoreFn).not.toHaveBeenCalled();
+    expect(connector.applyCalls).toBe(0); // هرگز اپلای واقعی
+    expect(enqueueFn).toHaveBeenCalledTimes(3);
+    // payload برچسبِ mode='filter' دارد.
+    for (const call of enqueueFn.mock.calls) {
+      expect(call[0].payload.mode).toBe("filter");
+    }
+  });
+
+  it("سقفِ روزانه رعایت می‌شود (queued + skippedByCap)", async () => {
+    const conn = makeFakeDb({ queuedToday: 0 });
+    const connector = fakeConnector([listing("a"), listing("b"), listing("c")]);
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      dailyCap: 2,
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+    });
+
+    expect(report.queued).toBe(2);
+    expect(report.skippedByCap).toBe(1);
+    expect(enqueueFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("آگهیِ از قبل در صف دوباره صف نمی‌شود (idempotent/dedupe)", async () => {
+    const conn = makeFakeDb({ matchStatusByExternal: { a: "queued" } });
+    const connector = fakeConnector([listing("a"), listing("b")]);
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+    });
+
+    expect(report.alreadyQueued).toBe(1);
+    expect(report.queued).toBe(1);
+    expect(enqueueFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("آگهیِ ردشده‌ی کاربر (dismissed) صف نمی‌شود", async () => {
+    const conn = makeFakeDb({ matchStatusByExternal: { a: "dismissed" } });
+    const connector = fakeConnector([listing("a"), listing("b")]);
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+    });
+
+    expect(report.skippedDismissed).toBe(1);
+    expect(report.queued).toBe(1);
+  });
+
+  it("aiFilter=true → امتیاز می‌دهد و فقط بالای آستانه صف می‌شود (mode='ai')", async () => {
+    const conn = makeFakeDb({});
+    const connector = fakeConnector([listing("good"), listing("bad")]);
+    const scoreFn = vi.fn(async (job: JobListing) => ({
+      matchScore: job.externalId === "good" ? 0.9 : 0.2,
+      coverLetter: "نامه",
+    }));
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      aiFilter: true,
+      threshold: 0.7,
+      connectors: { jobinja: connector },
+      scoreFn: scoreFn as never,
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+    });
+
+    expect(report.aiFilter).toBe(true);
+    expect(report.scored).toBe(2);
+    expect(report.belowThreshold).toBe(1);
+    expect(report.queued).toBe(1);
+    expect(enqueueFn).toHaveBeenCalledTimes(1);
+    expect(enqueueFn.mock.calls[0][0].payload.mode).toBe("ai");
+  });
+
+  it("بدونِ پروفایل → HttpError 404", async () => {
+    const conn = makeFakeDb({});
+    const connector = fakeConnector([listing("a")]);
+    const err = await runFilterApply({
+      userId: "u-none",
+      boards: ["jobinja"],
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile: async () => null,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { status?: number }).status).toBe(404);
+  });
+
+  // رگرسیون: کانکتورها `postedAt` را به‌صورتِ متنِ انسانیِ نسبی برمی‌گردانند (مثلِ
+  // «۳ روز پیش»)؛ types.ts هم قراردادِ ISO ندارد. پیش از این orchestrator کورکورانه
+  // `new Date(postedAt)` می‌زد که `Invalid Date` می‌ساخت و درایزل هنگامِ درجِ ستونِ
+  // timestamp با «Invalid time value» می‌شکست — و *هر* آگهیِ فیلترمود persist نمی‌شد
+  // (queued=0 با اینکه ingested>0). این تست تضمین می‌کند تاریخِ نامعتبر → null (نه کرش)
+  // و تاریخِ معتبرِ ISO همچنان به Date تبدیل می‌شود.
+  it("postedAtِ غیرِ ISO (متنِ فارسی) آگهی را نمی‌شکند: null می‌شود و آگهی صف می‌شود", async () => {
+    const conn = makeFakeDb({});
+    const connector = fakeConnector([
+      listing("human", { postedAt: "۳ روز پیش" }),
+      listing("iso", { postedAt: "2026-07-01T08:00:00.000Z" }),
+    ]);
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+    });
+
+    // هیچ خطایی نباید رخ دهد و هر دو آگهی باید persist و صف شوند.
+    expect(report.errors).toEqual([]);
+    expect(report.persistedListings).toBe(2);
+    expect(report.queued).toBe(2);
+
+    // مقدارِ postedAtِ درج‌شده در job_listings: نامعتبر → null، معتبر → Date (نه NaN).
+    const jobInserts = conn
+      ._stats()
+      .inserts.filter((i) => i.table === "job_listings")
+      .map((i) => (i.values as { externalId: string; postedAt: Date | null }));
+    const human = jobInserts.find((v) => v.externalId === "human");
+    const iso = jobInserts.find((v) => v.externalId === "iso");
+    expect(human?.postedAt).toBeNull();
+    expect(iso?.postedAt).toBeInstanceOf(Date);
+    expect(Number.isNaN((iso?.postedAt as Date).getTime())).toBe(false);
+  });
+
+  it("سقفِ پیش‌فرضِ فیلترمود صادر شده", () => {
+    expect(DEFAULT_FILTER_DAILY_CAP).toBeGreaterThan(0);
   });
 });

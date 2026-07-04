@@ -13,7 +13,7 @@ import "server-only";
  *
  * همه‌ی وابستگی‌ها قابلِ تزریق‌اند (db) تا بدونِ DB/شبکه‌ی زنده تست شوند.
  */
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import {
@@ -33,6 +33,11 @@ export interface ClaimedApplyItem {
   matchId: string;
   listingId: string;
   board: string;
+  /**
+   * حالتِ این task: 'filter' (اپلای بر اساسِ فیلترِ خودِ سایت، بدونِ AI) یا 'ai' (تطبیقِ
+   * پریمیوم بالای آستانه). اختیاری برای سازگاریِ عقب‌رو؛ claim همیشه پُرش می‌کند.
+   */
+  mode?: "filter" | "ai";
   /** انگیزه‌نامه‌ی پیش‌نویس‌شده (از match/payload) برای پیش‌پُرکردنِ فرم. */
   coverLetter: string | null;
   matchScore: number | null;
@@ -47,11 +52,25 @@ export interface ClaimedApplyItem {
 /** آپشن‌های قابلِ تزریقِ claim — برای گیتِ اپلای خودکار (آستانه). */
 export interface ClaimOptions {
   /**
-   * آستانه‌ی مؤثرِ امتیازِ تطبیق (قاعده‌ی ۱). اگر داده شود، فقط task‌هایی که match‌شان
-   * score ≥ minScore دارد برگردانده می‌شوند — هر آیتمِ زیرِ آستانه از claim حذف می‌شود.
+   * آستانه‌ی مؤثرِ امتیازِ تطبیق (قاعده‌ی ۱). اگر داده شود، task‌های *AIمود* فقط وقتی
+   * برگردانده می‌شوند که match‌شان score ≥ minScore داشته باشد.
+   *
+   * استثنا (پیوُت محصول): task‌های *فیلترمود* (payload.mode='filter') هرگز گیتِ آستانه
+   * نمی‌خورند — آن‌ها بر اساسِ فیلترِ خودِ سایت انتخاب شده‌اند نه AI؛ پس صرفِ نظر از score
+   * (که در فیلترمود NULL است) همیشه claim‌شدنی‌اند. minScore فقط برای AIمود است.
+   *
    * undefined ⇒ بدونِ فیلترِ آستانه (سازگاریِ عقب‌رو با مسیرِ کمکیِ حاضرِ کاربر).
    */
   minScore?: number;
+}
+
+/** آیا payloadِ این task فیلترمود است؟ (اپلای بر اساسِ فیلترِ سایت، بدونِ AI). */
+export function isFilterModeTask(payload: unknown): boolean {
+  return (
+    !!payload &&
+    typeof payload === "object" &&
+    (payload as Record<string, unknown>).mode === "filter"
+  );
 }
 
 /**
@@ -74,12 +93,19 @@ export async function claimUserApplyItems(
 ): Promise<ClaimedApplyItem[]> {
   const safeLimit = Math.max(1, Math.min(Math.floor(limit), 25));
 
-  // شرطِ آستانه (قاعده‌ی ۱): اگر minScore داده شده، فقط match‌های بالای آستانه.
-  // نکته: NULL score هرگز از gte عبور نمی‌کند (آگهیِ امتیازنخورده اپلایِ خودکار نمی‌گیرد).
-  const scoreGate =
-    opts.minScore === undefined ? undefined : gte(matches.score, opts.minScore);
+  // شرطِ گیت (قاعده‌ی ۱): اگر minScore داده شده، task‌های AIمود فقط بالای آستانه.
+  // اما task‌های فیلترمود (payload.mode='filter') همیشه عبور می‌کنند — گیتِ آستانه فقط
+  // برای AIمود است (پیوُت محصول). NULL score هرگز از gte عبور نمی‌کند؛ پس در فیلترمود
+  // شرطِ OR لازم است تا آگهیِ امتیازنخورده هم claim شود.
+  const filterModeCond = sql`${tasks.payload} ->> 'mode' = 'filter'`;
+  const gate =
+    opts.minScore === undefined
+      ? undefined
+      : or(filterModeCond, gte(matches.score, opts.minScore));
 
   // ۱) task‌های آماده‌ی همین کاربر را با join به match پیدا کن.
+  // ترتیب: امتیازِ بالاتر اول (NULLS LAST تا آیتم‌های فیلترمودِ بی‌امتیاز آیتم‌های AI را
+  // پس نزنند)، سپس زودترین run_after.
   const ready = await conn
     .select({ taskId: tasks.id })
     .from(tasks)
@@ -89,10 +115,10 @@ export async function claimUserApplyItems(
         eq(matches.userId, userId),
         eq(tasks.status, "pending"),
         lte(tasks.runAfter, sql`now()`),
-        ...(scoreGate ? [scoreGate] : []),
+        ...(gate ? [gate] : []),
       ),
     )
-    .orderBy(desc(matches.score), tasks.runAfter)
+    .orderBy(sql`${matches.score} DESC NULLS LAST`, tasks.runAfter)
     .limit(safeLimit);
 
   if (ready.length === 0) return [];
@@ -136,6 +162,7 @@ export async function claimUserApplyItems(
       matchId: d.matchId,
       listingId: d.listingId,
       board: d.board,
+      mode: isFilterModeTask(d.payload) ? ("filter" as const) : ("ai" as const),
       coverLetter: d.coverLetter,
       matchScore: d.matchScore,
       listing: {

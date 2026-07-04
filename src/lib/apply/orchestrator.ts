@@ -30,6 +30,7 @@ import {
 //   • scoreAndDraft از @/lib/apply/scoring (پیاده‌سازیِ واقعیِ گیت‌وی 1xai)
 // این کار رفتارِ زمان‌اجرا را تغییر نمی‌دهد، فقط ترتیبِ ارزیابیِ ماژول‌ها را امن می‌کند.
 import { meteredScoreAndDraft } from "@/lib/apply/metered-scoring";
+import { toJobPreferences as preferencesToJobPreferences } from "@/lib/apply/filters";
 import { getConnector } from "@/lib/apply/registry";
 import { orchestratorRunCap } from "@/lib/env";
 import { enqueue as defaultEnqueue } from "@/lib/queue";
@@ -225,7 +226,7 @@ async function upsertListing(
     url: listing.url,
     description: listing.description ?? null,
     salary: listing.salary ?? null,
-    postedAt: listing.postedAt ? new Date(listing.postedAt) : null,
+    postedAt: toPostedDate(listing.postedAt),
     updatedAt: new Date(),
   };
 
@@ -375,6 +376,20 @@ function errMsg(err: unknown): string {
 }
 
 /**
+ * `JobListing.postedAt` قراردادِ فرمتِ ISO ندارد (types.ts) و کانکتورها آن را به‌صورتِ
+ * متنِ انسانیِ نسبی برمی‌گردانند (مثلِ «امروز» یا «۳ روز پیش»). `new Date()` روی چنین
+ * رشته‌ای `Invalid Date` می‌سازد و درایزل هنگامِ سریال‌سازیِ ستونِ timestamp با
+ * `RangeError: Invalid time value` می‌شکند — که کلِ ingestِ فیلترمود را از کار می‌انداخت.
+ * این کمک‌تابع فقط وقتی `Date` می‌سازد که مقدار به یک زمانِ معتبر پارس شود؛ در غیرِ این
+ * صورت `null` (ستونِ postedAt خالی می‌ماند؛ `ingestedAt` همچنان ثبت می‌شود).
+ */
+function toPostedDate(raw?: string | null): Date | null {
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
  * upsertِ یک آگهیِ نرمال‌شده روی هندلِ تزریق‌شده (نه dbِ سراسری) — تا runAutoApply
  * کاملاً قابلِ تست بماند. روی برخوردِ canonicalId به‌روزرسانی می‌کند و ردیف را
  * برمی‌گرداند؛ سپس ضبطِ خام در raw_listings (best-effort).
@@ -396,7 +411,7 @@ async function persistListingWith(
       url: job.url,
       description: job.description ?? null,
       salary: job.salary ?? null,
-      postedAt: job.postedAt ? new Date(job.postedAt) : null,
+      postedAt: toPostedDate(job.postedAt),
     })
     .onConflictDoUpdate({
       target: jobListings.canonicalId,
@@ -615,6 +630,315 @@ export async function runAutoApply(
         if (created) {
           report.queued += 1;
           remainingCap -= 1;
+        }
+      } catch (err) {
+        report.errors.push(`enqueue(apply:${matchId}): ${errMsg(err)}`);
+        continue;
+      }
+    }
+  }
+
+  return report;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+ *  runFilterApply — مسیرِ «فیلترمود» (پیوُت محصول): اپلای به همه‌ی آگهی‌های
+ *  فیلترشده‌ی خودِ سایت، بدونِ نیاز به هوش مصنوعی.
+ *
+ *  تفاوتِ کلیدی با runAutoApply:
+ *    • فیلترمود (aiFilter=false، پیش‌فرض): *هر* آگهیِ برگشتی از scrapePublic بدونِ
+ *      امتیازدهی وارد صف می‌شود. taskها با payload.mode='filter' برچسب می‌خورند تا
+ *      claimِ افزونه بدونِ گیتِ آستانه آن‌ها را بردارد (extension-queue).
+ *    • فیلترِ هوشمند (aiFilter=true، پریمیوم): مثلِ مسیرِ AI، هر آگهی امتیاز می‌گیرد و
+ *      فقط بالای آستانه وارد صف می‌شود (taskها payload.mode='ai' — گیتِ آستانه اعمال).
+ *      استحقاق (assertCanUsePaidAi/پلن) را *فراخواننده* (Track C) پیش از aiFilter=true
+ *      چک می‌کند؛ اینجا فقط سازوکار است. scoreFnِ پیش‌فرض مترشده است (هزینه به کیف‌پولِ
+ *      همان کاربر).
+ *
+ *  ایمنی: هرگز connector.apply صدا نمی‌شود (فقط کشف + صف‌گذاری). idempotent per listing
+ *  (idempotencyKey=`apply:${matchId}` روی جفتِ یکتای (user, listing))؛ سقفِ روزانه رعایت
+ *  می‌شود؛ آگهیِ dismissed دوباره صف نمی‌شود. همه‌ی وابستگی‌ها تزریق‌پذیرند.
+ * ════════════════════════════════════════════════════════════════════════ */
+
+/** سقفِ پیش‌فرضِ روزانه‌ی فیلترمود (هم‌راستا با سهمیه‌ی اپلای رایگان ۱۰۰/روز). */
+export const DEFAULT_FILTER_DAILY_CAP = 100;
+
+/** پروفایل + ترجیحاتِ بارگذاری‌شده‌ی یک کاربر (ورودیِ داخلیِ فیلترمود). */
+export interface LoadedFilterProfile {
+  profile: CandidateProfile;
+  prefs: JobPreferences;
+}
+
+/** ورودی‌ها و وابستگی‌های قابلِ تزریقِ یک اجرای runFilterApply. */
+export interface RunFilterApplyOptions {
+  /** کاربرِ صاحبِ این اجرا (همیشه از نشست، نه از بدنه — قاعده‌ی ۴). */
+  userId: string;
+  /** سایت‌هایی که باید ingest شوند (پیش‌فرض ['jobinja']). */
+  boards?: JobBoardId[];
+  /**
+   * فیلترِ هوشمند (پریمیوم): اگر true، آگهی‌ها AI-score می‌شوند و فقط بالای آستانه صف
+   * می‌شوند. پیش‌فرض false → *همه* صف می‌شوند (بدونِ AI). استحقاقِ پریمیوم را فراخواننده
+   * پیش از این چک می‌کند.
+   */
+  aiFilter?: boolean;
+  /** آستانه‌ی امتیاز در حالتِ aiFilter (پیش‌فرض ۰٫۷). */
+  threshold?: number;
+  /** سقفِ اپلایِ صف‌شده در این روز برای این کاربر (پیش‌فرض ۱۰۰). */
+  dailyCap?: number;
+  /** سقفِ تعدادِ آگهیِ پردازش‌شده در هر سایت در این اجرا (گاردریلِ runaway). */
+  perRunListingCap?: number;
+  /** رجیستریِ کانکتورها — تزریقی برای تست؛ پیش‌فرض از getConnector. */
+  connectors?: Partial<Record<JobBoardId, JobBoardConnector>>;
+  /** تابعِ امتیازدهی (فقط در aiFilter) — پیش‌فرض نسخه‌ی مترشده مقید به userId. */
+  scoreFn?: ScoreAndDraftFn;
+  /** کلاینتِ DB — پیش‌فرض dbِ مشترک. */
+  db?: OrchestratorDb;
+  /** تابعِ enqueue — پیش‌فرض از @/lib/queue. */
+  enqueueFn?: EnqueueFn;
+  /** بارگذارِ پروفایل — تزریقی برای تست؛ پیش‌فرض خواندنِ candidate_profiles با userId. */
+  loadProfile?: (
+    userId: string,
+    conn: OrchestratorDb,
+  ) => Promise<LoadedFilterProfile | null>;
+}
+
+/** خلاصه‌ی نتیجه‌ی یک اجرای runFilterApply. */
+export interface RunFilterApplyReport {
+  /** آیا فیلترِ هوشمند (AI) فعال بود؟ */
+  aiFilter: boolean;
+  /** تعداد آگهی‌هایی که کانکتور(ها) برگرداندند. */
+  ingested: number;
+  /** آگهی‌های پایدارشده (upsert). */
+  persistedListings: number;
+  /** اپلای‌های *تازه* که در این اجرا وارد صف شدند (شمارشِ اصلیِ خروجی). */
+  queued: number;
+  /** آگهی‌هایی که از قبل در صف بودند (idempotent skip). */
+  alreadyQueued: number;
+  /** آگهی‌هایی که به‌خاطر سقفِ روزانه صف نشدند. */
+  skippedByCap: number;
+  /** آگهی‌هایی که کاربر قبلاً ردشان کرده بود (dismissed). */
+  skippedDismissed: number;
+  /** (فقط aiFilter) تعداد آگهی‌های امتیازخورده. */
+  scored: number;
+  /** (فقط aiFilter) آگهی‌های زیرِ آستانه که صف نشدند. */
+  belowThreshold: number;
+  errors: string[];
+}
+
+/** بارگذارِ پیش‌فرضِ پروفایل: candidate_profiles را با userId می‌خواند. */
+async function defaultLoadFilterProfile(
+  userId: string,
+  conn: OrchestratorDb,
+): Promise<LoadedFilterProfile | null> {
+  const row = await conn.query.candidateProfiles.findFirst({
+    where: eq(candidateProfiles.userId, userId),
+  });
+  if (!row) return null;
+  const prefs = preferencesToJobPreferences(row.preferences);
+  const profile = toCandidateProfile(row, prefs);
+  return { profile, prefs };
+}
+
+/**
+ * گردش‌کارِ «فیلترمود» را برای یک کاربر اجرا می‌کند:
+ *   scrapePublic(prefs) → persist listing → [aiFilter? score+threshold] →
+ *   upsert match → enqueue Application task (idempotent، زیرِ سقفِ روزانه).
+ *
+ * اپلایِ واقعی انجام *نمی‌شود* — صرفاً صف‌گذاری. `queued` تعداد اپلای‌های تازه است.
+ */
+export async function runFilterApply(
+  options: RunFilterApplyOptions,
+): Promise<RunFilterApplyReport> {
+  const {
+    userId,
+    boards = ["jobinja"],
+    aiFilter = false,
+    threshold = DEFAULT_MATCH_THRESHOLD,
+    dailyCap = DEFAULT_FILTER_DAILY_CAP,
+    db: conn = db,
+    enqueueFn = defaultEnqueue,
+    perRunListingCap = orchestratorRunCap(),
+  } = options;
+
+  const loadProfile = options.loadProfile ?? defaultLoadFilterProfile;
+  const loaded = await loadProfile(userId, conn);
+  if (!loaded) {
+    // بدونِ پروفایل، فیلتری برای اپلای وجود ندارد. ۴۰۴ تمیز تا route بتواند پیام دهد.
+    throw new HttpError(404, "profile not found");
+  }
+  const { profile, prefs } = loaded;
+
+  // مسیرِ تولید: scoreFnِ مترشده مقید به userId (هزینه به کیف‌پولِ همان کاربر). فقط در aiFilter.
+  const scoreFn: ScoreAndDraftFn =
+    options.scoreFn ?? ((job, prof) => meteredScoreAndDraft(userId, job, prof));
+
+  const resolveConnector = (id: JobBoardId): JobBoardConnector | undefined =>
+    options.connectors ? options.connectors[id] : getConnector(id);
+
+  const report: RunFilterApplyReport = {
+    aiFilter,
+    ingested: 0,
+    persistedListings: 0,
+    queued: 0,
+    alreadyQueued: 0,
+    skippedByCap: 0,
+    skippedDismissed: 0,
+    scored: 0,
+    belowThreshold: 0,
+    errors: [],
+  };
+
+  // سقفِ روزانه: ظرفیتِ باقی‌مانده (همان شمارشِ tasks امروزِ این کاربر — فیلتر + AI).
+  let remainingCap = Math.max(0, dailyCap - (await countQueuedToday(conn, userId)));
+
+  for (const boardId of boards) {
+    const connector = resolveConnector(boardId);
+    if (!connector) {
+      report.errors.push(`کانکتور برای سایت ${boardId} ثبت نشده است`);
+      continue;
+    }
+
+    // ۱) ingestِ عمومیِ فیلترشده (فقط-خواندنی).
+    let listings: JobListing[];
+    try {
+      listings = await connector.scrapePublic(prefs);
+    } catch (err) {
+      report.errors.push(`scrapePublic(${boardId}): ${errMsg(err)}`);
+      continue;
+    }
+    report.ingested += listings.length;
+
+    const capped = listings.slice(0, Math.max(0, perRunListingCap));
+
+    for (const job of capped) {
+      // ۲) پایدارسازیِ آگهی.
+      let listingRow: JobListingRow;
+      try {
+        listingRow = await persistListingWith(conn, job);
+        report.persistedListings += 1;
+      } catch (err) {
+        report.errors.push(`persistListing(${job.id}): ${errMsg(err)}`);
+        continue;
+      }
+
+      // ۳) (فقط aiFilter) امتیازدهی. زیرِ آستانه → 'scored'، صف نمی‌شود.
+      let matchScore: number | null = null;
+      let coverLetter: string | null = null;
+      let reason: string | null = null;
+      let aboveThreshold = true;
+      if (aiFilter) {
+        try {
+          const s = await scoreFn(job, profile);
+          report.scored += 1;
+          matchScore = s.matchScore;
+          reason = s.reason ?? null;
+          coverLetter = s.coverLetter;
+          aboveThreshold = s.matchScore >= threshold;
+        } catch (err) {
+          report.errors.push(`score(${job.id}): ${errMsg(err)}`);
+          continue;
+        }
+      }
+
+      // ۴) upsertِ تطبیق (یکتا روی user×listing). 'queued'/'dismissed'ِ قبلی حفظ می‌شود.
+      //    فیلترمود: امتیاز/انگیزه‌نامه‌ی موجود (احتمالاً از مسیرِ AI) را پاک نمی‌کند.
+      const insertStatus: "scored" | "drafted" =
+        aiFilter && aboveThreshold ? "drafted" : "scored";
+      let matchId: string;
+      let matchStatus: string;
+      try {
+        const [matchRow] = await conn
+          .insert(matches)
+          .values({
+            userId,
+            listingId: listingRow.id,
+            score: matchScore,
+            status: insertStatus,
+            reason: reason ?? (aiFilter ? null : "filter"),
+            coverLetter: aiFilter && aboveThreshold ? coverLetter : null,
+            scoredAt: aiFilter ? sql`now()` : null,
+          })
+          .onConflictDoUpdate({
+            target: [matches.userId, matches.listingId],
+            set: aiFilter
+              ? {
+                  score: sql`excluded.score`,
+                  reason: sql`excluded.reason`,
+                  coverLetter: sql`excluded.cover_letter`,
+                  status: sql`CASE WHEN ${matches.status} IN ('queued','dismissed')
+                                   THEN ${matches.status}
+                                   ELSE excluded.status END`,
+                  scoredAt: sql`now()`,
+                  updatedAt: sql`now()`,
+                }
+              : {
+                  // فیلترمود: امتیاز/انگیزه‌نامه/زمانِ امتیاز را دست نمی‌زنیم (حفظ).
+                  reason: sql`COALESCE(${matches.reason}, 'filter')`,
+                  status: sql`CASE WHEN ${matches.status} IN ('queued','dismissed')
+                                   THEN ${matches.status}
+                                   ELSE 'scored'::match_status END`,
+                  updatedAt: sql`now()`,
+                },
+          })
+          .returning({ id: matches.id, status: matches.status });
+        matchId = matchRow.id;
+        matchStatus = matchRow.status;
+      } catch (err) {
+        report.errors.push(`persistMatch(${job.id}): ${errMsg(err)}`);
+        continue;
+      }
+
+      // ۵) aiFilter زیرِ آستانه → صف نمی‌شود (scored).
+      if (aiFilter && !aboveThreshold) {
+        report.belowThreshold += 1;
+        continue;
+      }
+
+      // dedupe: قبلاً ردشده یا از قبل در صف → دوباره صف نکن.
+      if (matchStatus === "dismissed") {
+        report.skippedDismissed += 1;
+        continue;
+      }
+      if (matchStatus === "queued") {
+        report.alreadyQueued += 1;
+        continue;
+      }
+
+      // سقفِ روزانه.
+      if (remainingCap <= 0) {
+        report.skippedByCap += 1;
+        continue;
+      }
+
+      // ۶) ورود به صف (idempotent). mode برچسب می‌خورد تا claim فیلتر/AI را تفکیک کند.
+      try {
+        const { created } = await enqueueFn(
+          {
+            idempotencyKey: `apply:${matchId}`,
+            matchId,
+            payload: {
+              board: job.board,
+              listingId: listingRow.id,
+              url: job.url,
+              mode: aiFilter ? "ai" : "filter",
+              ...(matchScore !== null ? { matchScore } : {}),
+              ...(coverLetter ? { coverLetter } : {}),
+            },
+          },
+          conn as unknown as Parameters<EnqueueFn>[1],
+        );
+
+        // تطبیق را به 'queued' ببر تا dedupe در re-runها و شمارشِ سقف درست بماند.
+        await conn
+          .update(matches)
+          .set({ status: "queued", updatedAt: sql`now()` })
+          .where(eq(matches.id, matchId));
+
+        if (created) {
+          report.queued += 1;
+          remainingCap -= 1;
+        } else {
+          report.alreadyQueued += 1;
         }
       } catch (err) {
         report.errors.push(`enqueue(apply:${matchId}): ${errMsg(err)}`);

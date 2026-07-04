@@ -57,6 +57,10 @@ beforeEach(() => {
     minScore: 0.7,
     quota: { limit: 100, usedToday: 0, remaining: 100 },
   });
+  // پیش‌فرضِ گاردِ سهمیه: «عبور». چون این فایل از clearAllMocks استفاده می‌کند (که
+  // implementation را پاک نمی‌کند)، این پیش‌فرض را در هر beforeEach دوباره برقرار می‌کنیم
+  // تا mockRejectedValueِ یک تست به تستِ بعدی نشت نکند.
+  quotaMock.mockResolvedValue({ limit: 100, usedToday: 0, remaining: 100 });
 });
 
 const VALID_ID = "11111111-1111-4111-8111-111111111111";
@@ -111,15 +115,40 @@ describe("POST /api/apply-queue/claim", () => {
     expect(claimMock).toHaveBeenCalledWith("u", 3, undefined, { minScore: 0.7 });
   });
 
-  it("تاگلِ اپلای خودکار خاموش ⇒ صفِ خالی + reason='disabled' (هیچ claim)", async () => {
+  it("تاگلِ AI خاموش ⇒ فقط آیتم‌های فیلترمود (بدونِ گیتِ آستانه، بدونِ reason)", async () => {
+    // پیوُت محصول: فیلترمودِ پیش‌فرض نیازی به تاگلِ اپلای خودکار ندارد. تاگل خاموش ⇒
+    // آیتم‌های فیلترمود همچنان با آستانه‌ی «دست‌نیافتنی» (AIمود حذف) claim می‌شوند.
     authMock.mockResolvedValue({ userId: "u-off", session: { kind: "extension" } } as never);
     autoApplyMock.mockRejectedValue(new AutoApplyNotAllowedError({ code: "disabled" }));
+    quotaMock.mockResolvedValue({ limit: 100, usedToday: 0, remaining: 100 });
+    claimMock.mockResolvedValue([
+      { taskId: "tf", matchId: "mf", mode: "filter", listing: { title: "Filter Job" } },
+    ] as never);
+
+    const res = await claimPOST(claimReq());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.count).toBe(1);
+    expect(body.items[0].taskId).toBe("tf");
+    expect(body.reason).toBeUndefined();
+    // آستانه‌ی دست‌نیافتنی ⇒ AIمود حذف، فیلترمود (OR در extension-queue) عبور می‌کند.
+    expect(claimMock).toHaveBeenCalledWith("u-off", 5, undefined, {
+      minScore: Number.MAX_SAFE_INTEGER,
+    });
+    // سقفِ روزانه هم برای فیلترمود بررسی شد (قاعده‌ی politeness).
+    expect(quotaMock).toHaveBeenCalledWith("u-off");
+  });
+
+  it("تاگلِ AI خاموش + سقفِ روزانه پر ⇒ صفِ خالی + reason='quota_exceeded' (هیچ claim)", async () => {
+    authMock.mockResolvedValue({ userId: "u-off-cap", session: { kind: "extension" } } as never);
+    autoApplyMock.mockRejectedValue(new AutoApplyNotAllowedError({ code: "disabled" }));
+    quotaMock.mockRejectedValue(new ApplyQuotaError({ usedToday: 100, limit: 100 }));
+
     const res = await claimPOST(claimReq());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.count).toBe(0);
-    expect(body.items).toEqual([]);
-    expect(body.reason).toBe("disabled");
+    expect(body.reason).toBe("quota_exceeded");
     expect(claimMock).not.toHaveBeenCalled();
   });
 
