@@ -1,371 +1,354 @@
 import Link from "next/link";
 
 import { Logo } from "@/components/brand/logo";
-import {
-  IconBell,
-  IconBolt,
-  IconBot,
-  IconChart,
-  IconCheck,
-  IconChip,
-  IconDoc,
-  IconDownload,
-  type IconComponent,
-  IconPlug,
-  IconPuzzle,
-  IconShield,
-  IconTarget,
-} from "@/components/dashboard/icons";
-import { SiteFooter } from "@/components/site-footer";
-import { SiteHeader } from "@/components/site-header";
+import { LedgerPanel } from "@/components/site-ledger-panel";
 import { site } from "@/lib/site";
 
-const features: { icon: IconComponent; title: string; body: string }[] = [
+/**
+ * Landing — «شیفت شب» / Night-Shift Console.
+ *
+ * A deliberately self-contained, fixed "ink + amber" experience (NOT the app
+ * theme tokens): the product is an operator that applies while you sleep, so the
+ * marketing looks like its console. No gradient orbs, no bg-clip-text, no purple
+ * glow. Monospace (system stack) for numerals / board slugs / codes; hairline
+ * dividers; flat panels; a single "night-lamp" amber signal (#FFB020). Real,
+ * verifiable stats only — no vanity user counts.
+ */
+
+const INK = "#0C0D10";
+
+/** Persian-digit helper for the few structural numerals rendered inline. */
+const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+const toFa = (n: number | string) =>
+  String(n).replace(/\d/g, (d) => FA_DIGITS[Number(d)]);
+
+/** Names of the supported boards, straight from the canonical brand list. */
+const boardNames = site.boards.map((b) => b.name).join("، ");
+
+/* Console panels for the "how it works" pipeline — the NEW filter-based flow. */
+const pipeline = [
   {
-    icon: IconBot,
-    title: "اپلای خودکار با هوش مصنوعی",
-    body: "کارجو آگهی‌های مرتبط را پیدا می‌کند، انگیزه‌نامه‌ی اختصاصی می‌نویسد و به‌جای شما در سایت‌های کاریابی اپلای می‌کند.",
+    n: "۰۱",
+    title: "سایتت را وصل کن",
+    body: "افزونه را نصب کن و در چند ثانیه به حساب کارجو وصل شو. هیچ کوکی یا رمزی به سرور نمی‌رود — فقط وضعیتِ «متصل».",
   },
   {
-    icon: IconTarget,
-    title: "تطبیق هوشمند شغل",
-    body: "بر اساس مهارت‌ها، سابقه و حقوق موردانتظار شما، فقط فرصت‌هایی که واقعاً مناسب‌اند انتخاب می‌شوند.",
+    n: "۰۲",
+    title: "فیلترها را انتخاب کن",
+    body: "دسته‌های شغلی، شهر، نوعِ همکاری و مرتب‌سازی را از میانِ گزینه‌های خودِ سایت انتخاب کن. همین — بدونِ نیاز به هوشِ مصنوعی.",
   },
   {
-    icon: IconDoc,
-    title: "رزومه و کاورلتر هوشمند",
-    body: "برای هر آگهی، رزومه و انگیزه‌نامه با کلمات کلیدی همان موقعیت شغلی بازنویسی و بهینه می‌شود.",
-  },
-  {
-    icon: IconChart,
-    title: "داشبورد پیگیری",
-    body: "وضعیت همه‌ی اپلای‌ها، بازدید کارفرما و دعوت به مصاحبه را یک‌جا و لحظه‌ای دنبال کنید.",
-  },
-  {
-    icon: IconBell,
-    title: "هشدار فرصت‌های تازه",
-    body: "به‌محض انتشار آگهی متناسب با پروفایلتان، کارجو در همان دقایق اول برای شما اقدام می‌کند.",
-  },
-  {
-    icon: IconShield,
-    title: "حریم خصوصی شما",
-    body: "اطلاعات و رزومه‌ی شما رمزنگاری می‌شود و هیچ‌گاه بدون اجازه‌ی شما جایی منتشر نمی‌شود.",
+    n: "۰۳",
+    title: "کارجو به همه اپلای می‌کند",
+    body: "کارجو همه‌ی آگهی‌های آن فیلتر را پیدا می‌کند و برایت اپلای می‌کند — در مرورگرِ خودت یا ۲۴ ساعته روی سرور.",
   },
 ];
 
-const steps = [
+const capabilities = [
   {
-    n: "۱",
-    title: "پروفایل بسازید",
-    body: "رزومه را بارگذاری کنید یا با چند سؤال ساده، پروفایل حرفه‌ای‌تان را در چند دقیقه کامل کنید.",
+    k: "اپلای انبوهِ فیلتری",
+    v: "پیش‌فرض، بدونِ AI",
+    body: "دسته و فیلترهای سایت را انتخاب کن؛ کارجو به همه‌ی آن شغل‌ها اپلای می‌کند. ساده، شفاف و قابل‌کنترل.",
   },
   {
-    n: "۲",
-    title: "ترجیحات را تعیین کنید",
-    body: "عنوان شغلی، شهر، بازه‌ی حقوق و نوع همکاری دلخواه‌تان را مشخص کنید تا کارجو دقیق عمل کند.",
+    k: "فیلترِ هوشمند (AI)",
+    v: "افزودنیِ اختیاری",
+    body: "اگر بخواهی، هوشِ مصنوعی فهرست را به متناسب‌ترین شغل‌ها باریک می‌کند. اختیاری، پولی، و هرگز الزامی نیست.",
   },
   {
-    n: "۳",
-    title: "کارجو اپلای می‌کند",
-    body: "هوش مصنوعی به‌صورت خودکار در جاب‌ویژن، جابینجا و بقیه‌ی سایت‌ها برای شما درخواست می‌فرستد.",
+    k: "نشستِ خودت",
+    v: "حریمِ خصوصی",
+    body: "همه‌چیز با نشستِ خودت و در مرورگرِ خودت انجام می‌شود. کوکی/توکنِ سایت هیچ‌وقت از مرورگرت خارج نمی‌شود.",
   },
+  {
+    k: "تأییدِ نهایی با تو",
+    v: "کنترلِ کامل",
+    body: "فرم خودکار پر می‌شود، اما ارسالِ نهایی فقط با کلیکِ تو ثبت می‌شود. سقفِ روزانه و تاریخچه‌ی کامل.",
+  },
+];
+
+// Real, structural stats only (no vanity user counts). The boards figure is
+// derived from the same list rendered below, so the number can never drift from
+// what the page actually shows. Category count is a conservative floor.
+const stats = [
+  { v: toFa(site.boards.length), k: "سایتِ کاریابی" },
+  { v: "۲۰+", k: "دسته‌ی شغلیِ جابینجا" },
+  { v: "چندمدلی", k: "GPT · Claude · Gemini" },
+  { v: "۲۴/۷", k: "اپلای روی سرور" },
 ];
 
 const faqs = [
   {
-    q: "کارجو در چه سایت‌هایی اپلای می‌کند؟",
-    a: "در حال حاضر روی محبوب‌ترین سایت‌های کاریابی ایران مانند جاب‌ویژن، جابینجا، ای‌استخدام و کاربوم تمرکز داریم و فهرست به‌مرور گسترده‌تر می‌شود.",
+    q: "بدونِ هوشِ مصنوعی چطور کار می‌کند؟",
+    a: "تو دسته‌ها و فیلترهای سایت را انتخاب می‌کنی و کارجو به همه‌ی آگهی‌های همان فیلتر اپلای می‌کند. هوشِ مصنوعی فقط یک فیلترِ اختیاریِ روی این جریان است.",
   },
   {
-    q: "آیا اطلاعاتم امن است؟",
-    a: "بله. اطلاعات حساب و رزومه‌ی شما رمزنگاری‌شده ذخیره می‌شود و کنترل کامل روی اینکه برای چه آگهی‌هایی اپلای شود، در اختیار خودتان است.",
+    q: "روی چه سایت‌هایی اپلای می‌کند؟",
+    a: `${boardNames} — و فهرست به‌مرور گسترده‌تر می‌شود.`,
   },
   {
-    q: "آیا اپلای‌ها واقعاً شخصی‌سازی می‌شوند؟",
-    a: "بله. برای هر موقعیت، رزومه و انگیزه‌نامه با توجه به نیازمندی‌های همان آگهی بازنویسی می‌شود تا شانس دیده‌شدن شما بیشتر شود.",
+    q: "اطلاعاتم امن است؟",
+    a: "اپلای با نشستِ خودت و در مرورگرِ خودت انجام می‌شود؛ کوکی یا توکنِ سایت هیچ‌وقت به سرورِ کارجو نمی‌رود. فقط داده‌ی پروفایل (نام، مهارت‌ها، سوابق) با اجازه‌ی تو منتقل می‌شود.",
   },
   {
-    q: "شروع کار رایگان است؟",
-    a: "بله، می‌توانید رایگان شروع کنید و چند اپلای نخست را آزمایش کنید؛ سپس بسته‌ی متناسب با نیازتان را انتخاب کنید.",
+    q: "شروع رایگان است؟",
+    a: "بله. اپلای فیلتری رایگان است؛ فیلترِ هوشمند (AI) یک افزودنیِ اختیاریِ پولی است.",
   },
 ];
 
 export default function Home() {
   return (
-    <>
-      <SiteHeader />
+    <div
+      dir="rtl"
+      className="min-h-dvh font-[inherit] text-[#E8E9EC] antialiased"
+      style={{ backgroundColor: INK }}
+    >
+      {/* barely-visible blueprint hairlines */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-10 opacity-[0.4]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, #ffffff0a 1px, transparent 1px), linear-gradient(to bottom, #ffffff0a 1px, transparent 1px)",
+          backgroundSize: "64px 64px",
+        }}
+      />
 
-      <main className="flex-1">
+      {/* ───────── Header ───────── */}
+      <header className="sticky top-0 z-20 border-b border-[#242832]/80 bg-[#0C0D10]/85 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
+          <Link href="/" className="flex items-center" aria-label="کارجو — خانه">
+            <Logo size={30} title="کارجو" className="text-[#E8E9EC]" />
+          </Link>
+          <nav className="hidden items-center gap-7 font-mono text-[13px] text-[#8A9099] md:flex" dir="ltr">
+            <Link href="#how" className="transition-colors hover:text-[#E8E9EC]">how</Link>
+            <Link href="#caps" className="transition-colors hover:text-[#E8E9EC]">what</Link>
+            <Link href="#boards" className="transition-colors hover:text-[#E8E9EC]">boards</Link>
+            <Link href="#extension" className="transition-colors hover:text-[#E8E9EC]">extension</Link>
+          </nav>
+          <div className="flex items-center gap-2">
+            <Link href="/login" className="px-3 py-2 text-sm text-[#c9cdd4] transition-colors hover:text-white">
+              ورود
+            </Link>
+            <Link
+              href="/login"
+              className="rounded-md bg-[#FFB020] px-4 py-2 text-sm font-bold text-[#0C0D10] transition-transform hover:-translate-y-px"
+            >
+              رایگان شروع کن
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <main>
         {/* ───────── Hero ───────── */}
-        <section className="relative overflow-hidden">
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(60%_60%_at_50%_0%,color-mix(in_oklab,var(--brand)_18%,transparent),transparent)]"
-          />
-          <div className="mx-auto max-w-6xl px-5 pb-20 pt-16 text-center sm:pt-24">
-            {/* نشانِ برند — لنگرِ هویتِ کارجو در بالای هیرو */}
-            <Logo
-              size={52}
-              title="کارجو"
-              className="mx-auto mb-8 text-foreground"
-            />
-
-            <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-xs font-medium text-muted">
-              <span className="h-2 w-2 rounded-full bg-accent" />
-              هوش مصنوعی، به‌جای ساعت‌ها جست‌وجوی شغل
-            </span>
-
-            <h1 className="mx-auto mt-6 max-w-3xl text-balance text-4xl font-extrabold leading-[1.25] tracking-tight sm:text-6xl sm:leading-[1.2]">
-              کار رویایی‌ات را پیدا کن،
-              <br />
-              <span className="bg-gradient-to-l from-brand to-brand-2 bg-clip-text text-transparent">
-                بقیه‌اش با کارجو
+        <section className="mx-auto max-w-6xl px-5 pb-16 pt-14 sm:pt-20">
+          <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr]">
+            {/* text (right in RTL) */}
+            <div>
+              <span
+                className="inline-flex items-center gap-2 rounded-full border border-[#242832] bg-[#14161B] px-3 py-1 font-mono text-[11px] text-[#8A9099]"
+                dir="ltr"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-[#FFB020]" />
+                karjoo · night-shift apply engine
               </span>
-            </h1>
 
-            <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-9 text-muted">
-              {site.description}
-            </p>
+              <h1 className="mt-6 text-balance text-4xl font-extrabold leading-[1.18] tracking-tight sm:text-6xl">
+                تو می‌خوابی،
+                <br />
+                <span className="text-[#FFB020]">کارجو اپلای می‌کند.</span>
+              </h1>
 
-            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Link
-                href="/login"
-                className="w-full rounded-full bg-gradient-to-l from-brand to-brand-2 px-8 py-3.5 text-base font-bold text-white shadow-lg shadow-brand/30 transition-transform hover:-translate-y-0.5 sm:w-auto"
+              <p className="mt-6 max-w-xl text-pretty text-[17px] leading-8 text-[#a7adb8]">
+                دسته و فیلترهای سایت‌های کاریابی را انتخاب کن؛ کارجو همه‌ی آن شغل‌ها را پیدا می‌کند و
+                برایت اپلای می‌کند — شبانه‌روز، با نشستِ خودت. هوشِ مصنوعی فقط یک افزودنیِ اختیاری است.
+              </p>
+
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Link
+                  href="/login"
+                  className="rounded-md bg-[#FFB020] px-7 py-3.5 text-center text-base font-bold text-[#0C0D10] transition-transform hover:-translate-y-0.5"
+                >
+                  رایگان شروع کن
+                </Link>
+                <Link
+                  href="#how"
+                  className="rounded-md border border-[#2a2f3a] bg-[#14161B] px-7 py-3.5 text-center text-base font-semibold text-[#E8E9EC] transition-colors hover:border-[#3a4150]"
+                >
+                  چطور کار می‌کند؟
+                </Link>
+              </div>
+
+              {/* real-stats mono strip */}
+              <dl
+                className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-[#242832] pt-6 font-mono text-[13px]"
+                dir="ltr"
               >
-                رایگان شروع کن
-              </Link>
-              <Link
-                href="#how"
-                className="w-full rounded-full border border-border bg-card px-8 py-3.5 text-base font-semibold transition-colors hover:bg-foreground/5 sm:w-auto"
-              >
-                چطور کار می‌کند؟
-              </Link>
+                {stats.map((s) => (
+                  <div key={s.k} className="flex items-baseline gap-2">
+                    <dt className="ltr-nums text-lg font-bold text-[#FFB020]">{s.v}</dt>
+                    <dd className="text-[#8A9099]">{s.k}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
 
-            <p className="mt-5 text-sm text-muted">
-              بدون نیاز به کارت بانکی · در کمتر از <span className="ltr-nums">۵</span> دقیقه راه‌اندازی
-            </p>
-
-            {/* Stats */}
-            <dl className="mx-auto mt-16 grid max-w-3xl grid-cols-3 gap-4">
-              {[
-                { v: "۱۰٪", k: "میانگین رشد نرخ پاسخ" },
-                { v: "۵+", k: "سایت کاریابی" },
-                { v: "۲۴/۷", k: "اپلای خودکار" },
-              ].map((s) => (
-                <div key={s.k} className="rounded-2xl border border-border bg-card p-5">
-                  <dt className="ltr-nums bg-gradient-to-l from-brand to-brand-2 bg-clip-text text-3xl font-extrabold text-transparent">
-                    {s.v}
-                  </dt>
-                  <dd className="mt-1 text-xs text-muted sm:text-sm">{s.k}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        </section>
-
-        {/* ───────── Features ───────── */}
-        <section id="features" className="mx-auto max-w-6xl px-5 py-20">
-          <div className="mx-auto max-w-2xl text-center">
-            <h2 className="text-3xl font-extrabold sm:text-4xl">هر آنچه برای استخدام لازم داری</h2>
-            <p className="mt-4 text-muted">یک دستیار هوشمند که فرایند کاریابی را از اول تا آخر برایت ساده می‌کند.</p>
-          </div>
-
-          <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {features.map((f) => (
-              <div
-                key={f.title}
-                className="group rounded-2xl border border-border bg-card p-6 transition-all hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5"
-              >
-                <div className="grid h-12 w-12 place-items-center rounded-xl bg-brand/10 text-brand transition-colors group-hover:bg-brand/15">
-                  <f.icon className="h-6 w-6" />
-                </div>
-                <h3 className="mt-4 text-lg font-bold">{f.title}</h3>
-                <p className="mt-2 text-sm leading-7 text-muted">{f.body}</p>
-              </div>
-            ))}
+            {/* console ledger (left in RTL) */}
+            <div dir="ltr">
+              <LedgerPanel />
+              <p className="mt-3 text-center font-mono text-[11px] text-[#8A9099]" dir="rtl">
+                نمونه‌ای از کاری که کارجو شب‌ها انجام می‌دهد — برد · دسته · وضعیت · مدلِ نویسنده‌ی کاورلتر.
+              </p>
+            </div>
           </div>
         </section>
 
         {/* ───────── How it works ───────── */}
-        <section id="how" className="border-y border-border/70 bg-card/40">
-          <div className="mx-auto max-w-6xl px-5 py-20">
-            <div className="mx-auto max-w-2xl text-center">
-              <h2 className="text-3xl font-extrabold sm:text-4xl">در سه قدم ساده</h2>
-              <p className="mt-4 text-muted">از ثبت‌نام تا اولین اپلای، فقط چند دقیقه فاصله است.</p>
-            </div>
-
-            <div className="mt-12 grid gap-6 md:grid-cols-3">
-              {steps.map((s) => (
-                <div key={s.n} className="relative rounded-2xl border border-border bg-card p-7">
-                  <span className="ltr-nums grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-brand to-brand-2 text-lg font-extrabold text-white">
+        <section id="how" className="border-t border-[#242832]">
+          <div className="mx-auto max-w-6xl px-5 py-16">
+            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">// how it works</p>
+            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">سه گام، بدونِ پیچیدگی</h2>
+            <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-[#242832] bg-[#242832] md:grid-cols-3">
+              {pipeline.map((s) => (
+                <div key={s.n} className="bg-[#14161B] p-7">
+                  <span className="ltr-nums font-mono text-3xl font-bold text-[#FFB020]" dir="ltr">
                     {s.n}
                   </span>
                   <h3 className="mt-4 text-lg font-bold">{s.title}</h3>
-                  <p className="mt-2 text-sm leading-7 text-muted">{s.body}</p>
+                  <p className="mt-2 text-sm leading-7 text-[#8A9099]">{s.body}</p>
                 </div>
               ))}
             </div>
           </div>
         </section>
 
-        {/* ───────── Browser extension ───────── */}
-        <section id="extension" className="mx-auto max-w-6xl px-5 py-20">
-          <div className="relative overflow-hidden rounded-3xl border border-border bg-card p-6 sm:p-10 lg:p-14">
-            {/* هاله‌ی گرادیانِ برند در گوشه — عمق بدونِ شلوغی */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(70%_60%_at_100%_0%,color-mix(in_oklab,var(--brand)_14%,transparent),transparent)]"
-            />
+        {/* ───────── Capabilities ───────── */}
+        <section id="caps" className="border-t border-[#242832]">
+          <div className="mx-auto max-w-6xl px-5 py-16">
+            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">// what you get</p>
+            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">اپلای، آن‌طور که باید باشد</h2>
+            <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-[#242832] bg-[#242832] sm:grid-cols-2">
+              {capabilities.map((c) => (
+                <div key={c.k} className="bg-[#14161B] p-7">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-base font-bold text-[#E8E9EC]">{c.k}</h3>
+                    <span className="shrink-0 rounded-full border border-[#2a2f3a] px-2.5 py-0.5 font-mono text-[11px] text-[#FFB020]">
+                      {c.v}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm leading-7 text-[#8A9099]">{c.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
-            <div className="grid items-center gap-10 lg:grid-cols-2">
-              {/* متن + CTA */}
-              <div>
-                <span className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 text-xs font-semibold text-brand">
-                  <IconPuzzle className="h-4 w-4" />
-                  افزونه‌ی مرورگر کارجو
-                </span>
-
-                <h2 className="mt-5 text-3xl font-extrabold leading-[1.3] sm:text-4xl">
-                  افزونه‌ی مرورگر را نصب کن،
-                  <br />
-                  <span className="bg-gradient-to-l from-brand to-brand-2 bg-clip-text text-transparent">
-                    اپلای در مرورگرِ خودت
+        {/* ───────── Boards (source list) ───────── */}
+        <section id="boards" className="border-t border-[#242832]">
+          <div className="mx-auto max-w-6xl px-5 py-16">
+            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">// integrated sources</p>
+            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">روی سایت‌های کاریابی ایران</h2>
+            <ul className="mt-8 divide-y divide-[#1c1f27] overflow-hidden rounded-lg border border-[#242832]">
+              {site.boards.map((b) => (
+                <li key={b.en} className="flex items-center justify-between bg-[#14161B] px-5 py-4">
+                  <span className="flex items-center gap-3">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#37C08A]" />
+                    <span className="text-base font-bold">{b.name}</span>
                   </span>
+                  <span className="ltr-nums font-mono text-xs text-[#8A9099]" dir="ltr">
+                    {b.en}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        {/* ───────── Extension ───────── */}
+        <section id="extension" className="border-t border-[#242832]">
+          <div className="mx-auto max-w-6xl px-5 py-16">
+            <div className="grid items-center gap-10 lg:grid-cols-2">
+              <div>
+                <p className="font-mono text-xs text-[#8A9099]" dir="ltr">// browser extension</p>
+                <h2 className="mt-2 text-2xl font-extrabold leading-snug sm:text-3xl">
+                  افزونه را نصب کن،
+                  <br />
+                  <span className="text-[#FFB020]">اپلای در مرورگرِ خودت</span>
                 </h2>
-
-                <p className="mt-5 max-w-xl text-pretty leading-8 text-muted">
-                  افزونه‌ی کارجو مستقیم در مرورگر شما اجرا می‌شود: آگهی‌های مناسب را
-                  می‌بیند، پروفایلتان را با آن‌ها تطبیق می‌دهد و می‌تواند اپلای را در
-                  همان جاب‌ویژن و جابینجایی که باز کرده‌اید، برایتان انجام دهد — بدون
-                  اینکه چیزی روی سرور بماند.
+                <p className="mt-5 max-w-xl leading-8 text-[#a7adb8]">
+                  افزونه مستقیم در مرورگرِ تو اجرا می‌شود: با نشستِ خودت به شغل‌های فیلترشده اپلای می‌کند —
+                  بدونِ اینکه چیزی روی سرور بماند. اپلای خودکار در مرورگر یا ۲۴ ساعته روی سرور (پلن‌های بالاتر).
                 </p>
-
-                <ul className="mt-6 space-y-3 text-sm">
-                  {[
-                    { icon: IconBolt, text: "اپلای خودکار داخل مرورگرِ خودتان، روی حساب‌های خودتان" },
-                    { icon: IconChip, text: "تطبیق هوشمندِ آگهی با پروفایل، لحظه‌ای هنگام مرور" },
-                    { icon: IconPlug, text: "اتصال (Pairing) امن به حساب کارجو در چند ثانیه" },
-                  ].map((f) => (
-                    <li key={f.text} className="flex items-center gap-3">
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">
-                        <f.icon className="h-4 w-4" />
-                      </span>
-                      <span className="leading-7 text-foreground/90">{f.text}</span>
-                    </li>
-                  ))}
-                </ul>
-
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <a
                     href="/karjoo-extension.zip"
                     download
-                    className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-l from-brand to-brand-2 px-7 py-3.5 text-base font-bold text-white shadow-lg shadow-brand/30 transition-transform hover:-translate-y-0.5 sm:w-auto"
+                    className="rounded-md bg-[#FFB020] px-7 py-3.5 text-center text-base font-bold text-[#0C0D10] transition-transform hover:-translate-y-0.5"
                   >
-                    <IconDownload className="h-5 w-5" />
                     دانلود افزونه
                   </a>
                   <Link
                     href="/dashboard/extension"
-                    className="focus-ring inline-flex w-full items-center justify-center gap-2 rounded-full border border-border bg-background px-7 py-3.5 text-base font-semibold transition-colors hover:bg-foreground/5 sm:w-auto"
+                    className="rounded-md border border-[#2a2f3a] bg-[#14161B] px-7 py-3.5 text-center text-base font-semibold transition-colors hover:border-[#3a4150]"
                   >
-                    <IconPuzzle className="h-5 w-5 text-muted" />
                     راهنمای نصب
                   </Link>
                 </div>
-
-                <p className="mt-4 text-xs text-muted">
-                  سازگار با <span className="ltr-nums">Chrome</span> و{" "}
-                  <span className="ltr-nums">Edge</span> · نصب دستی از پوشه‌ی
-                  باز‌شده (Load unpacked)
+                <p className="mt-4 font-mono text-[11px] text-[#8A9099]" dir="ltr">
+                  Chrome · Edge · Load unpacked
                 </p>
               </div>
 
-              {/* نمایشِ بصری — «پنجره‌ی افزونه» با گرادیانِ برند */}
-              <div className="relative mx-auto w-full max-w-sm lg:max-w-none">
-                <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-brand to-brand-2 p-1 shadow-brand">
-                  <div className="rounded-[calc(1rem-1px)] bg-background p-5">
-                    {/* هدرِ پاپ‌آپ افزونه */}
-                    <div className="flex items-center justify-between border-b border-border/70 pb-4">
-                      <Logo variant="mark" size={34} className="text-foreground" />
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent">
-                        <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                        متصل
-                      </span>
-                    </div>
-
-                    {/* ردیفِ توگلِ نمایشی */}
-                    <div className="mt-4 flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <IconBot className="h-5 w-5 text-brand" />
-                        <span className="text-sm font-semibold">اپلای خودکار در مرورگر</span>
-                      </div>
-                      <span className="relative inline-flex h-6 w-11 items-center rounded-full bg-gradient-to-l from-brand to-brand-2">
-                        <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white shadow-sm" />
-                      </span>
-                    </div>
-
-                    {/* آیتم‌های آگهیِ نمایشی */}
-                    <div className="mt-3 space-y-2">
-                      {[
-                        { t: "توسعه‌دهنده‌ی فرانت‌اند", m: "۹۲٪ تطبیق" },
-                        { t: "مهندس نرم‌افزار ارشد", m: "۸۷٪ تطبیق" },
-                      ].map((j) => (
-                        <div
-                          key={j.t}
-                          className="flex items-center justify-between rounded-lg bg-surface px-3.5 py-2.5"
-                        >
-                          <span className="flex items-center gap-2 text-sm text-foreground/90">
-                            <IconCheck className="h-4 w-4 text-accent" />
-                            {j.t}
-                          </span>
-                          <span className="ltr-nums text-xs font-semibold text-brand">
-                            {j.m}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+              {/* mini console preview */}
+              <div dir="ltr" className="overflow-hidden rounded-lg border border-[#242832] bg-[#14161B]">
+                <div className="flex items-center justify-between border-b border-[#242832] bg-[#101217] px-4 py-2.5">
+                  <span className="font-mono text-xs text-[#c9cdd4]">karjoo — popup</span>
+                  <span className="font-mono text-[11px] text-[#37C08A]">● متصل</span>
+                </div>
+                <div className="space-y-2 p-4" dir="rtl">
+                  <div className="flex items-center justify-between rounded-md border border-[#242832] bg-[#101217] px-3.5 py-3">
+                    <span className="text-sm font-semibold">اپلای خودکار در مرورگر</span>
+                    <span className="relative inline-flex h-5 w-9 items-center rounded-full bg-[#FFB020]">
+                      <span className="absolute left-0.5 h-4 w-4 rounded-full bg-[#0C0D10]" />
+                    </span>
                   </div>
+                  {["وب و برنامه‌نویسی", "IT / DevOps", "پشتیبانی مشتریان"].map((c) => (
+                    <div key={c} className="flex items-center justify-between rounded-md bg-[#101217] px-3.5 py-2.5 text-sm">
+                      <span className="flex items-center gap-2 text-[#c9cdd4]">
+                        <span className="text-[#37C08A]">✓</span>
+                        {c}
+                      </span>
+                      <span className="font-mono text-[11px] text-[#8A9099]" dir="ltr">queued</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ───────── Supported boards ───────── */}
-        <section id="boards" className="mx-auto max-w-6xl px-5 py-20 text-center">
-          <h2 className="text-3xl font-extrabold sm:text-4xl">روی سایت‌های کاریابی ایران</h2>
-          <p className="mx-auto mt-4 max-w-xl text-muted">
-            کارجو با محبوب‌ترین پلتفرم‌های کاریابی کشور یکپارچه می‌شود.
-          </p>
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-            {site.boards.map((b) => (
-              <div
-                key={b.en}
-                className="rounded-2xl border border-border bg-card px-6 py-4 text-lg font-bold transition-colors hover:border-brand/40"
-              >
-                {b.name}
-                <span className="ltr-nums mr-2 text-xs font-normal text-muted">{b.en}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ───────── FAQ ───────── */}
-        <section className="border-t border-border/70 bg-card/40">
-          <div className="mx-auto max-w-3xl px-5 py-20">
-            <h2 className="text-center text-3xl font-extrabold sm:text-4xl">سؤال‌های پرتکرار</h2>
-            <div className="mt-10 space-y-4">
+        {/* ───────── FAQ (transcript) ───────── */}
+        <section className="border-t border-[#242832]">
+          <div className="mx-auto max-w-3xl px-5 py-16">
+            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">// faq</p>
+            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">سؤال‌های پرتکرار</h2>
+            <div className="mt-8 space-y-3">
               {faqs.map((f) => (
                 <details
                   key={f.q}
-                  className="group rounded-2xl border border-border bg-card p-5 [&_summary]:cursor-pointer"
+                  className="group overflow-hidden rounded-lg border border-[#242832] bg-[#14161B] [&_summary]:cursor-pointer"
                 >
-                  <summary className="flex items-center justify-between text-base font-bold marker:content-['']">
-                    {f.q}
-                    <span className="text-muted transition-transform group-open:rotate-45">+</span>
+                  <summary className="flex items-center justify-between gap-3 px-5 py-4 text-base font-bold marker:content-['']">
+                    <span className="flex items-center gap-2">
+                      <span className="font-mono text-[#FFB020]" dir="ltr">{">"}</span>
+                      {f.q}
+                    </span>
+                    <span className="font-mono text-[#8A9099] transition-transform group-open:rotate-45">+</span>
                   </summary>
-                  <p className="mt-3 text-sm leading-7 text-muted">{f.a}</p>
+                  <p className="border-t border-[#242832] px-5 py-4 text-sm leading-8 text-[#8A9099]">
+                    {f.a}
+                  </p>
                 </details>
               ))}
             </div>
@@ -373,20 +356,18 @@ export default function Home() {
         </section>
 
         {/* ───────── CTA ───────── */}
-        <section id="cta" className="mx-auto max-w-6xl px-5 py-20">
-          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-l from-brand to-brand-2 px-6 py-16 text-center text-white sm:px-16">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 bg-[radial-gradient(40%_60%_at_80%_20%,rgba(255,255,255,0.18),transparent)]"
-            />
-            <h2 className="relative text-3xl font-extrabold sm:text-4xl">امروز اولین اپلای هوشمندت را بزن</h2>
-            <p className="relative mx-auto mt-4 max-w-xl text-white/90">
-              رایگان شروع کن و بگذار هوش مصنوعی کارجو، کار پیداکردن شغل را برایت انجام دهد.
+        <section className="border-t border-[#242832]">
+          <div className="mx-auto max-w-6xl px-5 py-20 text-center">
+            <h2 className="text-3xl font-extrabold sm:text-4xl">
+              امشب، بگذار کارجو <span className="text-[#FFB020]">شیفتِ شب</span> را بگیرد.
+            </h2>
+            <p className="mx-auto mt-4 max-w-xl leading-8 text-[#a7adb8]">
+              فیلترهایت را انتخاب کن و بخواب. صبح، فهرستِ اپلای‌ها منتظرت است.
             </p>
-            <div className="relative mt-8">
+            <div className="mt-8">
               <Link
                 href="/login"
-                className="inline-block rounded-full bg-white px-8 py-3.5 text-base font-bold text-brand shadow-lg transition-transform hover:-translate-y-0.5"
+                className="inline-block rounded-md bg-[#FFB020] px-8 py-4 text-base font-bold text-[#0C0D10] transition-transform hover:-translate-y-0.5"
               >
                 ساخت حساب رایگان
               </Link>
@@ -395,7 +376,20 @@ export default function Home() {
         </section>
       </main>
 
-      <SiteFooter />
-    </>
+      {/* ───────── Footer ───────── */}
+      <footer className="border-t border-[#242832]">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-8 sm:flex-row">
+          <div className="flex items-center gap-3">
+            <Logo variant="mark" size={24} className="text-[#E8E9EC]" />
+            <span className="font-mono text-xs text-[#8A9099]" dir="ltr">
+              karjoo · {site.name}
+            </span>
+          </div>
+          <p className="ltr-nums font-mono text-[11px] text-[#8A9099]" dir="ltr">
+            © ۱۴۰۴ — اپلای با نشستِ خودت · بدونِ دور زدنِ تشخیص
+          </p>
+        </div>
+      </footer>
+    </div>
   );
 }
