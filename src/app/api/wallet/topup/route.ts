@@ -22,6 +22,7 @@ import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/htt
 import { topupBodySchema } from "@/lib/api/billing-schemas";
 import { getCurrentUser } from "@/lib/auth/http";
 import { credit } from "@/lib/billing/wallet";
+import { isDevBillingEnabled } from "@/lib/env";
 
 // به DB و node API (cookies) دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -33,6 +34,12 @@ export async function POST(request: Request): Promise<Response> {
     const user = await getCurrentUser();
     if (!user) {
       return errorJson("احراز هویت لازم است", 401);
+    }
+
+    // ۱.۵) گیتِ استابِ آزمایشی (fail-closed): بدونِ KARJOO_DEV_BILLING="1" این مسیر
+    //      رد می‌شود تا در پرود هیچ‌کس نتواند رایگان به کیف‌پولش اعتبار بریزد.
+    if (!isDevBillingEnabled()) {
+      return errorJson("شارژِ کیف‌پول هنوز فعال نیست", 403);
     }
 
     // ۲) اعتبارسنجی + سقف‌گذاریِ مبلغ (۴۰۰ در صورتِ نامعتبر).

@@ -79,6 +79,14 @@ describe("POST /api/internal/grant-credits — اجرا", () => {
     expect(runMock).toHaveBeenCalledWith({ userIds: undefined });
   });
 
+  it("بدنه‌ی *واقعاً خالی* (کرانِ curl -X POST بدونِ body) → ۲۰۰، نه ۴۰۰", async () => {
+    // رگرسیونِ باگِ کرانِ ماهانه: request.json()ِ خالی ۴۰۰ می‌داد؛ حالا allowEmpty
+    // بدنه‌ی خالی را معادلِ «اجرای همه» می‌گیرد. (تستِ قبلی {} می‌فرستاد، نه بدنه‌ی خالی.)
+    const res = await POST(req(undefined, { "x-internal-secret": SECRET }));
+    expect(res.status).toBe(200);
+    expect(runMock).toHaveBeenCalledWith({ userIds: undefined });
+  });
+
   it("userIds معتبر → فقط همان‌ها به اجراگر پاس می‌شود", async () => {
     const ids = [
       "11111111-1111-4111-8111-111111111111",

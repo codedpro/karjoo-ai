@@ -7,6 +7,7 @@ import "server-only";
  * پاسخ JSON با کد وضعیت درست» را انجام می‌دهد و قالبِ خطا/موفقیت اینجا یک‌جا تعریف
  * می‌شود تا یکدست بماند و هیچ رازی (کلید/توکن/پیام داخلی حساس) به بدنه‌ی پاسخ نشت نکند.
  */
+import * as Sentry from "@sentry/nextjs";
 import { ZodError, type ZodType } from "zod";
 
 import { requireInternalSecret } from "@/lib/env";
@@ -93,13 +94,30 @@ function timingSafeEqual(a: string, b: string): boolean {
 /**
  * بدنه‌ی JSON درخواست را امن می‌خواند و با اسکیمای zod اعتبارسنجی می‌کند.
  * در صورت بدنه‌ی نامعتبر/غیرJSON یا شکستِ اسکیما، `HttpError(400)` پرتاب می‌کند.
+ *
+ * `opts.allowEmpty`: بدنه‌ی *خالی* (طولِ صفر یا فقط فاصله) را به‌جای ۴۰۰، معادلِ `{}`
+ * می‌گیرد — برای درزهای کران که با «POST بدونِ بدنه» صدا زده می‌شوند و اسکیمای‌شان همه
+ * فیلدها را اختیاری دارد (مثلِ grant-credits: بدنه‌ی خالی = «اجرای ماهانه‌ی همه»).
+ * بدونِ این آپشن، رفتار دقیقاً مثلِ قبل است (خالی → ۴۰۰).
  */
-export async function parseJsonBody<T>(request: Request, schema: ZodType<T>): Promise<T> {
+export async function parseJsonBody<T>(
+  request: Request,
+  schema: ZodType<T>,
+  opts: { allowEmpty?: boolean } = {},
+): Promise<T> {
+  const text = await request.text();
   let raw: unknown;
-  try {
-    raw = await request.json();
-  } catch {
-    throw new HttpError(400, "invalid JSON body");
+  if (text.trim() === "") {
+    if (!opts.allowEmpty) {
+      throw new HttpError(400, "invalid JSON body");
+    }
+    raw = {};
+  } else {
+    try {
+      raw = JSON.parse(text);
+    } catch {
+      throw new HttpError(400, "invalid JSON body");
+    }
   }
   const result = schema.safeParse(raw);
   if (!result.success) {
@@ -145,7 +163,14 @@ export async function withErrorHandling(fn: () => Promise<Response>): Promise<Re
     if (err instanceof ZodError) {
       return errorJson("validation failed", 400, flattenZod(err));
     }
-    // خطای غیرمنتظره: جزئیات را لاگ کن، ولی به کلاینت پیام عمومی بده (بدون نشت).
+    // خطای غیرمنتظره: به Sentry گزارش بده (تا Issue/alert بسازد، نه فقط Log)، جزئیات را
+    // لاگ کن، ولی به کلاینت پیام عمومی بده (بدون نشت). captureException اگر Sentry
+    // پیکربندی نشده باشد no-op است؛ باز هم دفاعی wrap می‌کنیم تا مسیرِ خطا هرگز نشکند.
+    try {
+      Sentry.captureException(err, { tags: { source: "api-route" } });
+    } catch {
+      /* Sentry در دسترس/پیکربندی‌نشده — نادیده بگیر */
+    }
     console.error("[api] unhandled error:", err);
     return errorJson("internal server error", 500);
   }

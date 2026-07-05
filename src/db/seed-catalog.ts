@@ -64,6 +64,14 @@ async function main() {
       `${result.upserted} مدل upsert شد).`,
   );
 
+  // بذرکاریِ تاکسونومیِ دسته‌بندیِ مشاغل (job_categories). بدونِ این، روی DBِ تازه
+  // پیکرِ علایق خالی است و replaceInterests انتخاب‌ها را بی‌صدا کنار می‌گذارد. importِ
+  // پویا (پس از dotenv) و ایدمپوتنت (upsert بر اساسِ slug).
+  console.log("در حال بذرکاریِ تاکسونومیِ دسته‌بندیِ مشاغل ...");
+  const { seedJobCategories } = await import("@/lib/taxonomy/seed");
+  const cats = await seedJobCategories(db);
+  console.log(`تاکسونومی بذر شد (${cats.upserted} دسته upsert شد).`);
+
   await client.end();
 }
 

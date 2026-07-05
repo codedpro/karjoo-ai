@@ -17,7 +17,7 @@ import "server-only";
  *
  * این مسیر AI را صدا نمی‌زند؛ ساخت‌یافته‌سازی در POST /api/resume/parse انجام می‌شود.
  */
-import { errorJson, json, withErrorHandling } from "@/lib/api/http";
+import { errorJson, HttpError, json, withErrorHandling } from "@/lib/api/http";
 import { getCurrentUser } from "@/lib/auth/http";
 import { EVENTS, track } from "@/lib/analytics";
 import { extractText, PdfExtractError } from "@/lib/resume/pdf";
@@ -25,6 +25,7 @@ import { resumeUploadJsonSchema } from "@/lib/resume/api-schemas";
 import { createResumeFileRecord } from "@/lib/resume/service";
 import { saveResumeFile } from "@/lib/resume/storage";
 import {
+  MAX_RESUME_BYTES,
   RESUME_MIME,
   decodeBase64Pdf,
   validateResumeUpload,
@@ -113,6 +114,15 @@ export async function POST(request: Request): Promise<Response> {
  */
 async function readUploadBody(request: Request): Promise<ExtractedUpload> {
   const contentType = request.headers.get("content-type") ?? "";
+
+  // گاردِ زودهنگامِ اندازه (ضدِ OOM/DoS): *پیش از* materializeِ کلِ بدنه در حافظه، اگر
+  // Content-Length به‌روشنی از سقف (با حاشیه برای overheadِ base64/multipart ~۱.۵×)
+  // بیشتر بود، فوراً ۴۱۳ بده — تا بدنه‌ی چندصدمگابایتی هرگز به heap کشیده نشود.
+  // اعتبارسنجیِ بایتیِ دقیقِ MAX_RESUME_BYTES همچنان پس از استخراج اجرا می‌شود.
+  const declaredLen = Number(request.headers.get("content-length") ?? "");
+  if (Number.isFinite(declaredLen) && declaredLen > MAX_RESUME_BYTES * 1.5) {
+    throw new HttpError(413, "حجمِ فایل بیش از حدِ مجاز است (حداکثر ۵ مگابایت).");
+  }
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData();

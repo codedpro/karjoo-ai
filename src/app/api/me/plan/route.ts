@@ -23,6 +23,7 @@ import { getCurrentUser } from "@/lib/auth/http";
 import { getUserPlanStatus } from "@/components/dashboard/plan-data";
 import { grantMonthlyCredits } from "@/lib/billing/grants";
 import { planFor, type PlanKey } from "@/lib/billing/plans";
+import { isDevBillingEnabled } from "@/lib/env";
 
 // به DB و node API (cookies) دست می‌زند → اجرای Node و رندرِ پویا.
 export const runtime = "nodejs";
@@ -60,6 +61,13 @@ export async function POST(request: Request): Promise<Response> {
     const user = await getCurrentUser();
     if (!user) {
       return errorJson("احراز هویت لازم است", 401);
+    }
+
+    // ۱.۵) گیتِ استابِ آزمایشی (fail-closed): تغییرِ پلنِ بدونِ پرداخت فقط در دمو/توسعه
+    //      مجاز است. بدونِ KARJOO_DEV_BILLING="1" رد می‌شود تا هیچ‌کس رایگان به پلنِ
+    //      پولی (Max/Max+) ارتقا نگیرد (تا پیاده‌سازیِ درگاهِ واقعیِ پرداخت).
+    if (!isDevBillingEnabled()) {
+      return errorJson("تغییرِ پلن هنوز فعال نیست", 403);
     }
 
     // ۲) اعتبارسنجیِ بدنه — فقط کلیدِ پلنِ مقصد (۴۰۰ در صورتِ نامعتبر).

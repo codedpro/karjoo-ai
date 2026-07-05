@@ -145,6 +145,13 @@ const envSchema = z.object({
   // مستقل از روشِ استقرار). فقط advisory است: سرور آن را به نود گزارش می‌کند؛ خودِ
   // سرور چیزی اجرا نمی‌کند. اختیاری؛ پیش‌فرض './update.sh'.
   KARJOO_FLEET_UPDATE_SCRIPT: optionalNonEmpty(z.string().min(1)),
+
+  // ── بیلینگِ آزمایشی (DEV) — گیتِ استاب‌های شارژ/تغییرِ پلنِ بدونِ پرداختِ واقعی ─────
+  // استاب‌های POST /api/wallet/topup و POST /api/me/plan موجودی/پلن را مستقیم و بدونِ
+  // درگاهِ پرداخت تغییر می‌دهند؛ پس فقط برای توسعه/دمو مجازند. fail-closed: تنها وقتی
+  // فعال‌اند که این متغیر دقیقاً "1" باشد. در پرودِ واقعی تنظیمش *نکنید* تا هیچ کاربری
+  // نتواند رایگان خودش را به پلنِ پولی/اعتبار برساند (تا پیاده‌سازیِ درگاهِ واقعیِ Zarinpal).
+  KARJOO_DEV_BILLING: optionalNonEmpty(z.string().min(1)),
 });
 
 /** درصدِ پیش‌فرضِ حاشیه‌ی سود اگر KARJOO_AI_MARGIN_PCT تنظیم نشده باشد. */
@@ -403,6 +410,15 @@ export function fleetEnrollmentTokenRaw(): string | null {
 /** آیا ثبت‌نامِ ناوگان باز است؟ (آیا رازِ ثبت‌نام تنظیم شده) — برای پاسخِ سریعِ ۵۰۳. */
 export function isFleetEnrollmentOpen(): boolean {
   return Boolean(env.KARJOO_FLEET_ENROLLMENT_TOKEN);
+}
+
+/**
+ * آیا استاب‌های بیلینگِ آزمایشی (شارژ/تغییرِ پلنِ بدونِ پرداختِ واقعی) فعال‌اند؟
+ * fail-closed: فقط اگر KARJOO_DEV_BILLING دقیقاً "1" باشد. در پرود تنظیم نشود تا
+ * self-grantِ رایگانِ پلنِ پولی/اعتبار بسته بماند (تا آمدنِ درگاهِ واقعیِ Zarinpal).
+ */
+export function isDevBillingEnabled(): boolean {
+  return env.KARJOO_DEV_BILLING === "1";
 }
 
 /**

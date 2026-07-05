@@ -17,7 +17,8 @@ const h = vi.hoisted(() => {
   const selectResults: unknown[][] = [];
   // آخرین مقدارِ set که به db.update داده شد (برای assert تغییرِ پلن).
   const updateState: { lastSet: Record<string, unknown> | null } = { lastSet: null };
-  return { selectResults, updateState };
+  // گیتِ بیلینگِ آزمایشی: پیش‌فرض روشن تا تغییرِ پلن آزموده شود؛ یک تست آن را خاموش می‌کند.
+  return { selectResults, updateState, devBilling: { on: true } };
 });
 
 vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
@@ -25,6 +26,11 @@ vi.mock("@/components/dashboard/plan-data", () => ({
   getUserPlanStatus: vi.fn(),
 }));
 vi.mock("@/lib/billing/grants", () => ({ grantMonthlyCredits: vi.fn() }));
+// گیتِ بیلینگِ آزمایشی را کنترل‌پذیر می‌کنیم (بقیه‌ی env واقعی می‌ماند).
+vi.mock("@/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/env")>();
+  return { ...actual, isDevBillingEnabled: () => h.devBilling.on };
+});
 vi.mock("@/db", () => ({
   db: {
     select: vi.fn(() => {
@@ -93,6 +99,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.selectResults.length = 0;
   h.updateState.lastSet = null;
+  h.devBilling.on = true;
 });
 
 /* ─────────────────────────────  GET /api/plans  ───────────────────────────── */
@@ -156,6 +163,15 @@ describe("POST /api/me/plan", () => {
     getCurrentUserMock.mockResolvedValue(null);
     const res = await mePlanPOST(jsonReq("https://k.app/api/me/plan", { plan: "pro" }));
     expect(res.status).toBe(401);
+    expect(dbUpdateMock).not.toHaveBeenCalled();
+    expect(grantMock).not.toHaveBeenCalled();
+  });
+
+  it("گیتِ بیلینگِ آزمایشی خاموش (پرود) → ۴۰۳ و هیچ update/گرنتی", async () => {
+    h.devBilling.on = false;
+    getCurrentUserMock.mockResolvedValue(USER);
+    const res = await mePlanPOST(jsonReq("https://k.app/api/me/plan", { plan: "pro" }));
+    expect(res.status).toBe(403);
     expect(dbUpdateMock).not.toHaveBeenCalled();
     expect(grantMock).not.toHaveBeenCalled();
   });

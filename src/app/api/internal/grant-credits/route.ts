@@ -53,8 +53,12 @@ export async function POST(request: Request): Promise<Response> {
     const blocked = guardInternal(request);
     if (blocked) return blocked;
 
-    // ۲) اعتبارسنجیِ بدنه (بدنه‌ی خالی هم مجاز است → اجرای همه).
-    const body = await parseJsonBody(request, grantCreditsBodySchema);
+    // ۲) اعتبارسنجیِ بدنه. بدنه‌ی *واقعاً خالی* (کرانِ `curl -X POST` بدونِ body) هم
+    //    مجاز است → معادلِ `{}` → «اجرای ماهانه‌ی همه». (allowEmpty لازم است چون
+    //    request.json()ِ خالی خودش ۴۰۰ می‌دهد.)
+    const body = await parseJsonBody(request, grantCreditsBodySchema, {
+      allowEmpty: true,
+    });
 
     // ۳) اجرای گرنتِ ماهانه (ایدمپوتنت). اگر userIds داده شده، فقط همان‌ها؛ وگرنه همه.
     const summary = await runMonthlyGrants({ userIds: body.userIds });

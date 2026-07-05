@@ -15,7 +15,8 @@ const h = vi.hoisted(() => {
   // صف‌های نتیجه‌ی select به ترتیبِ فراخوانی (هر route چند select می‌زند).
   const selectResults: unknown[][] = [];
   // آخرین where/limit/offset که به آخرین select داده شد (برای assert).
-  return { selectResults };
+  // گیتِ بیلینگِ آزمایشی: پیش‌فرض روشن تا رفتارِ topup آزموده شود؛ یک تست آن را خاموش می‌کند.
+  return { selectResults, devBilling: { on: true } };
 });
 
 vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
@@ -23,6 +24,11 @@ vi.mock("@/lib/billing/wallet", () => ({
   getBalance: vi.fn(),
   credit: vi.fn(),
 }));
+// گیتِ بیلینگِ آزمایشی را کنترل‌پذیر می‌کنیم (بقیه‌ی env واقعی می‌ماند).
+vi.mock("@/lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/env")>();
+  return { ...actual, isDevBillingEnabled: () => h.devBilling.on };
+});
 vi.mock("@/db", () => ({
   db: {
     select: vi.fn(() => {
@@ -80,6 +86,7 @@ function jsonReq(url: string, body: unknown) {
 beforeEach(() => {
   vi.clearAllMocks();
   h.selectResults.length = 0;
+  h.devBilling.on = true;
 });
 
 /* ─────────────────────────────  GET /api/wallet  ───────────────────────────── */
@@ -170,6 +177,16 @@ describe("POST /api/wallet/topup", () => {
     expect(userId).toBe("user-1");
     expect(kind).toBe("topup");
     expect(amount).toBe(100_000);
+  });
+
+  it("گیتِ بیلینگِ آزمایشی خاموش (پرود) → ۴۰۳ و هیچ creditی", async () => {
+    h.devBilling.on = false;
+    getCurrentUserMock.mockResolvedValue(USER);
+    const res = await topupPOST(
+      jsonReq("https://k.app/api/wallet/topup", { amountToman: 100_000 }),
+    );
+    expect(res.status).toBe(403);
+    expect(creditMock).not.toHaveBeenCalled();
   });
 
   it("مبلغِ زیرِ کمینه → ۴۰۰ و هیچ creditی", async () => {
