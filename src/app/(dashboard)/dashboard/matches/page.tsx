@@ -144,8 +144,8 @@ async function ConnectedBoards({ userId }: { userId: string }) {
     <Card padded>
       <h3 className="text-balance text-base font-bold">حساب‌های متصل</h3>
       <p className="mt-1 text-pretty text-sm leading-6 text-muted">
-        سایت‌هایی که حسابت به آن‌ها متصل است — فقط وضعیت؛ هیچ رمز یا نشستی روی سرور
-        نگه‌داری نمی‌شود.
+        سایت‌هایی که حسابت به آن‌ها متصل است. اتصال فقط با اجازه‌ی خودت و برای اپلای
+        به‌جای توست؛ هر زمان می‌توانی آن را قطع کنی.
       </p>
 
       {accounts.length === 0 ? (
