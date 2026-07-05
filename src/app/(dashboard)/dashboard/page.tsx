@@ -20,6 +20,7 @@ import {
   getProfileForUser,
 } from "@/components/dashboard/data";
 import { MatchCard } from "@/components/dashboard/match-card";
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { PairExtensionPanel } from "@/components/dashboard/pair-extension-panel";
 import { getDashboardUser } from "@/components/dashboard/session";
 import {
@@ -32,6 +33,7 @@ import {
   ButtonLink,
   EmptyState,
   PageHeader,
+  Skeleton,
   SkeletonList,
   SkeletonStat,
   StatCard,
@@ -58,6 +60,11 @@ export default async function DashboardHomePage() {
       <div className="empty:hidden">
         <AiMaintenanceBanner />
       </div>
+
+      {/* چک‌لیستِ «شروعِ کار» — استریم؛ اگر همه‌ی گام‌ها کامل باشد چیزی رندر نمی‌شود. */}
+      <Suspense fallback={<Skeleton className="h-28 w-full rounded-2xl" />}>
+        <OnboardingChecklist userId={userId} />
+      </Suspense>
 
       {/* خوشامد + کارت‌های آمار (استریم؛ اسکلتِ هم‌شکلِ StatCard) */}
       <section>
