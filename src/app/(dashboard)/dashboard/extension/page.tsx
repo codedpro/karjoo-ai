@@ -49,7 +49,7 @@ export default async function ExtensionPage() {
           <a
             href={EXTENSION_ZIP}
             download
-            className="focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-l from-brand to-brand-2 px-5 py-2.5 text-sm font-semibold text-white shadow-brand transition-[transform,opacity] duration-150 hover:-translate-y-0.5 hover:opacity-95 active:translate-y-px"
+            className="focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] duration-150 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-px"
           >
             <IconDownload className="h-4 w-4" />
             دانلودِ افزونه
@@ -120,7 +120,7 @@ function IntroSection() {
         <a
           href={EXTENSION_ZIP}
           download
-          className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 self-start whitespace-nowrap rounded-full bg-gradient-to-l from-brand to-brand-2 px-5 py-2.5 text-sm font-semibold text-white shadow-brand transition-[transform,opacity] duration-150 hover:-translate-y-0.5 hover:opacity-95 active:translate-y-px"
+          className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 self-start whitespace-nowrap rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] duration-150 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-px"
         >
           <IconDownload className="h-4 w-4" />
           دانلودِ افزونه (ZIP)

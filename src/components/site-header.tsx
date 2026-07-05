@@ -38,7 +38,7 @@ export function SiteHeader() {
           </Link>
           <Link
             href="/login"
-            className="rounded-full bg-gradient-to-l from-brand to-brand-2 px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-brand/30 transition-transform hover:-translate-y-0.5"
+            className="rounded-full bg-brand px-5 py-2 text-sm font-semibold text-brand-foreground shadow-xs transition-transform hover:-translate-y-0.5 hover:brightness-110"
           >
             شروع رایگان
           </Link>

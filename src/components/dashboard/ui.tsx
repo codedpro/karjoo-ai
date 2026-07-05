@@ -168,7 +168,7 @@ const BUTTON_BASE =
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    "bg-gradient-to-l from-brand to-brand-2 text-white shadow-brand hover:opacity-95 hover:-translate-y-0.5",
+    "bg-brand text-brand-foreground shadow-xs hover:brightness-110 hover:-translate-y-0.5",
   secondary:
     "border border-border bg-card text-foreground hover:bg-foreground/5 hover:border-foreground/20",
   ghost: "text-muted hover:bg-foreground/5 hover:text-foreground",

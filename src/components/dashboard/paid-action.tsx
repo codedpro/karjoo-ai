@@ -128,7 +128,7 @@ function TopupButton({
   topupHref?: string;
 }): ReactNode {
   const cls =
-    "rounded-full bg-amber-500 px-5 py-2 text-sm font-bold text-white shadow-lg shadow-amber-500/25 transition-transform hover:-translate-y-0.5";
+    "rounded-full bg-brand px-5 py-2 text-sm font-bold text-brand-foreground shadow-xs transition-transform hover:-translate-y-0.5 hover:brightness-110";
   if (topupHref) {
     return (
       <a href={topupHref} className={cls}>

@@ -405,7 +405,7 @@ export function UploadsPanel({
                               ? "سرویسِ هوش مصنوعی موقتاً در دسترس نیست."
                               : undefined
                         }
-                        className="focus-ring inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-l from-brand to-brand-2 px-4 py-2 text-xs font-semibold text-white shadow-brand transition-[transform,opacity] hover:-translate-y-0.5 hover:opacity-95 active:translate-y-px disabled:pointer-events-none disabled:opacity-55"
+                        className="focus-ring inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-brand px-4 py-2 text-xs font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] hover:-translate-y-0.5 hover:brightness-110 active:translate-y-px disabled:pointer-events-none disabled:opacity-55"
                       >
                         <IconSparkle className="h-3.5 w-3.5" />
                         {isThisBusy && busy?.kind === "parse"

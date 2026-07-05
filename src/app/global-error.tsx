@@ -38,8 +38,8 @@ export default function GlobalError({
             minHeight: "100vh",
             fontFamily:
               'Vazirmatn, Tahoma, "Segoe UI", system-ui, -apple-system, sans-serif',
-            backgroundColor: "#070a13",
-            color: "#eef1f8",
+            backgroundColor: "#0c0d10",
+            color: "#e8e9ec",
           }}
         >
           <div
@@ -58,7 +58,7 @@ export default function GlobalError({
                 width: "5rem",
                 height: "5rem",
                 borderRadius: "1.25rem",
-                backgroundColor: "rgba(91, 61, 245, 0.16)",
+                backgroundColor: "rgba(255, 176, 32, 0.14)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -71,7 +71,7 @@ export default function GlobalError({
                 height="40"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#8b5cf6"
+                stroke="#ffb020"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -94,7 +94,7 @@ export default function GlobalError({
             </h1>
             <p
               style={{
-                color: "#94a3b8",
+                color: "#8a9099",
                 margin: "0 0 2rem",
                 maxWidth: "28rem",
                 lineHeight: 1.8,
@@ -118,8 +118,8 @@ export default function GlobalError({
                 onClick={() => reset()}
                 style={{
                   padding: "0.75rem 1.75rem",
-                  backgroundColor: "#5b3df5",
-                  color: "#ffffff",
+                  backgroundColor: "#ffb020",
+                  color: "#0c0d10",
                   border: "none",
                   borderRadius: "0.75rem",
                   cursor: "pointer",
@@ -142,8 +142,8 @@ export default function GlobalError({
                 style={{
                   padding: "0.75rem 1.75rem",
                   backgroundColor: "transparent",
-                  color: "#d1d5db",
-                  border: "1px solid #1e2640",
+                  color: "#c9cdd4",
+                  border: "1px solid #242832",
                   borderRadius: "0.75rem",
                   fontSize: "0.875rem",
                   fontWeight: 500,

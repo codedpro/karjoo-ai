@@ -111,11 +111,11 @@ export function PlansGrid({
             >
               {/* نشانِ گوشه: پلنِ فعلی یا محبوب — end-4 برای RTL درست می‌نشیند */}
               {isCurrent ? (
-                <span className="absolute -top-2.5 inset-e-4 whitespace-nowrap rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-bold text-white shadow-brand">
+                <span className="absolute -top-2.5 inset-e-4 whitespace-nowrap rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-bold text-brand-foreground shadow-brand">
                   پلنِ فعلی
                 </span>
               ) : featured ? (
-                <span className="absolute -top-2.5 inset-e-4 whitespace-nowrap rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-white">
+                <span className="absolute -top-2.5 inset-e-4 whitespace-nowrap rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-brand-foreground">
                   پیشنهادی
                 </span>
               ) : null}

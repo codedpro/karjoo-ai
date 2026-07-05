@@ -242,7 +242,7 @@ function ModelCard({
           </p>
         </div>
         {isSaved ? (
-          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand px-2.5 py-0.5 text-xs font-bold text-white">
+          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand px-2.5 py-0.5 text-xs font-bold text-brand-foreground">
             انتخاب‌شده
             <IconCheck className="h-3.5 w-3.5" />
           </span>

@@ -94,7 +94,7 @@ export default function Error({
           <button
             type="button"
             onClick={() => reset()}
-            className="focus-ring inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-[filter] hover:brightness-95"
+            className="focus-ring inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-brand-foreground transition-[filter] hover:brightness-95"
             style={{ backgroundColor: "var(--brand)", boxShadow: "var(--shadow-brand)" }}
           >
             تلاش دوباره

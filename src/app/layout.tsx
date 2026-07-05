@@ -53,7 +53,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="fa" dir="rtl" className={`${vazir.variable} h-full antialiased`}>
+    <html lang="fa" dir="rtl" className={`dark ${vazir.variable} h-full antialiased`}>
       <head>
         {head?.metaTags.map((m, i) =>
           m.name ? <meta key={`m${i}`} name={m.name} content={m.content} /> : null,

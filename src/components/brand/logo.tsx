@@ -62,24 +62,24 @@ function KarjooBadge({ gradId }: { gradId: string }) {
     <>
       <defs>
         <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--brand, #5b3df5)" />
-          <stop offset="1" stopColor="var(--brand-2, #8b5cf6)" />
+          <stop offset="0" stopColor="var(--brand, #ffb020)" />
+          <stop offset="1" stopColor="var(--brand-2, #f59e0b)" />
         </linearGradient>
       </defs>
       {/* بَجِ گِردگوشه */}
       <rect x="4" y="4" width="56" height="56" rx="18" fill={`url(#${gradId})`} />
       {/* مونوگرامِ K — ستون + دو بازو */}
-      <path d="M23 15V49" stroke="#fff" strokeWidth="6.5" strokeLinecap="round" />
+      <path d="M23 15V49" stroke="#0c0d10" strokeWidth="6.5" strokeLinecap="round" />
       <path
         d="M43.5 15 27.5 32 43.5 49"
         fill="none"
-        stroke="#fff"
+        stroke="#0c0d10"
         strokeWidth="6.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       {/* جرقه‌ی فیروزه‌ای — AI/اتوماسیون */}
-      <circle cx="45.5" cy="13.5" r="4.6" fill="var(--accent, #06b6d4)" />
+      <circle cx="45.5" cy="13.5" r="4.6" fill="var(--accent, #37c08a)" />
     </>
   );
 }
@@ -151,9 +151,9 @@ function Wordmark({ showAi }: { showAi: boolean }) {
             lineHeight: 1,
             padding: "0.32em 0.55em",
             borderRadius: "0.55em",
-            color: "#fff",
+            color: "#0c0d10",
             background:
-              "linear-gradient(135deg, var(--brand, #5b3df5), var(--brand-2, #8b5cf6))",
+              "linear-gradient(135deg, var(--brand, #ffb020), var(--brand-2, #f59e0b))",
             direction: "ltr",
           }}
         >

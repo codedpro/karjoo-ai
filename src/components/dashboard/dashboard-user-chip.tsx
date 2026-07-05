@@ -75,7 +75,7 @@ function Avatar({
   }
   return (
     <span
-      className={cn(base, "bg-gradient-to-br from-brand to-brand-2 text-sm font-bold text-white")}
+      className={cn(base, "bg-brand text-sm font-bold text-brand-foreground")}
       aria-hidden
     >
       {initials(name, email)}
