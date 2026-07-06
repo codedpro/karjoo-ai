@@ -153,7 +153,9 @@ export async function claimUserApplyItems(
     .from(tasks)
     .innerJoin(matches, eq(tasks.matchId, matches.id))
     .innerJoin(jobListings, eq(matches.listingId, jobListings.id))
-    .where(eq(matches.userId, userId));
+    // فقط ردیف‌های همین اجاره را بخوان (نه کلِ تاریخچه‌ی کاربر): این اندپوینتِ داغِ
+    // polling است؛ بدونِ این bound هزینه با تاریخچه‌ی کاربر بی‌کران رشد می‌کند.
+    .where(and(eq(matches.userId, userId), inArray(tasks.id, [...leasedSet])));
 
   return detail
     .filter((d) => leasedSet.has(d.taskId))

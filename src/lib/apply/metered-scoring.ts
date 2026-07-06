@@ -72,7 +72,7 @@ export async function meteredScoreAndDraft(
 }
 
 /** آیا این خطا از نوعِ موجودیِ ناکافیِ بیلینگ است؟ (بدونِ importِ سختِ کلاس در سطحِ ماژول). */
-function isInsufficientBalance(err: unknown): boolean {
+export function isInsufficientBalance(err: unknown): boolean {
   return (
     err instanceof Error &&
     (err.name === "InsufficientBalanceError" ||

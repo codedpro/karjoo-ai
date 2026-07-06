@@ -7,7 +7,7 @@ Generated from a multi-agent audit (8 subsystem scanners → 55 raw findings →
 | # | Title | Kind | Sev | Effort | Status |
 |---|-------|------|-----|--------|--------|
 | 1 | DEV billing stubs let any user self-grant paid plans + mint wallet credit | security | critical | S | ✅ fixed |
-| 2 | AI-filter batch keeps calling paid gateway after wallet empty (uncharged spend) | bug | high | S | ⬜ next |
+| 2 | AI-filter batch keeps calling paid gateway after wallet empty (uncharged spend) | bug | high | S | ✅ fixed |
 | 3 | 401 from web-cookie route wrongly un-pairs the extension (re-pair loop) | bug | high | M | ⬜ |
 | 4 | Apply messages a fresh tab before its content script loads (spurious fail) | bug | high | M | ⬜ |
 | 5 | Popup 8s send timeout shorter than the ops it wraps (looks broken) | bug | high | M | ⬜ |
@@ -22,9 +22,9 @@ Generated from a multi-agent audit (8 subsystem scanners → 55 raw findings →
 | 14 | find-jobs synchronous scrape per click, no rate limit (self IP-ban) | security | high | M | ⬜ |
 | 15 | No revocation path for extension sessions / stored board credentials | incomplete | high | L | ⬜ |
 | 16 | Daily apply cap can be overshot by claimLimit-1 (anti-ban breach) | bug | medium | S | ⬜ next |
-| 17 | claim detail query scans ALL user tasks per poll (unbounded) | tech-debt | medium | S | ⬜ next |
+| 17 | claim detail query scans ALL user tasks per poll (unbounded) | tech-debt | medium | S | ✅ fixed |
 | 18 | API 500s swallowed — never reach Sentry, no alerting | bug | medium | S | ✅ fixed |
-| 19 | Empty-filter guard wrong layer + wrong predicate | bug | medium | S | ⬜ next |
+| 19 | Empty-filter guard wrong layer + wrong predicate | bug | medium | S | ✅ fixed |
 | 20 | Resume upload buffers full body before 5MB check (OOM DoS) | security | medium | S | ✅ fixed |
 | 21 | Only Jobinja functional — other 3 boards are scaffolds | incomplete | medium | L | ⬜ |
 | 22 | Jobinja APPLY_SPEC selectors unverified best-effort guesses | incomplete | medium | M | ⬜ |

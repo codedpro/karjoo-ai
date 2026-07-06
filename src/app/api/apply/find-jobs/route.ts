@@ -47,15 +47,21 @@ export async function POST(request: Request): Promise<Response> {
     // ۳) فیلترهای ذخیره‌شده‌ی همین کاربر را بخوان (از candidate_profiles.preferences).
     const filters = await readApplyFilters(user.id);
 
-    // ۴) اگر هنوز دسته‌ای انتخاب نشده، چیزی برای هدف‌گیری نیست — پاسخِ دوستانه (نه خطا)
-    //    تا افزونه/داشبورد کاربر را به صفحه‌ی «فیلترهای اپلای» راهنمایی کند.
-    if (filters.categorySlugs.length === 0) {
+    // ۴) اگر هیچ فیلترِ هدف‌گیری‌ای (دسته/شهر/نوعِ همکاری/دورکاری) نیست، چیزی برای
+    //    هدف‌گیری وجود ندارد — پاسخِ دوستانه (نه خطا) تا کاربر به «فیلترهای اپلای» برود.
+    //    (قبلاً فقط categorySlugs چک می‌شد و کاربرانِ «فقط شهر/نوع» را اشتباهاً می‌بست.)
+    const hasTargeting =
+      filters.categorySlugs.length > 0 ||
+      filters.cities.length > 0 ||
+      filters.jobTypes.length > 0 ||
+      filters.remoteOnly;
+    if (!hasTargeting) {
       return json(
         {
           enqueued: 0,
           reason: "no_filters",
           message:
-            "هنوز فیلتری تنظیم نکرده‌اید. ابتدا در «فیلترهای اپلای» دسته‌ها را انتخاب کنید.",
+            "هنوز فیلتری تنظیم نکرده‌اید. ابتدا در «فیلترهای اپلای» دسته، شهر یا نوعِ همکاری را انتخاب کنید.",
         },
         200,
       );

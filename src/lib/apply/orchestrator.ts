@@ -29,7 +29,7 @@ import {
 //   • getConnector از همان رجیستریِ index.ts (تابع است، در زمان اجرا صدا زده می‌شود)
 //   • scoreAndDraft از @/lib/apply/scoring (پیاده‌سازیِ واقعیِ گیت‌وی 1xai)
 // این کار رفتارِ زمان‌اجرا را تغییر نمی‌دهد، فقط ترتیبِ ارزیابیِ ماژول‌ها را امن می‌کند.
-import { meteredScoreAndDraft } from "@/lib/apply/metered-scoring";
+import { isInsufficientBalance, meteredScoreAndDraft } from "@/lib/apply/metered-scoring";
 import { toJobPreferences as preferencesToJobPreferences } from "@/lib/apply/filters";
 import { getConnector } from "@/lib/apply/registry";
 import { orchestratorRunCap } from "@/lib/env";
@@ -166,6 +166,12 @@ export async function runJobinjaIngest(input: IngestRunInput): Promise<IngestRun
     } catch (err) {
       if (isNotImplemented(err)) {
         throw new NotImplementedError("AI scoring (scoreAndDraft) not implemented yet");
+      }
+      // موجودیِ هوش مصنوعی تمام شد → کلِ اجرا را متوقف کن؛ وگرنه هر آگهیِ بعدی یک
+      // فراخوانیِ گیت‌ویِ بی‌محاسبه می‌سازد (نشتِ هزینه‌ی بالادست). نتیجه‌ی جزئی برمی‌گردد.
+      if (isInsufficientBalance(err)) {
+        console.warn("[orchestrator] موجودیِ هوش مصنوعی تمام شد؛ اجرا متوقف شد.");
+        break;
       }
       // خطای موردی روی یک آگهی: بشمار و ادامه بده.
       result.scoringErrors += 1;
@@ -513,7 +519,7 @@ export async function runAutoApply(
 
   const prefs = profile.preferences ?? {};
 
-  for (const boardId of boards) {
+  boardsLoop: for (const boardId of boards) {
     const connector = resolveConnector(boardId);
     if (!connector) {
       report.errors.push(`کانکتور برای سایت ${boardId} ثبت نشده است`);
@@ -550,6 +556,12 @@ export async function runAutoApply(
         score = await scoreFn(job, profile);
         report.scored += 1;
       } catch (err) {
+        // اتمامِ موجودی → کلِ اجرا را متوقف کن (break از حلقه‌ی برچسب‌دارِ سایت‌ها)، تا
+        // آگهی‌های بعدی فراخوانیِ گیت‌ویِ بی‌محاسبه نسازند. نتیجه‌ی جزئی برمی‌گردد.
+        if (isInsufficientBalance(err)) {
+          report.errors.push("اجرا به‌خاطرِ اتمامِ موجودیِ هوش مصنوعی متوقف شد");
+          break boardsLoop;
+        }
         report.errors.push(`scoreAndDraft(${job.id}): ${errMsg(err)}`);
         continue;
       }
@@ -788,10 +800,22 @@ export async function runFilterApply(
     errors: [],
   };
 
+  // دفاع در عمق: بدونِ هیچ فیلترِ هدف‌گیری (دسته/شهر/نوع/عنوان/دورکاری)، scrapePublic به
+  // /jobsِ خام می‌رسد و تازه‌ترین‌های کلِ سایت را برمی‌گرداند → اپلای انبوهِ ناخواسته به
+  // شغل‌های نامرتبط. پس اگر هیچ هدفی نیست، هیچ‌چیز صف نکن و گزارشِ خالی برگردان.
+  const hasTargeting = Boolean(
+    prefs.categorySlugs?.length ||
+      prefs.cities?.length ||
+      prefs.jobTypes?.length ||
+      prefs.titles?.length ||
+      prefs.remoteOnly,
+  );
+  if (!hasTargeting) return report;
+
   // سقفِ روزانه: ظرفیتِ باقی‌مانده (همان شمارشِ tasks امروزِ این کاربر — فیلتر + AI).
   let remainingCap = Math.max(0, dailyCap - (await countQueuedToday(conn, userId)));
 
-  for (const boardId of boards) {
+  boardsLoop: for (const boardId of boards) {
     const connector = resolveConnector(boardId);
     if (!connector) {
       report.errors.push(`کانکتور برای سایت ${boardId} ثبت نشده است`);
@@ -835,6 +859,12 @@ export async function runFilterApply(
           coverLetter = s.coverLetter;
           aboveThreshold = s.matchScore >= threshold;
         } catch (err) {
+          // اتمامِ موجودی → کلِ اجرا را متوقف کن (break از حلقه‌ی برچسب‌دارِ سایت‌ها)، تا
+          // آگهی‌های بعدی فراخوانیِ گیت‌ویِ بی‌محاسبه نسازند. نتیجه‌ی جزئی برمی‌گردد.
+          if (isInsufficientBalance(err)) {
+            report.errors.push("اجرا به‌خاطرِ اتمامِ موجودیِ هوش مصنوعی متوقف شد");
+            break boardsLoop;
+          }
           report.errors.push(`score(${job.id}): ${errMsg(err)}`);
           continue;
         }

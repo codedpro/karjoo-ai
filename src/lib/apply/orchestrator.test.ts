@@ -23,6 +23,7 @@ import type {
   JobBoardConnector,
   JobListing,
 } from "@/lib/apply/types";
+import { InsufficientBalanceError } from "@/lib/billing/errors";
 
 /* ───────────────────────────────  fixtures  ───────────────────────────── */
 
@@ -418,6 +419,52 @@ describe("runFilterApply — فیلترمود (بدونِ AI)", () => {
     for (const call of enqueueFn.mock.calls) {
       expect(call[0].payload.mode).toBe("filter");
     }
+  });
+
+  it("aiFilter: اتمامِ موجودی روی اولین آگهی → اجرا فوراً می‌ایستد (نه فراخوانیِ گیت‌وی برای بقیه)", async () => {
+    const conn = makeFakeDb({});
+    const connector = fakeConnector([listing("a"), listing("b"), listing("c")]);
+    const scoreFn = vi.fn(async () => {
+      throw new InsufficientBalanceError({ balanceToman: 0, plan: "free" });
+    });
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      aiFilter: true,
+      connectors: { jobinja: connector },
+      scoreFn: scoreFn as never,
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+    });
+
+    // فقط یک‌بار امتیازدهی شد، سپس break — نه سه‌بار (نشتِ هزینه‌ی بالادست بسته شد).
+    expect(scoreFn).toHaveBeenCalledTimes(1);
+    expect(report.queued).toBe(0);
+    expect(report.errors.some((e) => e.includes("موجودی"))).toBe(true);
+  });
+
+  it("بدونِ هیچ فیلترِ هدف‌گیری → هیچ scrape و صفی (گزارشِ خالی، دفاع در عمق)", async () => {
+    const conn = makeFakeDb({});
+    const connector = fakeConnector([listing("a"), listing("b")]);
+    const emptyLoad = async (): Promise<LoadedFilterProfile> => ({
+      profile,
+      prefs: {},
+    });
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile: emptyLoad,
+    });
+
+    // گاردِ hasTargeting پیش از scrape برمی‌گردد → هیچ آگهی‌ای وارد/صف نشد.
+    expect(report.ingested).toBe(0);
+    expect(report.queued).toBe(0);
   });
 
   it("سقفِ روزانه رعایت می‌شود (queued + skippedByCap)", async () => {
