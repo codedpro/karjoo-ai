@@ -28,6 +28,7 @@ import { applyQuotaFor } from "@/lib/billing/plans";
 import { assertCanUsePaidAi } from "@/lib/billing/entitlement";
 
 import { POST } from "@/app/api/apply/find-jobs/route";
+import { resetRateLimits } from "@/lib/api/rate-limit";
 
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const readFiltersMock = vi.mocked(readApplyFilters);
@@ -78,6 +79,7 @@ function req(body?: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetRateLimits(); // گاردِ نرخ per-user حالتش ماژول‌سطحی است — بین تست‌ها پاک شود.
   getCurrentUserMock.mockResolvedValue(USER);
   readFiltersMock.mockResolvedValue(filtersWith());
   readUserPlanMock.mockResolvedValue("free");
@@ -104,6 +106,16 @@ describe("POST /api/apply/find-jobs", () => {
     expect(body.reason).toBe("no_filters");
     expect(typeof body.message).toBe("string");
     expect(runFilterApplyMock).not.toHaveBeenCalled();
+  });
+
+  it("گاردِ نرخ: بیش از ۵ درخواستِ پیاپیِ یک کاربر → ۴۲۹ با Retry-After", async () => {
+    for (let i = 0; i < 5; i++) {
+      const ok = await POST(req());
+      expect(ok.status).toBe(200);
+    }
+    const limited = await POST(req());
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBeTruthy();
   });
 
   it("فیلترمودِ پیش‌فرض → runFilterApply(aiFilter=false) و enqueued=queued", async () => {

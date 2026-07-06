@@ -60,9 +60,30 @@ describe("requireBearerSession", () => {
   const okVerify: VerifySessionFn = async (token) =>
     token === "good" ? { userId: "user-1", session: fakeSession("extension") } : null;
 
-  it("توکنِ معتبر → نشست", async () => {
-    const s = await requireBearerSession(req("Bearer good"), { verify: okVerify });
+  it("توکنِ معتبر (کاربرِ فعال) → نشست", async () => {
+    const s = await requireBearerSession(req("Bearer good"), {
+      verify: okVerify,
+      loadUserActive: async () => true,
+    });
     expect(s.userId).toBe("user-1");
+  });
+
+  it("کاربرِ غیرفعال/بن‌شده (isActive=false) → ۴۰۱ حتی با توکنِ معتبر", async () => {
+    await expect(
+      requireBearerSession(req("Bearer good"), {
+        verify: okVerify,
+        loadUserActive: async () => false,
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
+  it("کاربرِ یافت‌نشده (loader → null) → ۴۰۱ (fail-closed)", async () => {
+    await expect(
+      requireBearerSession(req("Bearer good"), {
+        verify: okVerify,
+        loadUserActive: async () => null,
+      }),
+    ).rejects.toMatchObject({ status: 401 });
   });
 
   it("نبودِ هدر → HttpError(401)", async () => {
@@ -94,6 +115,7 @@ describe("requireBearerSession", () => {
     const s = await requireBearerSession(req("Bearer good"), {
       verify: okVerify,
       requireKind: "extension",
+      loadUserActive: async () => true,
     });
     expect(s.session.kind).toBe("extension");
   });
@@ -103,7 +125,10 @@ describe("requireBearerSession", () => {
       userId: "u",
       session: fakeSession("web"),
     });
-    const s = await requireBearerSession(req("Bearer good"), { verify: webVerify });
+    const s = await requireBearerSession(req("Bearer good"), {
+      verify: webVerify,
+      loadUserActive: async () => true,
+    });
     expect(s.session.kind).toBe("web");
   });
 });

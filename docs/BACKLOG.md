@@ -12,16 +12,16 @@ Generated from a multi-agent audit (8 subsystem scanners → 55 raw findings →
 | 4 | Apply messages a fresh tab before its content script loads (spurious fail) | bug | high | M | ✅ fixed (v0.2.7) |
 | 5 | Popup 8s send timeout shorter than the ops it wraps (looks broken) | bug | high | M | ✅ fixed (v0.2.7) |
 | 6 | Matches page falsely claims "no session stored on server" | bug | high | S | ✅ fixed |
-| 7 | Bearer sessions ignore user deactivation (banned users keep access) | security | high | M | ⬜ |
+| 7 | Bearer sessions ignore user deactivation (banned users keep access) | security | high | M | ✅ fixed |
 | 8 | candidate_profiles has no UNIQUE(user_id) — dupe race drops filter prefs | bug | high | M | ⬜ |
 | 9 | job_categories never seeded — interests taxonomy empty, selections dropped | incomplete | high | S | ✅ fixed |
 | 10 | Monthly credit-grant cron 400s on empty-body POST — grants never run | bug | high | S | ✅ fixed |
 | 11 | Pivot's default free flow (filter apply) undiscoverable / dead-ends | incomplete | high | M | ⬜ |
 | 12 | No scheduler wired — 24/7 discovery + monthly credits never auto-run | incomplete | high | M | ⬜ |
 | 13 | Filter apply caps at first ~25 listings — no pagination cursor | incomplete | high | L | ⬜ |
-| 14 | find-jobs synchronous scrape per click, no rate limit (self IP-ban) | security | high | M | ⬜ |
+| 14 | find-jobs synchronous scrape per click, no rate limit (self IP-ban) | security | high | M | ✅ fixed |
 | 15 | No revocation path for extension sessions / stored board credentials | incomplete | high | L | ⬜ |
-| 16 | Daily apply cap can be overshot by claimLimit-1 (anti-ban breach) | bug | medium | S | ⬜ next |
+| 16 | Daily apply cap can be overshot by claimLimit-1 (anti-ban breach) | bug | medium | S | ✅ fixed |
 | 17 | claim detail query scans ALL user tasks per poll (unbounded) | tech-debt | medium | S | ✅ fixed |
 | 18 | API 500s swallowed — never reach Sentry, no alerting | bug | medium | S | ✅ fixed |
 | 19 | Empty-filter guard wrong layer + wrong predicate | bug | medium | S | ✅ fixed |

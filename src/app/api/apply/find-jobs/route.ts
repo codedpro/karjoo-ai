@@ -23,6 +23,7 @@ import "server-only";
  * (readApplyFilters / runFilterApply) به‌علاوه‌ی نشست/پلن/استحقاق.
  */
 import { errorJson, HttpError, json, withErrorHandling } from "@/lib/api/http";
+import { checkRateLimit } from "@/lib/api/rate-limit";
 import { findJobsBodySchema } from "@/lib/api/find-jobs-schemas";
 import { getCurrentUser } from "@/lib/auth/http";
 import { readApplyFilters } from "@/lib/apply/filters";
@@ -40,6 +41,26 @@ export async function POST(request: Request): Promise<Response> {
     // ۱) احراز هویت — فقط نشستِ وب. کاربرِ هدف همیشه از نشست (نه از بدنه).
     const user = await getCurrentUser();
     if (!user) return errorJson("احراز هویت لازم است", 401);
+
+    // ۱.۵) گاردِ نرخ (ضدِبن، §۴): find-jobs یک اسکرَیپِ همزمانِ سمتِ سرور می‌زند؛ کلیک‌های
+    //      پیاپی نباید IPِ کنترل‌پلین را به اسکرَیپِ مکررِ Jobinja وادار کنند. سقفِ کوتاهِ
+    //      per-user → ۴۲۹ با Retry-After.
+    const rl = checkRateLimit(`find-jobs:${user.id}`, 5, 60_000);
+    if (!rl.allowed) {
+      return new Response(
+        JSON.stringify({
+          error: "درخواست‌های زیاد؛ چند لحظه صبر کنید و دوباره تلاش کنید.",
+          retryAfterSec: rl.retryAfterSec,
+        }),
+        {
+          status: 429,
+          headers: {
+            "content-type": "application/json",
+            "retry-after": String(rl.retryAfterSec),
+          },
+        },
+      );
+    }
 
     // ۲) بدنه — بدونِ ورودی؛ کلیدِ ناشناخته (مثلِ userIdِ جعلی) → ۴۰۰. بدنه‌ی خالی مجاز.
     await parseFindJobsBody(request);

@@ -49,6 +49,16 @@ export const dynamic = "force-dynamic";
  */
 const AI_TASKS_EXCLUDED_MIN_SCORE = Number.MAX_SAFE_INTEGER;
 
+/**
+ * سقفِ درخواستیِ claim را به ظرفیتِ *باقی‌مانده‌ی* سهمیه‌ی امروز محدود می‌کند تا اجاره
+ * هرگز بیش از remaining نباشد (وگرنه یک کاربرِ ۹۹/۱۰۰ می‌توانست ۲۵ آیتم اجاره و ثبت کند
+ * و سقفِ ضدِبنِ روزانه را بشکند). `remaining=null` = پلنِ نامحدود → بدونِ محدودسازی.
+ */
+function clampToRemaining(requested: number, remaining: number | null): number {
+  if (remaining === null) return requested;
+  return Math.max(0, Math.min(requested, remaining));
+}
+
 export async function POST(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
     // ۱) احراز هویت — فقط نشستِ افزونه.
@@ -65,9 +75,11 @@ export async function POST(request: Request): Promise<Response> {
     // ۴) گیتِ اپلای خودکارِ AI (قاعده‌ی ۱). اگر روشن و زیرِ سقف باشد → مسیرِ کامل: آیتم‌های
     //    AIمود بالای آستانه + همه‌ی آیتم‌های فیلترمود.
     let minScore: number;
+    let remaining: number | null = null;
     try {
       const allowance = await assertAutoApplyAllowed(userId, plan);
       minScore = allowance.minScore;
+      remaining = allowance.quota.remaining;
     } catch (err) {
       if (err instanceof AutoApplyNotAllowedError) {
         // سقفِ روزانه پر → برای هر دو مسیر متوقف (صفِ خالی + reason).
@@ -78,8 +90,9 @@ export async function POST(request: Request): Promise<Response> {
         // تاگلِ AI خاموش (code='disabled'): جریانِ پیش‌فرضِ فیلترمود نیازی به تاگل ندارد.
         // *فقط* آیتم‌های فیلترمود را برمی‌گردانیم (AIمود با آستانه‌ی دست‌نیافتنی حذف می‌شود)،
         // با همان سقفِ روزانه.
+        let filterRemaining: number | null;
         try {
-          await assertApplyQuotaForUser(userId);
+          filterRemaining = (await assertApplyQuotaForUser(userId)).remaining;
         } catch (qerr) {
           if (qerr instanceof ApplyQuotaError) {
             return json({ count: 0, items: [], reason: "quota_exceeded" }, 200);
@@ -87,18 +100,24 @@ export async function POST(request: Request): Promise<Response> {
           throw qerr;
         }
 
-        const filterItems = await claimUserApplyItems(userId, body.limit, undefined, {
-          minScore: AI_TASKS_EXCLUDED_MIN_SCORE,
-        });
+        const filterItems = await claimUserApplyItems(
+          userId,
+          clampToRemaining(body.limit, filterRemaining),
+          undefined,
+          { minScore: AI_TASKS_EXCLUDED_MIN_SCORE },
+        );
         return json({ count: filterItems.length, items: filterItems });
       }
       throw err;
     }
 
     // ۵) مسیرِ کامل — آیتم‌های همین کاربر: AIمود بالای آستانه + فیلترمود (قاعده‌ی ۱ و ۴).
-    const items = await claimUserApplyItems(userId, body.limit, undefined, {
-      minScore,
-    });
+    const items = await claimUserApplyItems(
+      userId,
+      clampToRemaining(body.limit, remaining),
+      undefined,
+      { minScore },
+    );
 
     return json({ count: items.length, items });
   });

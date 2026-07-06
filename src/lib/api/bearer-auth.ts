@@ -16,14 +16,34 @@ import "server-only";
  *   • تزریق‌پذیر — `verify` قابلِ override در تست است (هسته‌ی auth mock می‌شود) تا
  *     تست‌ها بدون DB/شبکه‌ی زنده اجرا شوند (قاعده‌ی پروژه).
  */
+import { eq } from "drizzle-orm";
+
 import {
   verifySessionToken as defaultVerify,
   type VerifiedSession,
 } from "@/lib/auth/core";
+import { db as defaultDb } from "@/db";
+import { users } from "@/db/schema";
 import { HttpError } from "@/lib/api/http";
 
 /** امضای تابعِ راستی‌آزماییِ نشست — هم‌راستا با `verifySessionToken` هسته. */
 export type VerifySessionFn = (token: string) => Promise<VerifiedSession | null>;
+
+/**
+ * وضعیتِ فعال‌بودنِ کاربر را برمی‌گرداند: `true` فعال، `false` غیرفعال/بن‌شده،
+ * `null` کاربر یافت نشد. تزریق‌پذیر برای تست (وگرنه از DB می‌خوانَد).
+ */
+export type LoadUserActiveFn = (userId: string) => Promise<boolean | null>;
+
+/** لودرِ پیش‌فرض: فقط ستونِ isActive را با PK می‌خوانَد (کوئریِ ارزان و مقید). */
+async function defaultLoadUserActive(userId: string): Promise<boolean | null> {
+  const [row] = await defaultDb
+    .select({ isActive: users.isActive })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row ? row.isActive : null;
+}
 
 /** آپشن‌های نگهبانِ Bearer — تزریقِ تابعِ راستی‌آزمایی برای تست. */
 export interface BearerAuthOptions {
@@ -34,6 +54,8 @@ export interface BearerAuthOptions {
    * افزونه). اگر undefined باشد، هر دو نوعِ web/extension مجازند.
    */
   requireKind?: "web" | "extension";
+  /** override لودرِ فعال‌بودنِ کاربر (پیش‌فرض کوئریِ DB). فقط برای تست. */
+  loadUserActive?: LoadUserActiveFn;
 }
 
 /**
@@ -69,6 +91,15 @@ export async function requireBearerSession(
   }
 
   if (opts.requireKind && session.session.kind !== opts.requireKind) {
+    throw new HttpError(401, "unauthorized");
+  }
+
+  // نشستِ معتبر کافی نیست: کاربر باید هنوز *فعال* باشد. کاربرِ غیرفعال/بن‌شده حتی با
+  // توکنِ ۹۰روزه‌ی معتبر رد می‌شود (fail-closed) — وگرنه غیرفعال‌سازی هیچ اثری روی
+  // نشستِ Bearerِ افزونه ندارد و نوشتنِ خزانه ادامه می‌یابد. (کاربرِ یافت‌نشده = null → رد.)
+  const loadUserActive = opts.loadUserActive ?? defaultLoadUserActive;
+  const isActive = await loadUserActive(session.userId);
+  if (isActive !== true) {
     throw new HttpError(401, "unauthorized");
   }
 
