@@ -387,10 +387,24 @@ export class KarjooApi {
       enabled: next.enabled,
       ...(typeof next.minScore === "number" ? { minScore: next.minScore } : {}),
     };
-    const res = await this.request<ServerAutoApplySettings>("/api/auto-apply", {
+    const { ok, status, body: resBody } = await this.requestRaw("/api/auto-apply", {
       method: "PUT",
       body: JSON.stringify(body),
     });
+    if (!ok) {
+      // This route is authed by the Karjoo WEB cookie, not the extension bearer.
+      // A 401/404 means the user isn't signed into Karjoo web (or the route is
+      // old) — NOT that the extension session is dead. Throw a plain Error (not
+      // ApiError) so the background's global 401 handler does NOT clear the token
+      // and boot a validly-paired user to the pairing view; just show guidance.
+      if (status === 401 || status === 404) {
+        throw new Error(
+          "برای تغییرِ «اپلای خودکار روی سرور» ابتدا در وبِ کارجو (داشبورد) وارد شوید.",
+        );
+      }
+      throw new ApiError(status, errorOf(resBody, status));
+    }
+    const res = (resBody ?? {}) as ServerAutoApplySettings;
     return {
       enabled: res.enabled === true,
       minScore: typeof res.minScore === "number" ? res.minScore : DEFAULT_AUTO_APPLY_MIN_SCORE,

@@ -51,6 +51,7 @@ import {
 import { buildApplyResultReport } from "@ext/lib/apply-result-payload";
 import { planUsesVault, type AutoApplyStatus } from "@ext/lib/types";
 import { refreshAllBoardSessions } from "@ext/background/session-refresh";
+import { sendToTab, waitForTabComplete } from "@ext/background/tab-utils";
 import type { ApplyQueueItem } from "@ext/lib/types";
 import type { ContentApplyResult } from "@ext/lib/messages";
 
@@ -204,10 +205,10 @@ async function applyOne(
   try {
     const tab = await ensureTab(item.jobUrl, origin ?? item.jobUrl);
     if (!tab?.id) throw new Error("could not open the job page");
-    exec = (await chrome.tabs.sendMessage(tab.id, {
-      type: "CONTENT_APPLY",
-      plan,
-    })) as ContentApplyResult;
+    // A freshly opened tab's content script isn't ready yet — wait for load +
+    // retry the send, else CONTENT_APPLY fails with "Receiving end does not exist".
+    await waitForTabComplete(tab.id);
+    exec = await sendToTab<ContentApplyResult>(tab.id, { type: "CONTENT_APPLY", plan });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     const cap = await safeReport(api, item.id, "failed", reason);

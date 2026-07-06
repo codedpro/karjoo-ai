@@ -37,6 +37,7 @@ import {
   registerAutoApplyAlarmListener,
   runAutoApplyTick,
 } from "@ext/background/auto-apply";
+import { sendToTab, waitForTabComplete } from "@ext/background/tab-utils";
 import type {
   PopupToBackground,
   ProbeSessionResult,
@@ -162,10 +163,12 @@ async function handlePrefill(item: ApplyQueueItem): Promise<{ ok: boolean; fille
   const tab = await ensureTab(item.jobUrl, origin);
   if (!tab?.id) throw new Error("could not open the job page");
 
-  const resp = (await chrome.tabs.sendMessage(tab.id, {
+  // Fresh tab: wait for load + retry so CONTENT_PREFILL doesn't hit "no receiving end".
+  await waitForTabComplete(tab.id);
+  const resp = await sendToTab<{ ok: boolean; filledFields: string[] } | undefined>(tab.id, {
     type: "CONTENT_PREFILL",
     item,
-  })) as { ok: boolean; filledFields: string[] } | undefined;
+  });
 
   return resp ?? { ok: false, filledFields: [] };
 }

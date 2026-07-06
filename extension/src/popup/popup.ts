@@ -26,7 +26,7 @@ import type {
   AutoApplyStatus,
 } from "@ext/lib/types";
 import type { ProbeSessionResult, BoardImportOutcome } from "@ext/lib/messages";
-import { send } from "@ext/popup/messaging";
+import { LONG_SEND_TIMEOUT_MS, send } from "@ext/popup/messaging";
 
 /* ── tiny DOM utils ────────────────────────────────────────────────────── */
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -322,7 +322,7 @@ function wireAutoApply() {
     const original = runNow.textContent;
     runNow.textContent = "در حال اجرا…";
     try {
-      const status = await send<AutoApplyStatus>({ type: "RUN_AUTO_APPLY_NOW" });
+      const status = await send<AutoApplyStatus>({ type: "RUN_AUTO_APPLY_NOW" }, LONG_SEND_TIMEOUT_MS);
       renderAutoStatus(status);
     } catch (e) {
       showGlobalError(errMsg(e));
@@ -465,7 +465,7 @@ function wireImport() {
     try {
       // No `boards` → background imports from all configured boards (those the
       // user is logged into return data; others report "not found" gracefully).
-      const outcomes = await send<BoardImportOutcome[]>({ type: "IMPORT_PROFILES" });
+      const outcomes = await send<BoardImportOutcome[]>({ type: "IMPORT_PROFILES" }, LONG_SEND_TIMEOUT_MS);
       renderImportResults(resultsEl, outcomes);
     } catch (e) {
       showGlobalError(errMsg(e));
@@ -512,7 +512,7 @@ function wireFindJobs() {
     btn.textContent = "در حال جست‌وجو…";
     setStatusLine("در حال پیدا کردنِ شغل‌های فیلترشده…", "notice");
     try {
-      const res = await send<{ queued: number }>({ type: "FIND_JOBS" });
+      const res = await send<{ queued: number }>({ type: "FIND_JOBS" }, LONG_SEND_TIMEOUT_MS);
       setStatusLine(
         res.queued > 0
           ? `${res.queued} شغلِ تازه به صف اضافه شد.`

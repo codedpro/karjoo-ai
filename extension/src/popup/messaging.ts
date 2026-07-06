@@ -14,6 +14,15 @@ import type { PopupToBackground, Result } from "@ext/lib/messages";
 /** Default cap on how long we wait for a (possibly-asleep) SW to answer. */
 export const SEND_TIMEOUT_MS = 8000;
 
+/**
+ * Cap for LONG background operations that legitimately take much more than 8s:
+ * running an auto-apply pass (up to 5 items, each with 2–8s jitter + two 15s
+ * waits), importing profiles across boards, or find-jobs (a server-side scrape).
+ * The default 8s cap wrongly rejected these while the background kept working,
+ * making them look broken. Callers pass this for those ops.
+ */
+export const LONG_SEND_TIMEOUT_MS = 120_000;
+
 export async function send<T>(msg: PopupToBackground, timeoutMs = SEND_TIMEOUT_MS): Promise<T> {
   const res = (await withTimeout(
     chrome.runtime.sendMessage(msg) as Promise<Result<T> | undefined>,

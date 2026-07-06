@@ -8,9 +8,9 @@ Generated from a multi-agent audit (8 subsystem scanners → 55 raw findings →
 |---|-------|------|-----|--------|--------|
 | 1 | DEV billing stubs let any user self-grant paid plans + mint wallet credit | security | critical | S | ✅ fixed |
 | 2 | AI-filter batch keeps calling paid gateway after wallet empty (uncharged spend) | bug | high | S | ✅ fixed |
-| 3 | 401 from web-cookie route wrongly un-pairs the extension (re-pair loop) | bug | high | M | ⬜ |
-| 4 | Apply messages a fresh tab before its content script loads (spurious fail) | bug | high | M | ⬜ |
-| 5 | Popup 8s send timeout shorter than the ops it wraps (looks broken) | bug | high | M | ⬜ |
+| 3 | 401 from web-cookie route wrongly un-pairs the extension (re-pair loop) | bug | high | M | ✅ fixed (v0.2.7) |
+| 4 | Apply messages a fresh tab before its content script loads (spurious fail) | bug | high | M | ✅ fixed (v0.2.7) |
+| 5 | Popup 8s send timeout shorter than the ops it wraps (looks broken) | bug | high | M | ✅ fixed (v0.2.7) |
 | 6 | Matches page falsely claims "no session stored on server" | bug | high | S | ✅ fixed |
 | 7 | Bearer sessions ignore user deactivation (banned users keep access) | security | high | M | ⬜ |
 | 8 | candidate_profiles has no UNIQUE(user_id) — dupe race drops filter prefs | bug | high | M | ⬜ |
