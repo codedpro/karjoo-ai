@@ -400,7 +400,10 @@ export const candidateProfiles = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("candidate_profiles_user_idx").on(t.userId)],
+  // یکتا روی userId: هر کاربر دقیقاً یک پروفایل. جلوی ردیف‌های تکراری (ریسِ نوشتنِ
+  // هم‌زمان) را می‌گیرد که می‌توانست انتخاب‌های فیلترِ کاربر را بی‌صدا گم کند؛ همچنین
+  // پیش‌نیازِ onConflictDoUpdate(target: userId) در مسیرهای نوشتن است.
+  (t) => [uniqueIndex("candidate_profiles_user_uq").on(t.userId)],
 );
 
 /** رزومه‌ی پایه + گونه‌های تولیدشده توسط هوش مصنوعی برای هر آگهی. */

@@ -148,15 +148,22 @@ async function persistProfileChanges(
     return;
   }
 
-  // پروفایلِ تازه — fullName اجباری است.
-  await database.insert(candidateProfiles).values({
-    userId,
-    fullName: changed.fullName ?? "کاربرِ کارجو",
-    headline: changed.headline ?? null,
-    skills: changed.skills ?? [],
-    yearsExperience: changed.yearsExperience ?? null,
-    city: changed.city ?? null,
-    resumeText: changed.resumeText ?? null,
-    updatedAt: now,
-  });
+  // پروفایلِ تازه — fullName اجباری است. onConflict: اگر ردیفِ کاربر هم‌زمان ساخته شد،
+  // همان را با فیلدهای واردشده (changed) به‌روزرسانی کن — مثلِ شاخه‌ی updateِ بالا.
+  await database
+    .insert(candidateProfiles)
+    .values({
+      userId,
+      fullName: changed.fullName ?? "کاربرِ کارجو",
+      headline: changed.headline ?? null,
+      skills: changed.skills ?? [],
+      yearsExperience: changed.yearsExperience ?? null,
+      city: changed.city ?? null,
+      resumeText: changed.resumeText ?? null,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: candidateProfiles.userId,
+      set: { ...changed, updatedAt: now },
+    });
 }

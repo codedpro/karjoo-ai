@@ -154,6 +154,11 @@ export async function persistParsedFields(
     const [created] = await db
       .insert(candidateProfiles)
       .values({ userId, ...merged, ...(preferences ? { preferences } : {}) })
+      // onConflict: ردیفِ هم‌زمان‌ساخته‌شده را به‌روزرسانی کن (مثلِ شاخه‌ی updateِ بالا).
+      .onConflictDoUpdate({
+        target: candidateProfiles.userId,
+        set: { ...merged, updatedAt: new Date(now()) },
+      })
       .returning();
     profile = created;
   }
@@ -307,6 +312,11 @@ export async function saveProfileFields(
   const [created] = await db
     .insert(candidateProfiles)
     .values({ userId, ...values, ...(preferences ? { preferences } : {}) })
+    // onConflict: ردیفِ هم‌زمان‌ساخته‌شده را به‌روزرسانی کن (مثلِ شاخه‌ی updateِ بالا).
+    .onConflictDoUpdate({
+      target: candidateProfiles.userId,
+      set: { ...values, updatedAt: new Date(now()) },
+    })
     .returning();
   return created;
 }

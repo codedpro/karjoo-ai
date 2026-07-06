@@ -222,11 +222,15 @@ export async function writeApplyFilters(
   }
 
   const fullName = opts.fallbackFullName?.trim() || "کاربر کارجو";
-  await db.insert(candidateProfiles).values({
-    userId,
-    fullName,
-    preferences: merged,
-  });
+  // onConflict: اگر بینِ select و insert یک ردیفِ هم‌زمان ساخته شد، به‌جای خطای یکتایی
+  // یا ردیفِ تکراری، همان ردیف را با preferencesِ merged به‌روزرسانی کن (فیلترها گم نشوند).
+  await db
+    .insert(candidateProfiles)
+    .values({ userId, fullName, preferences: merged })
+    .onConflictDoUpdate({
+      target: candidateProfiles.userId,
+      set: { preferences: merged, updatedAt: now },
+    });
   return { filters: parseApplyFilters(merged), createdProfile: true };
 }
 

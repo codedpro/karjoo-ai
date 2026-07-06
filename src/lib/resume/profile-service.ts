@@ -107,6 +107,11 @@ export async function saveFullProfile(
   const [created] = await db
     .insert(candidateProfiles)
     .values({ userId, ...values, ...(preferences ? { preferences } : {}) })
+    // onConflict: ردیفِ هم‌زمان‌ساخته‌شده را به‌جای دوباره‌درج به‌روزرسانی کن (بدونِ تکرار).
+    .onConflictDoUpdate({
+      target: candidateProfiles.userId,
+      set: { ...values, updatedAt: new Date(now()) },
+    })
     .returning();
   return created;
 }

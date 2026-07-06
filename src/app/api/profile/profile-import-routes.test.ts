@@ -55,7 +55,10 @@ vi.mock("@/db", () => {
             };
           }
           h.profileInsertValues(v);
-          return Promise.resolve(undefined);
+          // پروفایلِ تازه اکنون upsert است: .values(...).onConflictDoUpdate(...).
+          return {
+            onConflictDoUpdate: () => Promise.resolve(undefined),
+          };
         },
       })),
     },

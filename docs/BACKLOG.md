@@ -13,7 +13,7 @@ Generated from a multi-agent audit (8 subsystem scanners → 55 raw findings →
 | 5 | Popup 8s send timeout shorter than the ops it wraps (looks broken) | bug | high | M | ✅ fixed (v0.2.7) |
 | 6 | Matches page falsely claims "no session stored on server" | bug | high | S | ✅ fixed |
 | 7 | Bearer sessions ignore user deactivation (banned users keep access) | security | high | M | ✅ fixed |
-| 8 | candidate_profiles has no UNIQUE(user_id) — dupe race drops filter prefs | bug | high | M | ⬜ |
+| 8 | candidate_profiles has no UNIQUE(user_id) — dupe race drops filter prefs | bug | high | M | ✅ fixed (migration 0012 applied) |
 | 9 | job_categories never seeded — interests taxonomy empty, selections dropped | incomplete | high | S | ✅ fixed |
 | 10 | Monthly credit-grant cron 400s on empty-body POST — grants never run | bug | high | S | ✅ fixed |
 | 11 | Pivot's default free flow (filter apply) undiscoverable / dead-ends | incomplete | high | M | ⬜ |
