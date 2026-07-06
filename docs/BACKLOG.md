@@ -28,7 +28,7 @@ Generated from a multi-agent audit (8 subsystem scanners → 55 raw findings →
 | 20 | Resume upload buffers full body before 5MB check (OOM DoS) | security | medium | S | ✅ fixed |
 | 21 | Only Jobinja functional — other 3 boards are scaffolds | incomplete | medium | L | ⬜ |
 | 22 | Jobinja APPLY_SPEC selectors unverified best-effort guesses | incomplete | medium | M | ⬜ |
-| 23 | Implement real Zarinpal payment flow (sell paid tiers) | incomplete | medium | XL | ⬜ |
+| 23 | Real payment flow (sell paid tiers) | incomplete | medium | XL | ✅ done via **card-to-card** (کارت‌به‌کارت): user submits transfer + reference → admin approves → credit/upgrade. No self-credit. Set `KARJOO_CARD_NUMBER`/`KARJOO_CARD_HOLDER` in env. |
 
 Plus: **onboarding** — server-computed "شروعِ کار" checklist on the dashboard (résumé → filters → connect), streamed + auto-hiding. (in progress)
 

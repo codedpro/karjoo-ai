@@ -146,12 +146,13 @@ const envSchema = z.object({
   // سرور چیزی اجرا نمی‌کند. اختیاری؛ پیش‌فرض './update.sh'.
   KARJOO_FLEET_UPDATE_SCRIPT: optionalNonEmpty(z.string().min(1)),
 
-  // ── بیلینگِ آزمایشی (DEV) — گیتِ استاب‌های شارژ/تغییرِ پلنِ بدونِ پرداختِ واقعی ─────
-  // استاب‌های POST /api/wallet/topup و POST /api/me/plan موجودی/پلن را مستقیم و بدونِ
-  // درگاهِ پرداخت تغییر می‌دهند؛ پس فقط برای توسعه/دمو مجازند. fail-closed: تنها وقتی
-  // فعال‌اند که این متغیر دقیقاً "1" باشد. در پرودِ واقعی تنظیمش *نکنید* تا هیچ کاربری
-  // نتواند رایگان خودش را به پلنِ پولی/اعتبار برساند (تا پیاده‌سازیِ درگاهِ واقعیِ Zarinpal).
-  KARJOO_DEV_BILLING: optionalNonEmpty(z.string().min(1)),
+  // ── کارت‌به‌کارت (billing) — شماره‌کارت و نامِ صاحبِ کارتِ مقصد که به کاربر نشان داده
+  // می‌شود تا مبلغ را منتقل کند. اختیاری در بوت: اگر تنظیم نشده باشد، فرمِ شارژ «هنوز
+  // فعال نیست» را می‌دهد (fail-closed؛ هرگز کارتِ ساختگی نشان داده نمی‌شود). این‌ها را
+  // در env تنظیم کنید (نه در کد/گیت)؛ شماره‌کارتِ واقعی هرگز commit نمی‌شود.
+  KARJOO_CARD_NUMBER: optionalNonEmpty(z.string().min(1)),
+  KARJOO_CARD_HOLDER: optionalNonEmpty(z.string().min(1)),
+  KARJOO_CARD_BANK: optionalNonEmpty(z.string().min(1)),
 });
 
 /** درصدِ پیش‌فرضِ حاشیه‌ی سود اگر KARJOO_AI_MARGIN_PCT تنظیم نشده باشد. */
@@ -412,13 +413,25 @@ export function isFleetEnrollmentOpen(): boolean {
   return Boolean(env.KARJOO_FLEET_ENROLLMENT_TOKEN);
 }
 
+/** اطلاعاتِ کارتِ مقصدِ کارت‌به‌کارت که به کاربر نشان داده می‌شود. */
+export interface CardToCardInfo {
+  cardNumber: string;
+  holder: string;
+  bank?: string;
+}
+
 /**
- * آیا استاب‌های بیلینگِ آزمایشی (شارژ/تغییرِ پلنِ بدونِ پرداختِ واقعی) فعال‌اند؟
- * fail-closed: فقط اگر KARJOO_DEV_BILLING دقیقاً "1" باشد. در پرود تنظیم نشود تا
- * self-grantِ رایگانِ پلنِ پولی/اعتبار بسته بماند (تا آمدنِ درگاهِ واقعیِ Zarinpal).
+ * اطلاعاتِ کارتِ مقصد، یا null اگر تنظیم نشده باشد (شماره‌کارت + نامِ صاحب لازم‌اند).
+ * هرگز throw نمی‌کند. لایه‌ی بیلینگ اگر null بود، «شارژ هنوز فعال نیست» می‌دهد — پس هیچ
+ * درخواستِ پرداختی بدونِ کارتِ واقعیِ پیکربندی‌شده ساخته نمی‌شود.
  */
-export function isDevBillingEnabled(): boolean {
-  return env.KARJOO_DEV_BILLING === "1";
+export function cardToCardInfo(): CardToCardInfo | null {
+  if (!env.KARJOO_CARD_NUMBER || !env.KARJOO_CARD_HOLDER) return null;
+  return {
+    cardNumber: env.KARJOO_CARD_NUMBER,
+    holder: env.KARJOO_CARD_HOLDER,
+    ...(env.KARJOO_CARD_BANK ? { bank: env.KARJOO_CARD_BANK } : {}),
+  };
 }
 
 /**

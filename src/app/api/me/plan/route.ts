@@ -21,9 +21,9 @@ import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/htt
 import { changePlanBodySchema } from "@/lib/api/plan-schemas";
 import { getCurrentUser } from "@/lib/auth/http";
 import { getUserPlanStatus } from "@/components/dashboard/plan-data";
-import { grantMonthlyCredits } from "@/lib/billing/grants";
 import { planFor, type PlanKey } from "@/lib/billing/plans";
-import { isDevBillingEnabled } from "@/lib/env";
+import { cardToCardInfo } from "@/lib/env";
+import { createPaymentRequest } from "@/lib/billing/payments";
 
 // به DB و node API (cookies) دست می‌زند → اجرای Node و رندرِ پویا.
 export const runtime = "nodejs";
@@ -63,17 +63,10 @@ export async function POST(request: Request): Promise<Response> {
       return errorJson("احراز هویت لازم است", 401);
     }
 
-    // ۱.۵) گیتِ استابِ آزمایشی (fail-closed): تغییرِ پلنِ بدونِ پرداخت فقط در دمو/توسعه
-    //      مجاز است. بدونِ KARJOO_DEV_BILLING="1" رد می‌شود تا هیچ‌کس رایگان به پلنِ
-    //      پولی (Max/Max+) ارتقا نگیرد (تا پیاده‌سازیِ درگاهِ واقعیِ پرداخت).
-    if (!isDevBillingEnabled()) {
-      return errorJson("تغییرِ پلن هنوز فعال نیست", 403);
-    }
-
     // ۲) اعتبارسنجیِ بدنه — فقط کلیدِ پلنِ مقصد (۴۰۰ در صورتِ نامعتبر).
     const { plan: target } = await parseJsonBody(request, changePlanBodySchema);
 
-    // ۳) پلنِ فعلی برای تشخیصِ ارتقا (قیمتِ مقصد > قیمتِ فعلی → ارتقا → گرنت).
+    // ۳) پلنِ فعلی برای تشخیصِ ارتقا (قیمتِ مقصد > قیمتِ فعلی → پرداخت لازم است).
     const [row] = await db
       .select({ plan: users.plan })
       .from(users)
@@ -84,30 +77,45 @@ export async function POST(request: Request): Promise<Response> {
     const targetDef = planFor(target as PlanKey);
     const isUpgrade = targetDef.priceToman > currentDef.priceToman;
 
-    // ۴) تغییرِ پلن (DEV STUB): مستقیماً users.plan را ست می‌کن.
-    //    TODO(zarinpal): برای پلن‌های پولی، تغییرِ پلن باید پشتِ تأییدِ موفقِ پرداخت
-    //    برود؛ اینجا برای توسعه/دمو مستقیم اعمال می‌شود (هیچ پولی دریافت نمی‌شود).
-    await db
-      .update(users)
-      .set({ plan: target, updatedAt: new Date() })
-      .where(eq(users.id, user.id));
-
-    // ۵) در صورتِ ارتقا، اعتبارِ ماهانه‌ی پلنِ مقصد را credit کن (ایدمپوتنت per ماه).
-    //    grantMonthlyCredits خودش پلن را از users می‌خواند (که حالا به‌روز است) و اگر
-    //    گرنتِ این ماه قبلاً داده شده باشد، دوباره نمی‌دهد (granted=false).
-    let grant: Awaited<ReturnType<typeof grantMonthlyCredits>> | null = null;
-    if (isUpgrade) {
-      grant = await grantMonthlyCredits(user.id, { plan: target });
+    // ۴) پایین‌آوردن یا همان پلن (بدونِ هزینه‌ی بیشتر) → فوری اعمال می‌شود (نیازی به پرداخت نیست).
+    if (!isUpgrade) {
+      await db
+        .update(users)
+        .set({ plan: target, updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+      return json({ ok: true, upgraded: false, plan: target, definition: targetDef });
     }
 
-    return json({
-      ok: true,
-      // در DEV هیچ پرداختِ واقعی‌ای انجام نشده.
-      dev: true,
-      plan: target,
-      definition: targetDef,
-      upgraded: isUpgrade,
-      grant,
+    // ۵) ارتقا → پرداختِ کارت‌به‌کارت لازم است. پلن *تغییر نمی‌کند*؛ یک درخواستِ pending
+    //    ساخته می‌شود و پس از تأییدِ ادمین، پلن ارتقا و گرنتِ ماهانه اعمال می‌شود.
+    const card = cardToCardInfo();
+    if (!card) {
+      return errorJson("پرداختِ کارت‌به‌کارت هنوز پیکربندی نشده است.", 503);
+    }
+
+    const req = await createPaymentRequest(user.id, {
+      kind: "plan",
+      targetPlan: target as PlanKey,
+      amountToman: targetDef.priceToman,
     });
+
+    return json(
+      {
+        ok: true,
+        pending: true,
+        upgraded: false,
+        targetPlan: target,
+        definition: targetDef,
+        request: {
+          id: req.id,
+          amountToman: req.amountToman,
+          status: req.status,
+          targetPlan: req.targetPlan,
+          createdAt: req.createdAt,
+        },
+        card,
+      },
+      201,
+    );
   });
 }

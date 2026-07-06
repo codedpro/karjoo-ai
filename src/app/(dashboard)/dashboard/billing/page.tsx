@@ -16,6 +16,8 @@ import { Suspense } from "react";
 
 import { getDashboardUser } from "@/components/dashboard/session";
 import { getUsageForUser, getWalletForUser } from "@/components/dashboard/wallet-data";
+import { listUserPaymentRequests } from "@/lib/billing/payments";
+import { cardToCardInfo } from "@/lib/env";
 import { LedgerList, UsageTable } from "@/components/dashboard/wallet-history";
 import { WalletPanel } from "@/components/dashboard/wallet-panel";
 import {
@@ -81,10 +83,26 @@ export default async function BillingPage() {
 /* ───────────────────────── بخش‌های async (Suspense) ───────────────────────── */
 
 async function WalletSection({ userId }: { userId: string }) {
-  const wallet = await getWalletForUser(userId, 10);
+  const [wallet, requests] = await Promise.all([
+    getWalletForUser(userId, 10),
+    listUserPaymentRequests(userId, 10),
+  ]);
+  const card = cardToCardInfo();
   return (
     <>
-      <WalletPanel initialBalanceToman={wallet.balanceToman} plan={wallet.plan} />
+      <WalletPanel
+        initialBalanceToman={wallet.balanceToman}
+        plan={wallet.plan}
+        card={card}
+        initialRequests={requests.map((r) => ({
+          id: r.id,
+          kind: r.kind,
+          amountToman: r.amountToman,
+          status: r.status,
+          referenceCode: r.referenceCode,
+          createdAt: r.createdAt.toISOString(),
+        }))}
+      />
       <LedgerList entries={wallet.ledger} />
     </>
   );

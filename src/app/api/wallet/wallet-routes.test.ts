@@ -14,9 +14,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => {
   // صف‌های نتیجه‌ی select به ترتیبِ فراخوانی (هر route چند select می‌زند).
   const selectResults: unknown[][] = [];
-  // آخرین where/limit/offset که به آخرین select داده شد (برای assert).
-  // گیتِ بیلینگِ آزمایشی: پیش‌فرض روشن تا رفتارِ topup آزموده شود؛ یک تست آن را خاموش می‌کند.
-  return { selectResults, devBilling: { on: true } };
+  // کارتِ مقصدِ کارت‌به‌کارت: پیش‌فرض پیکربندی‌شده؛ یک تست null می‌کند تا ۵۰۳ را بسنجد.
+  const card: { info: { cardNumber: string; holder: string } | null } = {
+    info: { cardNumber: "6037-9900-0000-0000", holder: "کارجو" },
+  };
+  return { selectResults, card };
 });
 
 vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
@@ -24,11 +26,13 @@ vi.mock("@/lib/billing/wallet", () => ({
   getBalance: vi.fn(),
   credit: vi.fn(),
 }));
-// گیتِ بیلینگِ آزمایشی را کنترل‌پذیر می‌کنیم (بقیه‌ی env واقعی می‌ماند).
+// کارتِ مقصد را کنترل‌پذیر می‌کنیم (بقیه‌ی env واقعی می‌ماند).
 vi.mock("@/lib/env", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/env")>();
-  return { ...actual, isDevBillingEnabled: () => h.devBilling.on };
+  return { ...actual, cardToCardInfo: () => h.card.info };
 });
+// هسته‌ی پرداخت mock می‌شود: topup فقط یک درخواستِ pending می‌سازد (هیچ creditی).
+vi.mock("@/lib/billing/payments", () => ({ createPaymentRequest: vi.fn() }));
 vi.mock("@/db", () => ({
   db: {
     select: vi.fn(() => {
@@ -55,6 +59,7 @@ vi.mock("@/db", () => ({
 import { db } from "@/db";
 import { getCurrentUser } from "@/lib/auth/http";
 import { credit, getBalance } from "@/lib/billing/wallet";
+import { createPaymentRequest } from "@/lib/billing/payments";
 
 import { GET as walletGET } from "@/app/api/wallet/route";
 import { POST as topupPOST } from "@/app/api/wallet/topup/route";
@@ -63,6 +68,7 @@ import { GET as usageGET } from "@/app/api/usage/route";
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const getBalanceMock = vi.mocked(getBalance);
 const creditMock = vi.mocked(credit);
+const createPaymentRequestMock = vi.mocked(createPaymentRequest);
 const dbSelectMock = vi.mocked(db.select);
 
 const USER = { id: "user-1", phone: "0912", isActive: true } as never;
@@ -86,7 +92,14 @@ function jsonReq(url: string, body: unknown) {
 beforeEach(() => {
   vi.clearAllMocks();
   h.selectResults.length = 0;
-  h.devBilling.on = true;
+  h.card.info = { cardNumber: "6037-9900-0000-0000", holder: "کارجو" };
+  createPaymentRequestMock.mockResolvedValue({
+    id: "pr-1",
+    amountToman: 100_000,
+    status: "pending",
+    referenceCode: "12345",
+    createdAt: new Date(0),
+  } as never);
 });
 
 /* ─────────────────────────────  GET /api/wallet  ───────────────────────────── */
@@ -150,42 +163,43 @@ describe("GET /api/wallet", () => {
 /* ─────────────────────────  POST /api/wallet/topup  ────────────────────────── */
 
 describe("POST /api/wallet/topup", () => {
-  it("بدونِ نشست → ۴۰۱ و هیچ creditی", async () => {
+  it("بدونِ نشست → ۴۰۱ و هیچ درخواستی", async () => {
     getCurrentUserMock.mockResolvedValue(null);
     const res = await topupPOST(jsonReq("https://k.app/api/wallet/topup", { amountToman: 100_000 }));
     expect(res.status).toBe(401);
-    expect(creditMock).not.toHaveBeenCalled();
+    expect(createPaymentRequestMock).not.toHaveBeenCalled();
   });
 
-  it("مبلغِ معتبر → credit(topup) مقید به userIdِ نشست و ۲۰۱", async () => {
+  it("کارتِ مقصد پیکربندی‌نشده → ۵۰۳ و هیچ درخواستی", async () => {
+    h.card.info = null;
     getCurrentUserMock.mockResolvedValue(USER);
-    creditMock.mockResolvedValue({ balanceToman: 200_000, ledgerId: "l-9" });
+    const res = await topupPOST(
+      jsonReq("https://k.app/api/wallet/topup", { amountToman: 100_000, referenceCode: "12345" }),
+    );
+    expect(res.status).toBe(503);
+    expect(createPaymentRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("مبلغ + کدِ پیگیریِ معتبر → درخواستِ pending (بدونِ credit) و ۲۰۱", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
 
     const res = await topupPOST(
-      jsonReq("https://k.app/api/wallet/topup", { amountToman: 100_000 }),
+      jsonReq("https://k.app/api/wallet/topup", { amountToman: 100_000, referenceCode: "12345" }),
     );
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.ok).toBe(true);
-    expect(body.dev).toBe(true);
-    expect(body.balanceToman).toBe(200_000);
-    expect(body.creditedToman).toBe(100_000);
+    expect(body.pending).toBe(true);
+    expect(body.request.status).toBe("pending");
+    expect(body.card).toBeTruthy();
 
-    // credit با userIdِ نشست + نوعِ topup صدا شد (نه از بدنه).
-    expect(creditMock).toHaveBeenCalledTimes(1);
-    const [userId, kind, amount] = creditMock.mock.calls[0];
+    // createPaymentRequest با userIdِ نشست + kind='topup' صدا شد (نه از بدنه)؛ هیچ credit.
+    expect(createPaymentRequestMock).toHaveBeenCalledTimes(1);
+    const [userId, input] = createPaymentRequestMock.mock.calls[0];
     expect(userId).toBe("user-1");
-    expect(kind).toBe("topup");
-    expect(amount).toBe(100_000);
-  });
-
-  it("گیتِ بیلینگِ آزمایشی خاموش (پرود) → ۴۰۳ و هیچ creditی", async () => {
-    h.devBilling.on = false;
-    getCurrentUserMock.mockResolvedValue(USER);
-    const res = await topupPOST(
-      jsonReq("https://k.app/api/wallet/topup", { amountToman: 100_000 }),
-    );
-    expect(res.status).toBe(403);
+    expect(input.kind).toBe("topup");
+    expect(input.amountToman).toBe(100_000);
+    expect(input.referenceCode).toBe("12345");
     expect(creditMock).not.toHaveBeenCalled();
   });
 
@@ -193,7 +207,7 @@ describe("POST /api/wallet/topup", () => {
     getCurrentUserMock.mockResolvedValue(USER);
     const res = await topupPOST(jsonReq("https://k.app/api/wallet/topup", { amountToman: 500 }));
     expect(res.status).toBe(400);
-    expect(creditMock).not.toHaveBeenCalled();
+    expect(createPaymentRequestMock).not.toHaveBeenCalled();
   });
 
   it("مبلغِ بالای بیشینه → ۴۰۰", async () => {
@@ -202,7 +216,7 @@ describe("POST /api/wallet/topup", () => {
       jsonReq("https://k.app/api/wallet/topup", { amountToman: 999_999_999 }),
     );
     expect(res.status).toBe(400);
-    expect(creditMock).not.toHaveBeenCalled();
+    expect(createPaymentRequestMock).not.toHaveBeenCalled();
   });
 
   it("مبلغِ غیرعدد → ۴۰۰", async () => {
@@ -211,7 +225,7 @@ describe("POST /api/wallet/topup", () => {
       jsonReq("https://k.app/api/wallet/topup", { amountToman: "abc" }),
     );
     expect(res.status).toBe(400);
-    expect(creditMock).not.toHaveBeenCalled();
+    expect(createPaymentRequestMock).not.toHaveBeenCalled();
   });
 
   it("بدنه‌ی JSON نامعتبر → ۴۰۰", async () => {
@@ -223,7 +237,7 @@ describe("POST /api/wallet/topup", () => {
     });
     const res = await topupPOST(req);
     expect(res.status).toBe(400);
-    expect(creditMock).not.toHaveBeenCalled();
+    expect(createPaymentRequestMock).not.toHaveBeenCalled();
   });
 });
 

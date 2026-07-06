@@ -1,77 +1,87 @@
 import "server-only";
 
 /**
- * POST /api/wallet/topup — شارژِ کیف‌پولِ کاربرِ احرازشده (نشستِ وب).
+ * POST /api/wallet/topup — ثبتِ درخواستِ شارژِ کیف‌پول به‌روشِ کارت‌به‌کارت.
  *
- * ⚠️⚠️ این یک STUB توسعه‌ای است (نه پرداختِ واقعی). ⚠️⚠️
- * مبلغِ بدنه را مستقیماً به کیف‌پول credit می‌کند تا در توسعه/دمو بتوان موجودی ساخت و
- * مسیرهای پولیِ AI را آزمود. هیچ پولی واقعاً دریافت نمی‌شود.
+ * ⚠️ این *اعتباری اضافه نمی‌کند*. کاربر مبلغ را به کارتِ مقصد منتقل و کدِ پیگیری را
+ * ثبت می‌کند؛ یک درخواستِ `pending` ساخته می‌شود و کیف‌پول فقط پس از *تأییدِ ادمین*
+ * (که واقعاً رسیدِ کارت‌به‌کارت را وارسی می‌کند) credit می‌شود. پس هیچ کاربری نمی‌تواند
+ * خودش را رایگان شارژ کند (رفعِ ریشه‌ایِ استابِ خودشارژِ توسعه).
  *
- * مسیرِ واقعی (Zarinpal — که 1xai هم پشتیبانی می‌کند):
- *   ۱) POST /api/wallet/topup  → یک تراکنشِ pending می‌سازد و کاربر را به درگاه می‌فرستد
- *      (PaymentRequest → authority → redirect به startpay).
- *   ۲) callback از درگاه → PaymentVerify(authority, amount) → فقط در صورتِ تأییدِ موفق،
- *      همین `credit(...)` صدا زده می‌شود (با refType='zarinpal'، refId=ref_id درگاه).
- *   credit/ledger همان هسته‌ی Foundation است؛ فقط «منشأِ تأیید» عوض می‌شود. درزِ زیر
- *   (`recordTopup`) همان نقطه‌ای است که جریانِ واقعی پس از verify صدا می‌زند.
- *
- * امنیت (قاعده‌ی ۴): کاربرِ هدف از کوکیِ نشست است؛ مبلغ از بدنه اعتبارسنجی و سقف‌گذاری
- * می‌شود. در نسخه‌ی واقعی مبلغِ معتبر از پاسخِ درگاه می‌آید، نه از بدنه‌ی کلاینت.
+ * امنیت (قاعده‌ی ۴): کاربرِ هدف همیشه از کوکیِ نشست است، نه از بدنه.
  */
+import { z } from "zod";
+
 import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
-import { topupBodySchema } from "@/lib/api/billing-schemas";
+import { MAX_TOPUP_TOMAN, MIN_TOPUP_TOMAN } from "@/lib/api/billing-schemas";
 import { getCurrentUser } from "@/lib/auth/http";
-import { credit } from "@/lib/billing/wallet";
-import { isDevBillingEnabled } from "@/lib/env";
+import { cardToCardInfo } from "@/lib/env";
+import { createPaymentRequest } from "@/lib/billing/payments";
 
 // به DB و node API (cookies) دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** بدنه‌ی درخواستِ شارژِ کارت‌به‌کارت: مبلغ + کدِ پیگیری (+ اختیاری‌ها). */
+const cardTopupBodySchema = z
+  .object({
+    amountToman: z.coerce
+      .number()
+      .int()
+      .min(MIN_TOPUP_TOMAN, `حداقل مبلغِ شارژ ${MIN_TOPUP_TOMAN} تومان است.`)
+      .max(MAX_TOPUP_TOMAN, `حداکثر مبلغِ شارژ ${MAX_TOPUP_TOMAN} تومان است.`),
+    /** کدِ پیگیری/رهگیریِ تراکنش (از اپِ بانک). */
+    referenceCode: z.string().trim().min(1).max(64).optional(),
+    /** ۴ رقمِ آخرِ کارتِ پرداخت‌کننده (اختیاری). */
+    payerCardLast4: z
+      .string()
+      .trim()
+      .regex(/^\d{4}$/, "چهار رقمِ آخرِ کارت باید عدد باشد.")
+      .optional(),
+    note: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
 export async function POST(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
-    // ۱) احراز هویتِ وب — userId از کوکیِ نشست.
+    // ۱) احراز هویتِ وب — userId از نشست.
     const user = await getCurrentUser();
     if (!user) {
       return errorJson("احراز هویت لازم است", 401);
     }
 
-    // ۱.۵) گیتِ استابِ آزمایشی (fail-closed): بدونِ KARJOO_DEV_BILLING="1" این مسیر
-    //      رد می‌شود تا در پرود هیچ‌کس نتواند رایگان به کیف‌پولش اعتبار بریزد.
-    if (!isDevBillingEnabled()) {
-      return errorJson("شارژِ کیف‌پول هنوز فعال نیست", 403);
+    // ۲) کارتِ مقصد باید پیکربندی شده باشد، وگرنه هیچ درخواستی نمی‌سازیم (fail-closed).
+    const card = cardToCardInfo();
+    if (!card) {
+      return errorJson("پرداختِ کارت‌به‌کارت هنوز پیکربندی نشده است.", 503);
     }
 
-    // ۲) اعتبارسنجی + سقف‌گذاریِ مبلغ (۴۰۰ در صورتِ نامعتبر).
-    const { amountToman } = await parseJsonBody(request, topupBodySchema);
+    // ۳) اعتبارسنجیِ بدنه (مبلغ + کدِ پیگیری).
+    const body = await parseJsonBody(request, cardTopupBodySchema);
 
-    // ۳) شارژِ کیف‌پول از طریقِ هسته‌ی بیلینگ (credit + ردیفِ دفتر، اتمیک).
-    //    TODO(zarinpal): این را پشتِ verify-callbackِ درگاه ببر؛ فعلاً DEV-stub.
-    const result = await recordTopup(user.id, amountToman);
+    // ۴) ساختِ درخواستِ pending (بدونِ هیچ credit — تا تأییدِ ادمین).
+    const req = await createPaymentRequest(user.id, {
+      kind: "topup",
+      amountToman: body.amountToman,
+      referenceCode: body.referenceCode ?? null,
+      payerCardLast4: body.payerCardLast4 ?? null,
+      note: body.note ?? null,
+    });
 
     return json(
       {
         ok: true,
-        // به کلاینت اعلام می‌کنیم این شارژِ آزمایشی است (نه پرداختِ واقعی).
-        dev: true,
-        balanceToman: result.balanceToman,
-        creditedToman: amountToman,
-        ledgerId: result.ledgerId,
+        pending: true,
+        request: {
+          id: req.id,
+          amountToman: req.amountToman,
+          status: req.status,
+          referenceCode: req.referenceCode,
+          createdAt: req.createdAt,
+        },
+        card,
       },
       201,
     );
-  });
-}
-
-/**
- * درزِ ثبتِ شارژ — تنها نقطه‌ای که موجودی را افزایش می‌دهد. در stubِ فعلی مستقیم
- * credit می‌کند؛ جریانِ واقعیِ Zarinpal *همین* را پس از تأییدِ موفقِ درگاه صدا می‌زند
- * (با refType/refIdِ تراکنشِ درگاه). نگه‌داشتنِ آن به‌صورتِ یک تابعِ کوچک، مهاجرت به
- * پرداختِ واقعی را به یک تغییرِ موضعی محدود می‌کند.
- */
-async function recordTopup(userId: string, amountToman: number) {
-  return credit(userId, "topup", amountToman, {
-    refType: "dev_topup",
-    description: "شارژِ آزمایشیِ کیف‌پول (DEV)",
   });
 }

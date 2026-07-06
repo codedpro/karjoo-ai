@@ -1199,6 +1199,58 @@ export type UserInterest = typeof userInterests.$inferSelect;
 export type NewUserInterest = typeof userInterests.$inferInsert;
 export type ProfileImport = typeof profileImports.$inferSelect;
 export type NewProfileImport = typeof profileImports.$inferInsert;
+
+/* ─────────────────────────  کارت‌به‌کارت (billing)  ──────────────────────── */
+
+/** نوعِ درخواستِ پرداختِ کارت‌به‌کارت: شارژِ کیف‌پول یا ارتقای پلن. */
+export const paymentKindEnum = pgEnum("payment_kind", ["topup", "plan"]);
+/** وضعیتِ بررسیِ ادمین. */
+export const paymentStatusEnum = pgEnum("payment_status", ["pending", "approved", "rejected"]);
+
+/**
+ * درخواست‌های پرداختِ کارت‌به‌کارت. کاربر مبلغ را به کارتِ مقصد منتقل و کدِ پیگیری را
+ * ثبت می‌کند؛ سپس ادمین *تأیید* می‌کند و تنها آن‌وقت کیف‌پول credit یا پلن ارتقا می‌یابد.
+ * هیچ اعتباری بدونِ تأییدِ انسانی داده نمی‌شود (جایگزینِ استابِ خودشارژِ توسعه).
+ */
+export const paymentRequests = pgTable(
+  "payment_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: paymentKindEnum("kind").notNull(),
+    /** مبلغِ ادعاشده‌ی کارت‌به‌کارت به تومان. */
+    amountToman: bigint("amount_toman", { mode: "number" }).notNull(),
+    /** فقط برای kind='plan': پلنِ مقصد. */
+    targetPlan: planEnum("target_plan"),
+    /** کدِ پیگیری/رهگیریِ تراکنشِ کارت‌به‌کارت (از اپِ بانکِ کاربر). */
+    referenceCode: text("reference_code"),
+    /** ۴ رقمِ آخرِ کارتِ پرداخت‌کننده (اختیاری — برای تطبیق). */
+    payerCardLast4: text("payer_card_last4"),
+    /** یادداشتِ کاربر. */
+    note: text("note"),
+    status: paymentStatusEnum("status").notNull().default("pending"),
+    /** برچسبِ ادمینی که بررسی کرد. */
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    rejectionReason: text("rejection_reason"),
+    /** ردیفِ دفترِ کیف‌پول که هنگامِ تأییدِ topup ساخته شد. */
+    ledgerId: text("ledger_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("payment_requests_user_created_idx").on(t.userId, t.createdAt),
+    index("payment_requests_status_idx").on(t.status),
+  ],
+);
+
+export type PaymentRequest = typeof paymentRequests.$inferSelect;
+export type NewPaymentRequest = typeof paymentRequests.$inferInsert;
+export type PaymentKind = (typeof paymentKindEnum.enumValues)[number];
+export type PaymentStatus = (typeof paymentStatusEnum.enumValues)[number];
+
 /** مقادیرِ enumهای بیلینگ به‌صورتِ unionِ نوع‌دار (برای امضای توابعِ لایه‌ی billing). */
 export type AiProvider = (typeof aiProviderEnum.enumValues)[number];
 export type Plan = (typeof planEnum.enumValues)[number];
