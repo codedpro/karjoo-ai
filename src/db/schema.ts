@@ -1263,6 +1263,61 @@ export type NewPaymentRequest = typeof paymentRequests.$inferInsert;
 export type PaymentKind = (typeof paymentKindEnum.enumValues)[number];
 export type PaymentStatus = (typeof paymentStatusEnum.enumValues)[number];
 
+/* ─────────────────────  خریدِ پلن (کیف‌پولِ واحدِ 1xai)  ─────────────────────── */
+
+/**
+ * وضعیتِ خریدِ پلن:
+ *   pending   → ردیف ساخته شده؛ debit شاید هنوز/شاید در راه (ابهامِ کرش را reference حل می‌کند).
+ *   debited   → debit قطعاً سمتِ 1xai نشسته؛ ثبتِ پلن مانده.
+ *   completed → پول کسر و پلن ست شد.
+ *   abandoned → بدونِ اثرِ مالیِ خالص کنار گذاشته شد (یا هرگز debit نشد یا refund شد).
+ */
+export const planPurchaseStatusEnum = pgEnum("plan_purchase_status", [
+  "pending",
+  "debited",
+  "completed",
+  "abandoned",
+]);
+
+/**
+ * دفترِ خریدِ پلن — رفعِ ریشه‌ایِ لبه‌ی «رفتِ ماه» در ارتقا: referenceِ کسر (پسوندِ
+ * `plan:<rowId>`) *یک‌بار با خودِ ردیف* ساخته می‌شود و هیچ مؤلفه‌ی زمانی ندارد؛ پس
+ * retry پس از هر کرشی (حتی پس از رفتنِ ماهِ UTC) به همان reference می‌رسد و ایندکسِ
+ * یکتای سمتِ 1xai دوباره‌کسر را ساختاری ناممکن می‌کند. ایندکسِ یکتایِ جزئی «یک خریدِ
+ * بازِ هم‌زمان به‌ازای هر کاربر» دوکلیکِ هم‌زمان را هم سریالایز می‌کند.
+ */
+export const planPurchases = pgTable(
+  "plan_purchases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** پلنِ مقصدِ این خرید. */
+    plan: planEnum("plan").notNull(),
+    /** قیمتِ لحظه‌ی خرید (تومان). */
+    amountToman: bigint("amount_toman", { mode: "number" }).notNull(),
+    /** پسوندِ referenceِ کسر (بدونِ پیشوندِ karjoo:) — پایدار، بدونِ زمان. */
+    reference: text("reference").notNull(),
+    status: planPurchaseStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("plan_purchases_user_idx").on(t.userId, t.createdAt),
+    uniqueIndex("plan_purchases_reference_uq").on(t.reference),
+    // حداکثر یک خریدِ باز (pending/debited) به‌ازای هر کاربر — دوکلیک سریالایز می‌شود.
+    uniqueIndex("plan_purchases_open_user_uq")
+      .on(t.userId)
+      .where(sql`status IN ('pending', 'debited')`),
+  ],
+);
+
+export type PlanPurchase = typeof planPurchases.$inferSelect;
+export type NewPlanPurchase = typeof planPurchases.$inferInsert;
+export type PlanPurchaseStatus = (typeof planPurchaseStatusEnum.enumValues)[number];
+
 /** مقادیرِ enumهای بیلینگ به‌صورتِ unionِ نوع‌دار (برای امضای توابعِ لایه‌ی billing). */
 export type AiProvider = (typeof aiProviderEnum.enumValues)[number];
 export type Plan = (typeof planEnum.enumValues)[number];

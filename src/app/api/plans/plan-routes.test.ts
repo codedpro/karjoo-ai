@@ -26,7 +26,7 @@ vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
 vi.mock("@/components/dashboard/plan-data", () => ({
   getUserPlanStatus: vi.fn(),
 }));
-// کیف‌پولِ واحد: debitUnified جعلی + همان کلاسِ OnexaiLinkError برای instanceof.
+// کیف‌پولِ واحد: فقط کلاسِ OnexaiLinkError برای instanceof (route دیگر debit مستقیم ندارد).
 vi.mock("@/lib/billing/unified", () => {
   class OnexaiLinkError extends Error {
     constructor(message = "link failed") {
@@ -35,6 +35,21 @@ vi.mock("@/lib/billing/unified", () => {
     }
   }
   return { debitUnified: vi.fn(), OnexaiLinkError };
+});
+// ماشینِ خریدِ ضدِکرش — ارتقا از purchasePlan و پایین‌آوردن از settleOpenPurchase می‌گذرد
+// (ماشینِ حالت تست‌های واحدِ خودش را دارد؛ این‌جا فقط سیم‌کشی/نگاشتِ خطا آزموده می‌شود).
+vi.mock("@/lib/billing/plan-purchase", () => {
+  class PurchaseConflictError extends Error {
+    constructor(message = "conflict") {
+      super(message);
+      this.name = "PurchaseConflictError";
+    }
+  }
+  return {
+    purchasePlan: vi.fn(),
+    settleOpenPurchase: vi.fn(),
+    PurchaseConflictError,
+  };
 });
 // کلاینتِ svc فقط برای کلاسِ خطا mock می‌شود (بدونِ env/شبکه).
 vi.mock("@/lib/onexai/svc", () => {
@@ -75,7 +90,12 @@ vi.mock("@/db", () => ({
 import { db } from "@/db";
 import { getCurrentUser } from "@/lib/auth/http";
 import { getUserPlanStatus } from "@/components/dashboard/plan-data";
-import { debitUnified, OnexaiLinkError } from "@/lib/billing/unified";
+import { OnexaiLinkError } from "@/lib/billing/unified";
+import {
+  PurchaseConflictError,
+  purchasePlan,
+  settleOpenPurchase,
+} from "@/lib/billing/plan-purchase";
 import { OnexaiSvcUnavailableError } from "@/lib/onexai/svc";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
 
@@ -84,16 +104,11 @@ import { GET as mePlanGET, POST as mePlanPOST } from "@/app/api/me/plan/route";
 
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const getUserPlanStatusMock = vi.mocked(getUserPlanStatus);
-const debitUnifiedMock = vi.mocked(debitUnified);
+const purchasePlanMock = vi.mocked(purchasePlan);
+const settleOpenPurchaseMock = vi.mocked(settleOpenPurchase);
 const dbUpdateMock = vi.mocked(db.update);
 
 const USER = { id: "user-1", phone: "0912", isActive: true } as never;
-
-/** YYYY-MMِ جاری (UTC) — باید با periodMonthOf در route یکی باشد (referenceِ پایدار). */
-function currentPeriod(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-}
 
 function pushSelect(rows: unknown[]) {
   h.selectResults.push(rows);
@@ -122,7 +137,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.selectResults.length = 0;
   h.updateState.lastSet = null;
-  debitUnifiedMock.mockResolvedValue({ balanceToman: 201_000, already: false });
+  purchasePlanMock.mockResolvedValue({ balanceToman: 201_000, purchaseId: "pp-1" });
+  settleOpenPurchaseMock.mockResolvedValue(undefined);
 });
 
 /* ─────────────────────────────  GET /api/plans  ───────────────────────────── */
@@ -187,7 +203,7 @@ describe("POST /api/me/plan", () => {
     const res = await mePlanPOST(jsonReq("https://k.app/api/me/plan", { plan: "pro" }));
     expect(res.status).toBe(401);
     expect(dbUpdateMock).not.toHaveBeenCalled();
-    expect(debitUnifiedMock).not.toHaveBeenCalled();
+    expect(purchasePlanMock).not.toHaveBeenCalled();
   });
 
   it("کلیدِ پلنِ نامعتبر → ۴۰۰ و هیچ update/debit", async () => {
@@ -195,7 +211,7 @@ describe("POST /api/me/plan", () => {
     const res = await mePlanPOST(jsonReq("https://k.app/api/me/plan", { plan: "ultra" }));
     expect(res.status).toBe(400);
     expect(dbUpdateMock).not.toHaveBeenCalled();
-    expect(debitUnifiedMock).not.toHaveBeenCalled();
+    expect(purchasePlanMock).not.toHaveBeenCalled();
   });
 
   it("کلیدِ تاریخیِ payg عمداً پذیرفته نمی‌شود → ۴۰۰", async () => {
@@ -204,7 +220,7 @@ describe("POST /api/me/plan", () => {
     expect(res.status).toBe(400);
   });
 
-  it("ارتقا (free→pro) → debit با referenceِ پایدار، سپس ثبتِ پلن → ۲۰۰", async () => {
+  it("ارتقا (free→pro) → purchasePlan (ماشینِ ضدِکرش) → ۲۰۰", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
     pushSelect([{ plan: "free" }]); // پلنِ فعلیِ کاربر
 
@@ -216,22 +232,18 @@ describe("POST /api/me/plan", () => {
     expect(body.plan).toBe("pro");
     expect(body.balanceToman).toBe(201_000);
 
-    // debit با userIdِ نشست، قیمتِ پلنِ مقصد و referenceِ پایدارِ per-رویداد (بدونِ زمانِ لحظه‌ای).
-    expect(debitUnifiedMock).toHaveBeenCalledTimes(1);
-    expect(debitUnifiedMock).toHaveBeenCalledWith(
-      "user-1",
-      299_000,
-      `plan:user-1:pro:${currentPeriod()}`,
-    );
-    // پلن *پس از* debit ست شد.
-    expect(dbUpdateMock).toHaveBeenCalledTimes(1);
-    expect(h.updateState.lastSet?.plan).toBe("pro");
+    // خرید با userIdِ نشست + پلن/قیمتِ مقصد — reference را خودِ ماشین می‌سازد
+    // (plan:<rowId>، بدونِ هیچ مؤلفه‌ی زمانی؛ تست‌های واحدش در plan-purchase.test.ts).
+    expect(purchasePlanMock).toHaveBeenCalledTimes(1);
+    expect(purchasePlanMock).toHaveBeenCalledWith("user-1", "pro", 299_000);
+    // ثبتِ پلن داخلِ ماشین است — route دیگر مستقیماً users را نمی‌نویسد (ارتقا).
+    expect(dbUpdateMock).not.toHaveBeenCalled();
   });
 
   it("ارتقا با موجودیِ ناکافی → ۴۰۲ + topupUrlِ 1xai، بدونِ تغییرِ پلن", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
     pushSelect([{ plan: "free" }]);
-    debitUnifiedMock.mockRejectedValue(
+    purchasePlanMock.mockRejectedValue(
       new InsufficientBalanceError({ balanceToman: 1_000, plan: "free" }),
     );
 
@@ -246,7 +258,7 @@ describe("POST /api/me/plan", () => {
   it("ارتقا اما svcِ 1xai در دسترس نیست → ۵۰۳ (fail-closed)، بدونِ تغییرِ پلن", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
     pushSelect([{ plan: "free" }]);
-    debitUnifiedMock.mockRejectedValue(new OnexaiSvcUnavailableError());
+    purchasePlanMock.mockRejectedValue(new OnexaiSvcUnavailableError());
 
     const res = await mePlanPOST(jsonReq("https://k.app/api/me/plan", { plan: "pro" }));
     expect(res.status).toBe(503);
@@ -256,7 +268,7 @@ describe("POST /api/me/plan", () => {
   it("ارتقا اما گره به استخر برقرار نشد (OnexaiLinkError) → ۵۰۳", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
     pushSelect([{ plan: "free" }]);
-    debitUnifiedMock.mockRejectedValue(new OnexaiLinkError("ایمیل ندارد"));
+    purchasePlanMock.mockRejectedValue(new OnexaiLinkError("ایمیل ندارد"));
 
     const res = await mePlanPOST(jsonReq("https://k.app/api/me/plan", { plan: "pro" }));
     expect(res.status).toBe(503);
@@ -274,7 +286,7 @@ describe("POST /api/me/plan", () => {
     expect(body.plan).toBe("free");
     // پلن فوری ست می‌شود؛ هیچ حرکتی روی کیف‌پولِ واحد.
     expect(h.updateState.lastSet?.plan).toBe("free");
-    expect(debitUnifiedMock).not.toHaveBeenCalled();
+    expect(purchasePlanMock).not.toHaveBeenCalled();
   });
 
   it("ارتقا از پلنِ تاریخیِ payg (=free، قیمت ۰) به pro → debit + ثبتِ پلن (۲۰۰)", async () => {
@@ -285,8 +297,38 @@ describe("POST /api/me/plan", () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.upgraded).toBe(true);
-    expect(debitUnifiedMock).toHaveBeenCalledTimes(1);
-    expect(h.updateState.lastSet?.plan).toBe("pro");
+    expect(purchasePlanMock).toHaveBeenCalledTimes(1);
+    expect(purchasePlanMock).toHaveBeenCalledWith("user-1", "pro", 299_000);
+  });
+
+  it("پایین‌آوردن (max→free) → اول settleِ خریدِ باز، بعد ثبتِ فوریِ پلن", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    pushSelect([{ plan: "max" }]);
+
+    const res = await mePlanPOST(jsonReq("https://k.app/api/me/plan", { plan: "free" }));
+    expect(res.status).toBe(200);
+    // پولِ معلقِ یک ارتقایِ کرش‌کرده هرگز با پایین‌آوردن دور زده نمی‌شود.
+    expect(settleOpenPurchaseMock).toHaveBeenCalledWith("user-1");
+    expect(h.updateState.lastSet?.plan).toBe("free");
+  });
+
+  it("پایین‌آوردن حینِ درخواستِ هم‌زمان (settle → conflict) → ۴۰۹ و هیچ تغییرِ پلنی", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    pushSelect([{ plan: "max" }]);
+    settleOpenPurchaseMock.mockRejectedValue(new PurchaseConflictError());
+
+    const res = await mePlanPOST(jsonReq("https://k.app/api/me/plan", { plan: "free" }));
+    expect(res.status).toBe(409);
+    expect(dbUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("ارتقا حینِ درخواستِ هم‌زمان (purchase → conflict) → ۴۰۹", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    pushSelect([{ plan: "free" }]);
+    purchasePlanMock.mockRejectedValue(new PurchaseConflictError());
+
+    const res = await mePlanPOST(jsonReq("https://k.app/api/me/plan", { plan: "pro" }));
+    expect(res.status).toBe(409);
   });
 
   it("بدنه‌ی JSON نامعتبر → ۴۰۰", async () => {

@@ -4,13 +4,10 @@ import "server-only";
  * مسیرهای پلنِ کاربرِ احرازشده (نشستِ وب):
  *   • GET  /api/me/plan — پلنِ فعلی + وضعیتِ گرنتِ ماهِ جاری + اپلای امروز/سهمیه + موجودی.
  *   • POST /api/me/plan — تغییرِ پلن. پایین‌آوردن/همان پلن فوری اعمال می‌شود؛ *ارتقا*
- *     قیمتِ پلن را همان لحظه از کیف‌پولِ واحدِ 1xai کسر می‌کند (debitUnified، idempotent
- *     با referenceِ پایدارِ `plan:{userId}:{plan}:{YYYY-MM}`) و سپس users.plan ست می‌شود.
- *     هیچ درخواستِ pending/تأییدِ ادمین/گرنتِ ماهانه‌ای دیگر وجود ندارد — پلن = استحقاق + قیمت.
- *
- * ترتیبِ پول (بحرانی): اول debit، بعد ثبتِ پلن. اگر ثبتِ پلن پس از debitِ موفق شکست
- * بخورد، بلند لاگ می‌کنیم و خطا بالا می‌رود — retryِ کاربر با همان reference بی‌اثرِ
- * مالی است (idempotent سمتِ 1xai) و فقط پلن را ست می‌کند.
+ *     از ماشینِ حالتِ ضدِکرشِ purchasePlan (plan-purchase.ts) می‌گذرد: هر خرید یک ردیفِ
+ *     plan_purchases با referenceِ *بدونِ زمان* (plan:<rowId>) دارد، پس retry پس از هر
+ *     کرشی — حتی پس از رفتنِ ماهِ UTC — به همان reference می‌رسد و دوباره‌کسر ساختاری
+ *     ناممکن است. هیچ تأییدِ ادمین/گرنتِ ماهانه‌ای وجود ندارد — پلن = استحقاق + قیمت.
  *
  * امنیت (قاعده‌ی ۴ CONTEXT — دادهٔ هر کاربر فقط برای همان کاربر): کاربرِ هدف همیشه از
  * کوکیِ نشست گرفته می‌شود، نه از بدنه/کوئری؛ بدنه فقط کلیدِ پلنِ مقصد را دارد و با zod
@@ -25,9 +22,13 @@ import { changePlanBodySchema } from "@/lib/api/plan-schemas";
 import { getCurrentUser } from "@/lib/auth/http";
 import { getUserPlanStatus } from "@/components/dashboard/plan-data";
 import { planFor, type PlanKey } from "@/lib/billing/plans";
-import { periodMonthOf } from "@/lib/billing/ai-budget";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
-import { debitUnified, OnexaiLinkError } from "@/lib/billing/unified";
+import { OnexaiLinkError } from "@/lib/billing/unified";
+import {
+  PurchaseConflictError,
+  purchasePlan,
+  settleOpenPurchase,
+} from "@/lib/billing/plan-purchase";
 import { OnexaiSvcUnavailableError } from "@/lib/onexai/svc";
 
 // به DB و node API (cookies) دست می‌زند → اجرای Node و رندرِ پویا.
@@ -85,8 +86,22 @@ export async function POST(request: Request): Promise<Response> {
     const targetDef = planFor(target as PlanKey);
     const isUpgrade = targetDef.priceToman > currentDef.priceToman;
 
-    // ۴) پایین‌آوردن یا همان پلن (بدونِ هزینه‌ی بیشتر) → فوری اعمال می‌شود (نیازی به پرداخت نیست).
+    // ۴) پایین‌آوردن یا همان پلن (بدونِ هزینه‌ی بیشتر) → فوری اعمال می‌شود، اما *اول*
+    //    هر خریدِ بازِ به‌جامانده settle می‌شود (خنثیِ مالی): وگرنه پولِ یک ارتقایِ
+    //    کرش‌کرده (debited بدونِ پلن) با دور زدنِ ماشین برای همیشه معلق می‌ماند.
     if (!isUpgrade) {
+      try {
+        await settleOpenPurchase(user.id);
+      } catch (err) {
+        if (err instanceof PurchaseConflictError) {
+          return errorJson(err.message, 409);
+        }
+        if (err instanceof OnexaiSvcUnavailableError || err instanceof OnexaiLinkError) {
+          // تکلیفِ پولِ معلق بدونِ svc روشن نمی‌شود → پایین‌آوردن هم صبر کند (fail-closed).
+          return errorJson("کیف‌پولِ 1xai در دسترس نیست", 503);
+        }
+        throw err;
+      }
       await db
         .update(users)
         .set({ plan: target, updatedAt: new Date() })
@@ -94,39 +109,27 @@ export async function POST(request: Request): Promise<Response> {
       return json({ ok: true, upgraded: false, plan: target, definition: targetDef });
     }
 
-    // ۵) ارتقا → کسرِ فوریِ قیمتِ پلن از کیف‌پولِ واحدِ 1xai. reference برای «همین
-    //    رویداد» پایدار است (کاربر+پلن+ماه؛ بدونِ Date.now())، پس retry بی‌اثرِ مالی است.
-    const period = periodMonthOf(Date.now());
-    const reference = `plan:${user.id}:${target}:${period}`;
+    // ۵) ارتقا → ماشینِ حالتِ ضدِکرش: ردیفِ plan_purchases با referenceِ بدونِ زمان،
+    //    کسرِ idempotent، سپس ثبتِ پلن + completed. هر کرش/دوکلیکی retryپذیر است و
+    //    دوباره‌کسر ساختاری ناممکن (جزئیات و اثباتِ حالت‌ها در plan-purchase.ts).
     let balanceToman: number;
     try {
-      const move = await debitUnified(user.id, targetDef.priceToman, reference);
-      balanceToman = move.balanceToman;
+      const result = await purchasePlan(user.id, target, targetDef.priceToman);
+      balanceToman = result.balanceToman;
     } catch (err) {
       if (err instanceof InsufficientBalanceError) {
         // موجودیِ واحد کافی نیست → ۴۰۲ + نشانیِ شارژ (فقط در داشبوردِ 1xai).
         return json({ error: err.message, topupUrl: ONEXAI_TOPUP_URL }, 402);
       }
+      if (err instanceof PurchaseConflictError) {
+        // درخواستِ هم‌زمانِ ناسازگار (دوکلیک/دو تب) — retryِ کوتاه‌مدت امن است.
+        return errorJson(err.message, 409);
+      }
       if (err instanceof OnexaiSvcUnavailableError || err instanceof OnexaiLinkError) {
-        // گیتِ پول fail-closed است: svc/گره برقرار نشد → ۵۰۳، هیچ ارتقایی رخ نمی‌دهد.
+        // گیتِ پول fail-closed است: svc/گره برقرار نشد → ۵۰۳، هیچ ارتقایی رخ نمی‌دهد؛
+        // خریدِ باز می‌ماند و retryِ بعدی از همان reference ادامه می‌دهد.
         return errorJson("کیف‌پولِ 1xai در دسترس نیست", 503);
       }
-      throw err;
-    }
-
-    // ۶) debit موفق بود → حالا پلن ست می‌شود. اگر این نوشتن شکست بخورد، *بلند* لاگ
-    //    می‌کنیم: پول کسر شده ولی پلن ست نشده — retryِ کاربر با همان reference فقط
-    //    پلن را ست می‌کند (debit تکرار نمی‌شود؛ idempotent سمتِ 1xai).
-    try {
-      await db
-        .update(users)
-        .set({ plan: target, updatedAt: new Date() })
-        .where(eq(users.id, user.id));
-    } catch (err) {
-      console.error(
-        `[billing] CRITICAL: debitِ ارتقا موفق بود (ref=karjoo:${reference}, ${targetDef.priceToman} تومان) اما ثبتِ users.plan شکست خورد — retry امن است:`,
-        err,
-      );
       throw err;
     }
 
