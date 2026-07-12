@@ -31,6 +31,7 @@ import { runFilterApply } from "@/lib/apply/orchestrator";
 import { readUserPlan } from "@/lib/billing/apply-quota-guard";
 import { applyQuotaFor } from "@/lib/billing/plans";
 import { assertCanUsePaidAi } from "@/lib/billing/entitlement";
+import { InsufficientBalanceError } from "@/lib/billing/errors";
 
 // به DB و node API (cookies) دست می‌زند → اجرای Node و رندرِ پویا (وابسته به کوکی).
 export const runtime = "nodejs";
@@ -89,15 +90,23 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     // ۵) فیلترِ هوشمند (AI) فقط وقتی روشن می‌شود که کاربر تاگل را زده باشد *و* واجدِ شرطِ
-    //    AIِ پولی باشد. اگر واجد نباشد، بی‌سروصدا به مسیرِ پایه (فیلترمود) برمی‌گردیم —
-    //    AI هرگز برای جریانِ پایه اجباری نیست.
+    //    AIِ پولی باشد. فقط «نداشتنِ استحقاق» (موجودیِ ناکافی) به مسیرِ پایه برمی‌گردد —
+    //    قطعیِ svcِ 1xai ۵۰۳ می‌دهد؛ وگرنه کاربری که فیلترِ AI خواسته، در قطعیِ زیرساخت
+    //    بی‌صدا به «اپلای انبوهِ بدونِ فیلتر» می‌افتاد (دقیقاً رفتاری که فیلتر باید مانعش شود).
     let aiFilter = false;
     if (filters.aiFilterEnabled) {
       try {
         await assertCanUsePaidAi(user.id);
         aiFilter = true;
-      } catch {
-        aiFilter = false;
+      } catch (err) {
+        if (err instanceof InsufficientBalanceError) {
+          aiFilter = false; // بدونِ استحقاق → مسیرِ پایه (AI هرگز اجباری نیست).
+        } else {
+          return errorJson(
+            "کیف‌پولِ 1xai در دسترس نیست — فیلترِ هوشمند موقتاً ممکن نیست؛ کمی بعد دوباره تلاش کنید.",
+            503,
+          );
+        }
       }
     }
 

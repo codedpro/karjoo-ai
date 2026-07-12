@@ -6,7 +6,9 @@ import "server-only";
  * یک منبعِ مشترکِ فقط-خواندنی است تا هم RSCِ صفحه‌ی پلن‌ها و هم route handler یکسان
  * عمل کنند و قاعده‌ی ۴ (دادهٔ هر کاربر فقط برای همان کاربر) یک‌جا رعایت شود. این لایه:
  *   • پلنِ فعلیِ کاربر را از جدولِ users می‌خواند،
- *   • موجودیِ کیف‌پول را از هسته‌ی بیلینگِ Foundation (`getBalance`) می‌گیرد،
+ *   • موجودی را از کیف‌پولِ *واحدِ 1xai* (`getUnifiedBalance` → availableToman) می‌گیرد —
+ *     چون این لایه *فقط نمایشی* است، در دسترس‌نبودنِ svc به ۰ تنزل می‌کند (نه fail-closed؛
+ *     گیت‌های پولی جای دیگری هستند و هرگز موجودیِ مثبتِ جعلی نمی‌سازیم)،
  *   • وضعیتِ گرنتِ ماهِ جاری را *بدونِ نوشتن* بررسی می‌کند (آیا ردیفِ گرنتِ این ماه هست؟)،
  *   • و تعدادِ اپلای‌های امروز را نسبت به سهمیه‌ی پلن می‌سنجد (Free=۱۰۰، بقیه نامحدود).
  *
@@ -17,7 +19,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { users, walletLedger, type Plan } from "@/db/schema";
-import { getBalance } from "@/lib/billing/wallet";
+import { getUnifiedBalance } from "@/lib/billing/unified";
 import { countAppliesToday } from "@/lib/billing/apply-quota";
 import { periodMonthOf } from "@/lib/billing/ai-budget";
 import { grantRefId } from "@/lib/billing/grants";
@@ -107,9 +109,11 @@ export async function getUserPlanStatus(
   const period = periodMonthOf(now);
   const limit = applyQuotaFor(planKey);
 
-  // موجودی، وضعیتِ گرنت و (در صورتِ سهمیه‌دار بودن) شمارشِ اپلای را موازی می‌خوانیم.
+  // موجودی (واحد؛ نمایشی → svc در دسترس نبود = ۰)، وضعیتِ گرنت و شمارشِ اپلای — موازی.
   const [balanceToman, grantApplied, usedToday] = await Promise.all([
-    getBalance(userId).catch(() => 0),
+    getUnifiedBalance(userId)
+      .then((b) => b.availableToman)
+      .catch(() => 0),
     readGrantApplied(userId, period),
     limit === null ? Promise.resolve(0) : countAppliesToday(userId),
   ]);

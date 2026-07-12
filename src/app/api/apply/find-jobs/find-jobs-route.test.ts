@@ -26,6 +26,7 @@ import { runFilterApply } from "@/lib/apply/orchestrator";
 import { readUserPlan } from "@/lib/billing/apply-quota-guard";
 import { applyQuotaFor } from "@/lib/billing/plans";
 import { assertCanUsePaidAi } from "@/lib/billing/entitlement";
+import { InsufficientBalanceError } from "@/lib/billing/errors";
 
 import { POST } from "@/app/api/apply/find-jobs/route";
 import { resetRateLimits } from "@/lib/api/rate-limit";
@@ -164,10 +165,12 @@ describe("POST /api/apply/find-jobs", () => {
     );
   });
 
-  it("aiFilterEnabled روشن ولی بدونِ استحقاقِ AI → مسیرِ پایه (aiFilter=false)", async () => {
+  it("aiFilterEnabled روشن ولی بدونِ استحقاقِ AI (موجودیِ ناکافی) → مسیرِ پایه (aiFilter=false)", async () => {
     readFiltersMock.mockResolvedValue(filtersWith({ aiFilterEnabled: true }));
-    // گیتِ AIِ پولی رد می‌شود (مثلاً موجودیِ ناکافی) → نباید AI اجرا شود.
-    assertAiMock.mockRejectedValue(new Error("insufficient balance"));
+    // فقط «موجودیِ ناکافیِ» typed به مسیرِ پایه برمی‌گردد — AI هرگز اجباری نیست.
+    assertAiMock.mockRejectedValue(
+      new InsufficientBalanceError({ balanceToman: 0, plan: "free" }),
+    );
 
     const res = await POST(req());
     expect(res.status).toBe(200);
@@ -175,6 +178,17 @@ describe("POST /api/apply/find-jobs", () => {
     expect(runFilterApplyMock).toHaveBeenCalledWith(
       expect.objectContaining({ userId: "user-1", aiFilter: false }),
     );
+  });
+
+  it("aiFilterEnabled روشن ولی svcِ 1xai در دسترس نیست → ۵۰۳ (نه اپلایِ انبوهِ بی‌فیلترِ بی‌صدا)", async () => {
+    readFiltersMock.mockResolvedValue(filtersWith({ aiFilterEnabled: true }));
+    // خطای زیرساخت (نه استحقاق): کاربری که فیلترِ AI خواسته نباید بی‌صدا بدونِ فیلتر
+    // به همه‌ی آگهی‌ها اپلای شود.
+    assertAiMock.mockRejectedValue(new Error("OnexaiSvcUnavailableError: svc down"));
+
+    const res = await POST(req());
+    expect(res.status).toBe(503);
+    expect(runFilterApplyMock).not.toHaveBeenCalled();
   });
 
   it("بدنه‌ی خالی مجاز است (اجرا می‌شود)", async () => {

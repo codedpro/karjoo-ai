@@ -3,13 +3,13 @@ import "server-only";
 /**
  * پرداختِ کارت‌به‌کارت (billing) — هسته‌ی جایگزینِ استابِ خودشارژِ توسعه.
  *
- * جریان:
- *   ۱) کاربر مبلغ را به کارتِ مقصد منتقل و کدِ پیگیری را ثبت می‌کند →
- *      `createPaymentRequest` یک ردیفِ `pending` می‌سازد (هیچ اعتبار/پلنی تغییر نمی‌کند).
- *   ۲) ادمین در پنل بررسی و *تأیید* می‌کند → `approvePaymentRequest`:
- *        • topup → `credit(...)` کیف‌پول (اتمیک، با refِ همان درخواست).
- *        • plan  → `users.plan` ست و گرنتِ ماهانه اعمال می‌شود.
- *      یا *رد* می‌کند → `rejectPaymentRequest`.
+ * ⚠️ *در حالِ بازنشستگی* (کیف‌پولِ واحدِ 1xAi): کارجو دیگر پول نمی‌گیرد — شارژ فقط در
+ * https://1xai.ir/topup و ارتقای پلن با debitِ فوری از کیف‌پولِ واحد (POST /api/me/plan)
+ * انجام می‌شود. این ماژول فقط برای *رسیدگی به درخواست‌های تاریخیِ* pending می‌ماند:
+ *   • topup‌های قدیمی → تأییدِ ادمین همچنان کیف‌پولِ *محلی* را credit می‌کند (دریچه‌ی
+ *     فرارِ تاریخی؛ هیچ مسیرِ جدیدی درخواستِ topup نمی‌سازد).
+ *   • plan‌های قدیمی → تأییدِ ادمین فقط users.plan را ست می‌کند — *هیچ گرنتِ ماهانه‌ای*
+ *     دیگر وجود ندارد (پلن = استحقاق + قیمت، نه اعتبار).
  *
  * تضمینِ ایمنی (بحرانی): هیچ اعتبار یا ارتقایی بدونِ تأییدِ *انسانیِ* ادمین انجام
  * نمی‌شود؛ پس کاربر نمی‌تواند خودش را رایگان شارژ/ارتقا دهد (رفعِ ریشه‌ایِ استابِ dev).
@@ -25,8 +25,8 @@ import {
   type PaymentRequest,
   type Plan,
 } from "@/db/schema";
-import { credit } from "@/lib/billing/wallet";
-import { grantMonthlyCredits } from "@/lib/billing/grants";
+import { creditPool } from "@/lib/onexai/svc";
+import { ensureOnexaiLink } from "@/lib/billing/unified";
 
 /** هندلِ کاملِ Drizzle (به transaction نیاز است). */
 export type PaymentsDb = typeof defaultDb;
@@ -102,15 +102,46 @@ export interface ReviewResult {
  * ادمین درخواست را *تأیید* می‌کند. اتمیک و ایدمپوتنت: ردیف را FOR UPDATE قفل می‌کند؛
  * اگر دیگر pending نبود، بدونِ اثر برمی‌گردد ({status:'already'}). در غیرِ این‌صورت اثرِ
  * پرداخت را اعمال و وضعیت را approved می‌کند — همه در یک تراکنش (اگر credit شکست بخورد،
- * تأیید هم rollback می‌شود). گرنتِ ماهانه‌ی پلن پس از commit (ایدمپوتنت) اجرا می‌شود.
+ * تأیید هم rollback می‌شود). تأییدِ plan فقط users.plan را ست می‌کند — گرنتِ ماهانه با
+ * کیف‌پولِ واحدِ 1xai حذف شده است (پلن = استحقاق + قیمت).
  */
 export async function approvePaymentRequest(
   id: string,
   reviewedBy: string,
   db: PaymentsDb = defaultDb,
   now: number = Date.now(),
+  deps: { creditPoolFn?: typeof creditPool; ensureLinkFn?: typeof ensureOnexaiLink } = {},
 ): Promise<ReviewResult> {
   const nowD = new Date(now);
+
+  // topupهای *تاریخیِ* کارت‌به‌کارت باید به کیف‌پولِ *واحدِ 1xai* واریز شوند — کیف‌پولِ
+  // محلی بازنشسته است و هیچ گیتی آن را نمی‌خواند؛ واریزِ محلی یعنی پولِ واقعیِ کاربر در
+  // ردیف‌های مرده گم می‌شد. ترتیبِ امن (هم‌الگوی خریدِ پلن): اول واریزِ idempotentِ pool
+  // (reference=karjoo:payment:<id> — retry بی‌اثر)، بعد تأییدِ ردیف. اگر تأیید شکست
+  // بخورد، درخواست pending می‌ماند و تلاشِ بعدیِ ادمین با همان reference بی‌ضرر است.
+  const readReq = async () => {
+    const [r] = await db
+      .select()
+      .from(paymentRequests)
+      .where(eq(paymentRequests.id, id))
+      .limit(1);
+    return r;
+  };
+  const pre = await readReq();
+  if (!pre) throw new Error("درخواستِ پرداخت یافت نشد");
+  if (pre.status !== "pending") return { status: "already", request: pre };
+
+  if (pre.kind === "topup") {
+    const ensureLink = deps.ensureLinkFn ?? ensureOnexaiLink;
+    const doCredit = deps.creditPoolFn ?? creditPool;
+    const poolId = await ensureLink(pre.userId, { db });
+    await doCredit({
+      onexaiUserId: poolId,
+      amountToman: pre.amountToman,
+      kind: "topup",
+      reference: `karjoo:payment:${pre.id}`,
+    });
+  }
 
   const outcome: ReviewResult = await db.transaction(async (tx) => {
     const [req] = await tx
@@ -120,21 +151,11 @@ export async function approvePaymentRequest(
       .limit(1)
       .for("update");
     if (!req) throw new Error("درخواستِ پرداخت یافت نشد");
+    // ریسِ دو ادمین: اگر بینِ واریزِ pool و این قفل، دیگری تأیید کرده باشد، واریزِ
+    // idempotentِ ما already بوده و این‌جا بدونِ اثرِ دوباره برمی‌گردیم.
     if (req.status !== "pending") return { status: "already", request: req };
 
-    let ledgerId: string | null = null;
-    if (req.kind === "topup") {
-      const res = await credit(
-        req.userId,
-        "topup",
-        req.amountToman,
-        { refType: "card_transfer", refId: req.id, description: "شارژِ کارت‌به‌کارت (تأییدشده)" },
-        // tx یک PgTransaction است و ساختاری با WalletDb سازگار است (insert/update/
-        // transaction برای savepoint)؛ credit درونش به‌صورتِ nested-tx اجرا می‌شود.
-        tx as unknown as PaymentsDb,
-      );
-      ledgerId = res.ledgerId;
-    } else if (req.kind === "plan" && req.targetPlan) {
+    if (req.kind === "plan" && req.targetPlan) {
       await tx
         .update(users)
         .set({ plan: req.targetPlan, updatedAt: nowD })
@@ -143,18 +164,20 @@ export async function approvePaymentRequest(
 
     const [updated] = await tx
       .update(paymentRequests)
-      .set({ status: "approved", reviewedBy, reviewedAt: nowD, ledgerId, updatedAt: nowD })
+      .set({
+        status: "approved",
+        reviewedBy,
+        reviewedAt: nowD,
+        // مرجعِ واریزِ pool (نه ledgerِ محلی) — برای ردگیریِ حسابرسی.
+        ledgerId: req.kind === "topup" ? `karjoo:payment:${req.id}` : null,
+        updatedAt: nowD,
+      })
       .where(eq(paymentRequests.id, id))
       .returning();
     return { status: "approved", request: updated };
   });
 
-  // گرنتِ ماهانه‌ی پلن پس از commit — ایدمپوتنت per (کاربر، ماه)؛ خطایش تأیید را برنمی‌گرداند.
-  if (outcome.status === "approved" && outcome.request?.kind === "plan" && outcome.request.targetPlan) {
-    await grantMonthlyCredits(outcome.request.userId, { plan: outcome.request.targetPlan }).catch(
-      () => {},
-    );
-  }
+  // گرنتِ ماهانه حذف شده (کیف‌پولِ واحد)؛ تأییدِ plan فقط استحقاق (users.plan) را ست می‌کند.
   return outcome;
 }
 

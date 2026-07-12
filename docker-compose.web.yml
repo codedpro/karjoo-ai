@@ -1,0 +1,18 @@
+# karjoo-ai front-end (karjooai.itmaster.uk) as a Docker container with restart: always.
+# Runs the host-built .next via a node image over the bind-mounted app dir, host
+# networking so it binds :3030. Deploy = `next build` (host) then
+# `docker compose -f docker-compose.web.yml restart web`. Env from .env.local.
+name: karjoo-web
+
+services:
+  web:
+    image: node:22-bookworm-slim
+    container_name: karjoo-web
+    restart: always
+    network_mode: host
+    working_dir: /app
+    volumes:
+      - .:/app
+    environment:
+      NODE_ENV: production
+    command: ["node", "node_modules/next/dist/bin/next", "start", "-p", "3030"]

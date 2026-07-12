@@ -19,8 +19,8 @@ import { eq } from "drizzle-orm";
 import { db as defaultDb } from "@/db";
 import { users } from "@/db/schema";
 import type { User } from "@/db/schema";
-import { requireAuthPepper, signupCreditToman } from "@/lib/env";
-import { credit, type WalletDb } from "@/lib/billing/wallet";
+import { requireAuthPepper } from "@/lib/env";
+import { ensureOnexaiLink, type UnifiedDb } from "@/lib/billing/unified";
 import {
   revokeSession,
   verifySessionToken,
@@ -74,12 +74,12 @@ export interface AuthHttpDeps {
   pepper?: string;
   randomBytesImpl?: RandomBytes;
   /**
-   * اعطای اعتبارِ خوش‌آمد به کاربرِ *تازه* (اختیاری، تزریقی برای تست). اگر داده نشود،
-   * از پیاده‌سازیِ پیش‌فرض (creditWelcomeGrant) استفاده می‌شود که فقط روی یک DBِ تراکنش‌پذیرِ
-   * واقعی اثر می‌گذارد و در تست‌های با DB جعلی بی‌سروصدا رد می‌شود. هرگز نباید ورود را
-   * بشکند (best-effort).
+   * گره‌زدنِ کاربر به استخرِ مشترکِ 1xai (اختیاری، تزریقی برای تست). اگر داده نشود،
+   * از `ensureOnexaiLink` واقعی استفاده می‌شود (resolve با email → ذخیره‌ی
+   * onexai_user_id). best-effort است — هرگز نباید ورود را بشکند، حتی اگر 1xai
+   * موقتاً در دسترس نباشد (گیت‌های پولی بعداً خودشان دوباره تلاش می‌کنند).
    */
-  grantSignupCredit?: (userId: string, now: number) => Promise<void>;
+  linkOnexai?: (userId: string) => Promise<unknown>;
 }
 
 const defaultNow: Clock = () => Date.now();
@@ -155,6 +155,8 @@ export interface GoogleIdentity {
  *     پروفایل تازه بماند. مقادیرِ خالی/undefined با مقدارِ قبلی جایگزین نمی‌شوند مگر
  *     Google مقدارِ تازه بدهد.
  *   • کاربرِ تازه فعال (isActive=true، پیش‌فرضِ schema) و با پلنِ free ساخته می‌شود.
+ *   • هیچ اعتباری اعطا نمی‌شود — پول در استخرِ مشترکِ 1xai زندگی می‌کند؛ کارجو هرگز
+ *     خودش را credit نمی‌کند. فقط گرهِ best-effort به استخر برقرار می‌شود.
  *
  * همه‌ی وابستگی‌ها قابلِ تزریق‌اند (تستِ بدونِ DB/شبکه).
  */
@@ -167,6 +169,8 @@ export async function findOrCreateUserByGoogle(
 
   const name = identity.name ?? null;
   const avatarUrl = identity.avatarUrl ?? null;
+
+  let user: User;
 
   // ۱) با googleSub (هویتِ پایدار).
   const [bySub] = await db
@@ -181,83 +185,47 @@ export async function findOrCreateUserByGoogle(
       .set({ name, avatarUrl, email: identity.email, updatedAt: new Date(now()) })
       .where(eq(users.id, bySub.id))
       .returning();
-    return updated ?? bySub;
+    user = updated ?? bySub;
+  } else {
+    // ۲) fallback با email (کاربرِ موجودی که هنوز به این googleSub گره نخورده).
+    const [byEmail] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, identity.email))
+      .limit(1);
+
+    if (byEmail) {
+      const [updated] = await db
+        .update(users)
+        .set({ googleSub: identity.sub, name, avatarUrl, updatedAt: new Date(now()) })
+        .where(eq(users.id, byEmail.id))
+        .returning();
+      user = updated ?? byEmail;
+    } else {
+      // ۳) کاربرِ تازه.
+      const [created] = await db
+        .insert(users)
+        .values({ googleSub: identity.sub, email: identity.email, name, avatarUrl })
+        .returning();
+      user = created;
+    }
   }
 
-  // ۲) fallback با email (کاربرِ موجودی که هنوز به این googleSub گره نخورده).
-  const [byEmail] = await db
-    .select()
-    .from(users)
-    .where(eq(users.email, identity.email))
-    .limit(1);
-
-  if (byEmail) {
-    const [updated] = await db
-      .update(users)
-      .set({ googleSub: identity.sub, name, avatarUrl, updatedAt: new Date(now()) })
-      .where(eq(users.id, byEmail.id))
-      .returning();
-    return updated ?? byEmail;
+  // گرهِ best-effort به استخرِ مشترکِ 1xai (هویت/کیف‌پولِ واحد): اگر هنوز گره نخورده،
+  // همین‌جا برقرار می‌شود تا مسیرهای پولی بعدی سریع باشند. اگر 1xai موقتاً پایین بود،
+  // ورود *نباید* بشکند — گیت‌های پولی خودشان دوباره ensureOnexaiLink را صدا می‌زنند.
+  if (user.onexaiUserId == null) {
+    const link =
+      opts.linkOnexai ??
+      ((userId: string) => ensureOnexaiLink(userId, { db: db as unknown as UnifiedDb }));
+    try {
+      await link(user.id);
+    } catch (err) {
+      console.error("[auth] گرهِ کاربر به استخرِ 1xai ناموفق بود (best-effort):", err);
+    }
   }
 
-  // ۳) کاربرِ تازه.
-  const [created] = await db
-    .insert(users)
-    .values({ googleSub: identity.sub, email: identity.email, name, avatarUrl })
-    .returning();
-
-  // اعتبارِ خوش‌آمد فقط برای کاربرِ *تازه‌ساخته‌شده* (best-effort، ورود را نمی‌شکند).
-  const grant =
-    opts.grantSignupCredit ??
-    ((userId: string, t: number) => creditWelcomeGrant(userId, db, t));
-  try {
-    await grant(created.id, now());
-  } catch (err) {
-    // اعتبارِ خوش‌آمد «به‌بهترین‌تلاش» است: اگر شکست خورد، ورود نباید بشکند.
-    console.error("[auth] اعطای اعتبارِ خوش‌آمدِ کاربرِ تازه ناموفق بود:", err);
-  }
-
-  return created;
-}
-
-/**
- * اعتبارِ خوش‌آمدِ کاربرِ تازه را به کیف‌پولش credit می‌کند (grant، ایدمپوتنت با
- * refId=`signup:<userId>`). این تابع «به‌بهترین‌تلاش» است و توسطِ فراخواننده در try/catch
- * پیچیده می‌شود.
- *
- * دو گاردِ ایمنی:
- *   • اگر مبلغِ اعتبار ۰ باشد (env=۰ یا خاموش)، هیچ‌کاری نمی‌کند.
- *   • فقط روی یک DBِ *تراکنش‌پذیرِ واقعی* اجرا می‌شود؛ در تست‌های با DB جعلی (بدونِ
- *     `transaction`) بی‌سروصدا رد می‌شود تا مسیرِ auth بدونِ کیف‌پول هم قابلِ تست بماند.
- *
- * ایدمپوتنسی: creditِ 'grant' با refId یکتا؛ ایندکسِ partial-unique روی (user, ref_id)
- * WHERE kind='grant' تضمین می‌کند حتی اگر این مسیر دوبار برای یک کاربر اجرا شود، اعتبار
- * دوبار داده نشود (درجِ دوم روی unique-violation می‌افتد و catch می‌شود). چون فقط در مسیرِ
- * *ساختِ* کاربر صدا زده می‌شود، در عمل یک‌بار بیشتر اجرا نمی‌شود.
- */
-async function creditWelcomeGrant(
-  userId: string,
-  db: AuthHttpDb,
-  now: number,
-): Promise<void> {
-  const amount = signupCreditToman();
-  if (!(amount > 0)) return; // اعتبارِ خوش‌آمد خاموش است.
-
-  // فقط روی DBِ تراکنش‌پذیرِ واقعی (کیف‌پول transaction می‌خواهد). DB جعلیِ تست → رد.
-  if (typeof (db as { transaction?: unknown }).transaction !== "function") return;
-
-  await credit(
-    userId,
-    "grant",
-    amount,
-    {
-      refType: "signup",
-      refId: `signup:${userId}`,
-      description: "اعتبارِ خوش‌آمدِ کاربرِ تازه",
-    },
-    db as unknown as WalletDb,
-    () => now,
-  );
+  return user;
 }
 
 /* ───────────────────────  محدودسازیِ نرخِ درخواست  ───────────────────────── */

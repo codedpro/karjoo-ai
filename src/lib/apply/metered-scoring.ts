@@ -71,11 +71,22 @@ export async function meteredScoreAndDraft(
   };
 }
 
-/** آیا این خطا از نوعِ موجودیِ ناکافیِ بیلینگ است؟ (بدونِ importِ سختِ کلاس در سطحِ ماژول). */
+/**
+ * آیا این خطا از نوعِ موجودیِ ناکافیِ بیلینگ است؟ (بدونِ importِ سختِ کلاس در سطحِ ماژول).
+ *
+ * سه شکل را می‌شناسد: خطای typedِ خودِ بیلینگ، کدِ insufficient_balance، و ۴۰۲ِ
+ * میانه‌ی فراخوانی از گیت‌ویِ 1xai (GatewayError با status=402) — چون شارژِ واقعی اکنون
+ * سمتِ 1xai با کلیدِ خودِ کاربر رخ می‌دهد، ممکن است گیتِ پیشین (موجودیِ در دسترس > ۰)
+ * عبور کند ولی خودِ فراخوانی ۴۰۲ بخورد؛ آن هم باید حلقه‌های ارکستریتور را متوقف کند.
+ */
 export function isInsufficientBalance(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    (err.name === "InsufficientBalanceError" ||
-      (err as { code?: string }).code === "insufficient_balance")
-  );
+  if (!(err instanceof Error)) return false;
+  if (
+    err.name === "InsufficientBalanceError" ||
+    (err as { code?: string }).code === "insufficient_balance"
+  ) {
+    return true;
+  }
+  // GatewayError(status=402) از 1xai — بدونِ importِ کلاس، ساختاری بررسی می‌شود.
+  return err.name === "GatewayError" && (err as { status?: number }).status === 402;
 }

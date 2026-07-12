@@ -1,8 +1,10 @@
 /**
  * نمای «کیف‌پول و صورتحساب» (Server component) — الگوی Next 16 (پوسته‌ی فوری + استریم).
  *
- * موجودیِ کیف‌پول (تومان) + نشانِ پلن + شارژ (stubِ توسعه‌ای)، فهرستِ تراکنش‌های
- * کیف‌پول، و جدولِ تاریخچه‌ی مصرفِ هوش مصنوعی با هزینه‌ی هر فراخوانی.
+ * موجودیِ کیف‌پولِ *واحدِ 1xAi* (تومان) + نشانِ پلن + لینکِ شارژ در 1xai، فهرستِ
+ * تراکنش‌های محلی (تاریخچه)، و جدولِ مصرفِ هوش مصنوعی با هزینه‌ی هر فراخوانی.
+ * این صفحه *نمایشی* است: اگر svcِ 1xai در دسترس نباشد، به‌جای موجودیِ جعلی، حالتِ
+ * «کیف‌پول موقتاً در دسترس نیست» (unavailable) به پنل پاس می‌شود (تنزلِ نمایشی).
  *
  * الگو: پوسته (هدر/ناوبری) در `dashboard/layout.tsx` استاتیک و فوری است؛ این صفحه فقط
  * محتوا می‌دهد. حضورِ نشست پیش‌تر در `proxy.ts` (لبه، بدونِ DB) چک شده؛ این‌جا فقط
@@ -16,8 +18,7 @@ import { Suspense } from "react";
 
 import { getDashboardUser } from "@/components/dashboard/session";
 import { getUsageForUser, getWalletForUser } from "@/components/dashboard/wallet-data";
-import { listUserPaymentRequests } from "@/lib/billing/payments";
-import { cardToCardInfo } from "@/lib/env";
+import { getUnifiedBalance } from "@/lib/billing/unified";
 import { LedgerList, UsageTable } from "@/components/dashboard/wallet-history";
 import { WalletPanel } from "@/components/dashboard/wallet-panel";
 import {
@@ -46,7 +47,7 @@ export default async function BillingPage() {
     <div className="space-y-8">
       <PageHeader
         title="کیف‌پول و صورتحساب"
-        subtitle="موجودی‌ات را شارژ کن و هزینه‌ی هر فراخوانیِ هوش مصنوعی را ببین. آپلودِ رزومه و استخراجِ متن همیشه رایگان است؛ تطبیق، انگیزه‌نامه و پردازشِ هوشمندِ رزومه به‌میزانِ مصرف از کیف‌پول کسر می‌شوند."
+        subtitle="کیف‌پولِ تو همان کیف‌پولِ 1xAi است — یک موجودی برای همه‌ی محصولات؛ شارژ از داشبوردِ 1xai انجام می‌شود. آپلودِ رزومه و استخراجِ متن همیشه رایگان است؛ تطبیق، انگیزه‌نامه و پردازشِ هوشمندِ رزومه به‌میزانِ مصرف از همین کیف‌پول کسر می‌شوند."
         actions={
           <ButtonLink href="/dashboard/plans" variant="secondary" size="sm">
             پلن‌ها و ارتقا
@@ -83,25 +84,22 @@ export default async function BillingPage() {
 /* ───────────────────────── بخش‌های async (Suspense) ───────────────────────── */
 
 async function WalletSection({ userId }: { userId: string }) {
-  const [wallet, requests] = await Promise.all([
-    getWalletForUser(userId, 10),
-    listUserPaymentRequests(userId, 10),
-  ]);
-  const card = cardToCardInfo();
+  // پلن + دفترِ محلی (تاریخچه) از DB؛ موجودی از کیف‌پولِ واحدِ 1xai — نمایشی:
+  // svc در دسترس نبود → unavailable + ۰ (هرگز موجودیِ مثبتِ جعلی نمی‌سازیم).
+  const wallet = await getWalletForUser(userId, 10);
+  let balanceToman = 0;
+  let unavailable = false;
+  try {
+    balanceToman = (await getUnifiedBalance(userId)).availableToman;
+  } catch {
+    unavailable = true;
+  }
   return (
     <>
       <WalletPanel
-        initialBalanceToman={wallet.balanceToman}
+        initialBalanceToman={balanceToman}
         plan={wallet.plan}
-        card={card}
-        initialRequests={requests.map((r) => ({
-          id: r.id,
-          kind: r.kind,
-          amountToman: r.amountToman,
-          status: r.status,
-          referenceCode: r.referenceCode,
-          createdAt: r.createdAt.toISOString(),
-        }))}
+        unavailable={unavailable}
       />
       <LedgerList entries={wallet.ledger} />
     </>
@@ -115,11 +113,11 @@ async function UsageSection({ userId }: { userId: string }) {
 
 /* ─────────────────────── اسکلتِ کیف‌پول (هم‌شکلِ WalletPanel) ─────────────────────── */
 
-/** اسکلتِ ستونِ کیف‌پول — کارتِ موجودی/شارژ + کارتِ تراکنش‌ها، هم‌ابعادِ محتوای واقعی. */
+/** اسکلتِ ستونِ کیف‌پول — کارتِ موجودی/لینکِ شارژ + کارتِ تراکنش‌ها، هم‌ابعادِ محتوای واقعی. */
 function WalletSkeleton() {
   return (
     <div className="space-y-6" aria-hidden>
-      {/* کارتِ موجودی + شارژ */}
+      {/* کارتِ موجودی + لینکِ شارژ در 1xai */}
       <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-2">
@@ -129,13 +127,8 @@ function WalletSkeleton() {
           <Skeleton className="h-6 w-20 rounded-full" />
         </div>
         <div className="mt-6 border-t border-border pt-5">
-          <Skeleton className="h-4 w-28" />
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-10" />
-            ))}
-          </div>
-          <Skeleton className="mt-4 h-11 w-full rounded-xl" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="mt-3 h-11 w-full rounded-full" />
         </div>
       </div>
       {/* کارتِ تراکنش‌ها */}

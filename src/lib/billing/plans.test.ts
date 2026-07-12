@@ -17,38 +17,40 @@ import {
   workerIpLimitFor,
 } from "@/lib/billing/plans";
 
-describe("PLAN_DEFINITIONS — مقادیرِ قفل‌شده (CONTEXT بخش C)", () => {
-  it("Free: ۰ تومان، بدونِ اعتبار، ۱۰۰ اپلای/روز، بدونِ ورکر", () => {
+describe("PLAN_DEFINITIONS — مقادیرِ قفل‌شده (پس از اتحاد با 1xAi: پلن = استحقاق + قیمت)", () => {
+  it("هیچ پلنی اعتبارِ ماهانه ندارد (کیف‌پول واحد است — هر creditِ غیرصفر یعنی رگرسیون)", () => {
+    for (const p of PLAN_LIST) {
+      expect(p.monthlyCreditToman).toBe(0);
+    }
+  });
+
+  it("Free: ۰ تومان، ۱۰۰ اپلای/روز، بدونِ ورکر", () => {
     const p = PLAN_DEFINITIONS.free;
     expect(p.priceToman).toBe(0);
-    expect(p.monthlyCreditToman).toBe(0);
     expect(p.applyQuotaPerDay).toBe(100);
     expect(p.workerIpLimit).toBe(0);
     expect(p.directContact).toBe(false);
   });
 
-  it("Pro: ۲۹۹۰۰۰ تومان، +۱۰۰۰۰۰ اعتبار، اپلای نامحدود، بدونِ ورکر", () => {
+  it("Pro: ۲۹۹۰۰۰ تومان، اپلای نامحدود، بدونِ ورکر", () => {
     const p = PLAN_DEFINITIONS.pro;
     expect(p.priceToman).toBe(299_000);
-    expect(p.monthlyCreditToman).toBe(100_000);
     expect(p.applyQuotaPerDay).toBeNull();
     expect(p.workerIpLimit).toBe(0);
     expect(p.directContact).toBe(false);
   });
 
-  it("Max: ۹۹۹۰۰۰ تومان، +۵۰۰۰۰۰ اعتبار، نامحدود، ۱ IPِ ورکر", () => {
+  it("Max: ۹۹۹۰۰۰ تومان، نامحدود، ۱ IPِ ورکر", () => {
     const p = PLAN_DEFINITIONS.max;
     expect(p.priceToman).toBe(999_000);
-    expect(p.monthlyCreditToman).toBe(500_000);
     expect(p.applyQuotaPerDay).toBeNull();
     expect(p.workerIpLimit).toBe(1);
     expect(p.directContact).toBe(false);
   });
 
-  it("MaxPlus: ۱۹۹۰۰۰۰ تومان، +۲۰۰۰۰۰۰ اعتبار، نامحدود، ۵ IP، تماسِ مستقیم", () => {
+  it("MaxPlus: ۱۹۹۰۰۰۰ تومان، نامحدود، ۵ IP، تماسِ مستقیم", () => {
     const p = PLAN_DEFINITIONS.maxplus;
     expect(p.priceToman).toBe(1_990_000);
-    expect(p.monthlyCreditToman).toBe(2_000_000);
     expect(p.applyQuotaPerDay).toBeNull();
     expect(p.workerIpLimit).toBe(5);
     expect(p.directContact).toBe(true);
@@ -67,7 +69,8 @@ describe("helpers — planFor / workerIpLimitFor / applyQuotaFor / monthlyCredit
     expect(planFor("max").key).toBe("max");
     expect(workerIpLimitFor("maxplus")).toBe(5);
     expect(applyQuotaFor("free")).toBe(100);
-    expect(monthlyCreditFor("pro")).toBe(100_000);
+    // اعتبارِ ماهانه برای همه ۰ است (کیف‌پولِ واحدِ 1xai).
+    expect(monthlyCreditFor("pro")).toBe(0);
   });
 
   it("اپلای نامحدودِ پلن‌های پولی = null", () => {

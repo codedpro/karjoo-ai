@@ -8,7 +8,8 @@ import "server-only";
  * هسته‌ی متر/استحقاقِ Foundation تغییر کند. این لایه فقط:
  *   • مدلِ مؤثرِ کاربر را حل می‌کند (همان قاعده‌ی Foundation#resolveUserModel)،
  *   • قیمتِ آن را از کاتالوگ می‌خواند (Foundation#priceFor)،
- *   • موجودی/پلن را می‌خواند (Foundation#getBalance + جدولِ users)،
+ *   • موجودی را از کیف‌پولِ *واحدِ 1xai* می‌خواند (getUnifiedBalance؛ svc در دسترس
+ *     نبود → ۰، تنزلِ نمایشی — گیتِ پولیِ واقعی fail-closed در entitlement است)،
  *   • و یک CostEstimateِ خالص (lib/billing/ui) برای هر کنشِ پولی می‌سازد.
  *
  * هیچ کسری/متری انجام نمی‌شود؛ صرفاً نمایش. اگر کاتالوگ خالی/مدل ناشناخته بود، به‌جای
@@ -19,10 +20,9 @@ import { eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { users, type Plan } from "@/db/schema";
-import { getBalance } from "@/lib/billing/wallet";
+import { getUnifiedBalance } from "@/lib/billing/unified";
 import { priceFor } from "@/lib/billing/pricing";
 import { resolveUserModel } from "@/lib/billing/metering";
-import { resolveMarginPct } from "@/lib/env";
 import {
   estimateActionCost,
   type CostEstimate,
@@ -38,7 +38,7 @@ export interface UserAiCostContext {
   canUsePaidAi: boolean;
   /** قیمتِ مدلِ مؤثرِ کاربر (اگر کاتالوگ خالی/مدل ناشناخته بود null). */
   price: UiModelPrice | null;
-  /** درصدِ حاشیه‌ی فعال. */
+  /** درصدِ حاشیه — همیشه ۰: کارجو حاشیه ندارد؛ نرخ دقیقاً نرخِ 1xai است. */
   marginPct: number;
 }
 
@@ -59,11 +59,15 @@ async function readPlan(userId: string): Promise<Plan> {
 export async function getUserAiCostContext(
   userId: string,
 ): Promise<UserAiCostContext> {
-  const marginPct = resolveMarginPct();
+  // حاشیه‌ی کارجو حذف شده — تخمین باید با کسرِ واقعی (نرخِ فهرستِ 1xai) یکی باشد.
+  const marginPct = 0;
 
+  // موجودی از کیف‌پولِ واحد؛ svc در دسترس نبود → ۰ (نمایشی — هرگز موجودیِ جعلیِ مثبت).
   const [plan, balanceToman] = await Promise.all([
     readPlan(userId),
-    getBalance(userId).catch(() => 0),
+    getUnifiedBalance(userId)
+      .then((b) => b.availableToman)
+      .catch(() => 0),
   ]);
 
   let price: UiModelPrice | null = null;
@@ -80,7 +84,9 @@ export async function getUserAiCostContext(
     price = null;
   }
 
-  const canUsePaidAi = plan !== "free" && balanceToman > 0;
+  // هم‌قاعده با گیتِ واقعی (assertCanUsePaidAi): فقط موجودیِ واحد > ۰ — پلن شرط نیست
+  // (کاربرِ Free که در 1xai شارژ کرده کاملاً مجاز است؛ بنرِ «ارتقا بده» دروغ می‌شد).
+  const canUsePaidAi = balanceToman > 0;
 
   return { plan, balanceToman, canUsePaidAi, price, marginPct };
 }

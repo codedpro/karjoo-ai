@@ -3,23 +3,28 @@ import "server-only";
 /**
  * نگهبانِ استحقاقِ استفاده از سرویسِ پولیِ هوش مصنوعی (server-only).
  *
- * قاعده‌ی قفل‌شده (WF3 بخش C): گیتِ هوش مصنوعی روی *موجودیِ کیف‌پول* است، نه پلن. هر
- * پلنی (شاملِ Free) با موجودی > ۰ می‌تواند از AI استفاده کند؛ پلن صرفاً گرنت/سهمیه/ورکر
- * را تعیین می‌کند (plans.ts)، نه یک بلاکِ سراسری. گیت *پیش از* فراخوانیِ مدل انجام می‌شود
+ * قاعده‌ی قفل‌شده (WF3 بخش C): گیتِ هوش مصنوعی روی *موجودی* است، نه پلن. هر پلنی
+ * (شاملِ Free) با موجودی > ۰ می‌تواند از AI استفاده کند؛ پلن صرفاً سهمیه/ورکر را
+ * تعیین می‌کند (plans.ts)، نه یک بلاکِ سراسری. گیت *پیش از* فراخوانیِ مدل انجام می‌شود
  * (هرگز بی‌سروصدا هزینه‌ی بالادست خرج نشود):
  *   • موجودی > ۰  → مجاز (هر پلن).
- *   • موجودی ≤ ۰  → InsufficientBalanceError (باید شارژ شود؛ Free بدونِ گرنت معمولاً صفر است).
+ *   • موجودی ≤ ۰  → InsufficientBalanceError (باید در 1xai شارژ شود).
+ *
+ * موجودی از کیف‌پولِ *واحدِ 1xai* خوانده می‌شود (getUnifiedBalance → availableToman؛
+ * «یک انسان، یک موجودی» — شارژ فقط در 1xai.ir/topup). fail-closed: اگر svcِ 1xai در
+ * دسترس نباشد، OnexaiSvcUnavailableError از همین‌جا بالا می‌رود و فراخوانیِ پولی
+ * *هرگز* با موجودیِ ناخوانا جلو نمی‌رود (هیچ fallback به کیف‌پولِ محلیِ بازنشسته).
  *
  * گاردریلِ بودجه‌ی سراسری (حالتِ نگه‌داری) جداست و در metering با assertAiAvailable
  * کنارِ همین گیت اعمال می‌شود (ai-budget.ts).
  *
- * db و خواننده‌ی پلن/موجودی تزریق‌پذیرند تا تستِ بدونِ DB ممکن باشد.
+ * db و خواننده‌ی پلن/موجودی تزریق‌پذیرند تا تستِ بدونِ DB/svc ممکن باشد.
  */
 import { eq } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import { users, type Plan } from "@/db/schema";
-import { getBalance, type WalletDb } from "@/lib/billing/wallet";
+import { getUnifiedBalance } from "@/lib/billing/unified";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
 
 /** هندلِ کمینه‌ی DB که این لایه نیاز دارد (خواندنِ پلن + موجودی). */
@@ -51,7 +56,7 @@ export interface EntitlementDeps {
   db?: EntitlementDb;
   /** خواننده‌ی پلنِ کاربر (پیش‌فرض از جدولِ users). */
   readPlan?: (userId: string) => Promise<Plan>;
-  /** خواننده‌ی موجودی (پیش‌فرض getBalance از کیف‌پول). */
+  /** خواننده‌ی موجودی (پیش‌فرض availableTomanِ کیف‌پولِ واحدِ 1xai). */
   readBalance?: (userId: string) => Promise<number>;
 }
 
@@ -71,7 +76,10 @@ async function defaultReadPlan(userId: string, db: EntitlementDb): Promise<Plan>
  * `InsufficientBalanceError` (typed) پرتاب می‌کند. این را *پیش از* فراخوانیِ گیت‌وی
  * صدا بزنید.
  *
- * @returns پلن + موجودیِ فعلی در صورتِ مجاز بودن.
+ * اگر svcِ 1xai در دسترس نباشد، `OnexaiSvcUnavailableError` از readBalanceِ پیش‌فرض
+ * propagate می‌شود (fail-closed): فراخوانیِ پولی با موجودیِ ناخوانا *نباید* جلو برود.
+ *
+ * @returns پلن + موجودیِ در دسترسِ فعلی (تومان) در صورتِ مجاز بودن.
  */
 export async function assertCanUsePaidAi(
   userId: string,
@@ -80,16 +88,22 @@ export async function assertCanUsePaidAi(
   const db = deps.db ?? defaultDb;
   const readPlan = deps.readPlan ?? ((id: string) => defaultReadPlan(id, db));
   const readBalance =
-    deps.readBalance ?? ((id: string) => getBalance(id, db as unknown as WalletDb));
+    deps.readBalance ??
+    (async (id: string) => (await getUnifiedBalance(id, { db })).availableToman);
 
   const plan = await readPlan(userId);
   const balanceToman = await readBalance(userId);
 
-  // گیتِ واحد: موجودیِ مثبت لازم است (هر پلن). اعتبارِ ماهانه‌ی پلن‌های پولی هم به‌صورتِ
-  // credit در همان کیف‌پول می‌نشیند، پس همین شرطِ «> ۰» همه را پوشش می‌دهد. پلنِ free
-  // دیگر بلاکِ سخت ندارد — اگر کاربر شارژ کرده باشد، مجاز است.
+  // گیتِ واحد: موجودیِ مثبت لازم است (هر پلن). پول در کیف‌پولِ واحدِ 1xai زندگی می‌کند،
+  // پس همین شرطِ «> ۰» همه‌ی پلن‌ها را پوشش می‌دهد. پلنِ free بلاکِ سخت ندارد — اگر
+  // کاربر در 1xai شارژ کرده باشد، مجاز است.
   if (balanceToman <= 0) {
-    throw new InsufficientBalanceError({ balanceToman, plan });
+    throw new InsufficientBalanceError({
+      balanceToman,
+      plan,
+      message:
+        "موجودیِ حسابِ 1xai شما برای استفاده از سرویسِ هوش مصنوعی کافی نیست. لطفاً کیف‌پولِ واحد را در 1xai.ir/topup شارژ کنید.",
+    });
   }
 
   return { plan, balanceToman };

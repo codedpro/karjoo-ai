@@ -4,9 +4,10 @@ import "server-only";
  * خواندنِ داده‌ی کیف‌پول/مصرفِ داشبورد مستقیم از DB (server-side) — طبق الگوی RSC:
  * بدونِ round-trip به API (مثلِ data.ts). همه فقط-خواندنی و مقید به userId (قاعده‌ی ۴).
  *
- * موجودی از هسته‌ی بیلینگِ Foundation (`getBalance`) خوانده می‌شود (که کیف‌پول را
- * idempotent می‌سازد اگر نباشد → ۰)؛ دفتر و رکوردهای مصرف مستقیم از جدول خوانده می‌شوند
- * (فقط ستون‌های غیرحساس). هیچ debit/credit اینجا انجام نمی‌شود.
+ * موجودی این‌جا خوانده *نمی‌شود*: موجودیِ واقعی در کیف‌پولِ واحدِ 1xai است
+ * (`getUnifiedBalance` در @/lib/billing/unified) و صفحه‌ی صورتحساب خودش آن را
+ * می‌خواند. این ماژول فقط پلن + دفترِ *محلیِ* بازنشسته (تاریخچه) و رکوردهای مصرف را
+ * برمی‌گرداند (فقط ستون‌های غیرحساس). هیچ debit/credit اینجا انجام نمی‌شود.
  *
  * هر تابع با `cache` پوشانده شده تا در یک رندر، چند کامپوننت بدونِ کوئریِ تکراری از آن
  * استفاده کنند.
@@ -23,7 +24,6 @@ import {
   type Plan,
   type UsageKind,
 } from "@/db/schema";
-import { getBalance } from "@/lib/billing/wallet";
 
 /** یک ردیفِ دفترِ کیف‌پول برای نمایش (هم‌ساختار با خروجیِ GET /api/wallet). */
 export interface DashboardLedgerEntry {
@@ -36,21 +36,20 @@ export interface DashboardLedgerEntry {
   createdAt: Date;
 }
 
-/** خلاصه‌ی کیف‌پول: موجودی + پلن + آخرین ردیف‌های دفتر. */
+/** خلاصه‌ی کیف‌پول: پلن + آخرین ردیف‌های دفترِ محلی (تاریخچه). */
 export interface DashboardWallet {
-  balanceToman: number;
   plan: Plan;
   ledger: DashboardLedgerEntry[];
 }
 
 /**
- * خلاصه‌ی کیف‌پولِ کاربر را برمی‌گرداند: موجودی (از هسته‌ی بیلینگ)، پلن، و آخرین
- * ردیف‌های دفتر. مقید به userId.
+ * خلاصه‌ی کیف‌پولِ کاربر را برمی‌گرداند: پلن و آخرین ردیف‌های دفترِ محلی (تاریخچه).
+ * موجودی عمداً این‌جا نیست — از کیف‌پولِ واحدِ 1xai (getUnifiedBalance) خوانده می‌شود.
+ * مقید به userId.
  */
 export const getWalletForUser = cache(
   async (userId: string, ledgerLimit = 10): Promise<DashboardWallet> => {
-    const [balanceToman, planRow, ledger] = await Promise.all([
-      getBalance(userId),
+    const [planRow, ledger] = await Promise.all([
       db
         .select({ plan: users.plan })
         .from(users)
@@ -73,7 +72,6 @@ export const getWalletForUser = cache(
     ]);
 
     return {
-      balanceToman,
       plan: planRow[0]?.plan ?? "payg",
       ledger,
     };

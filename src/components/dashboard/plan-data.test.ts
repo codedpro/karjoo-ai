@@ -1,9 +1,10 @@
 /**
  * تست‌های لایه‌ی وضعیتِ پلنِ کاربر (`plan-data.ts`) — Track A.
  *
- * DB، هسته‌ی موجودی (getBalance) و شمارشِ اپلای (countAppliesToday) mock می‌شوند —
- * هیچ DB/شبکه‌ی زنده. تمرکز:
+ * DB، کیف‌پولِ واحدِ 1xai (getUnifiedBalance) و شمارشِ اپلای (countAppliesToday) mock
+ * می‌شوند — هیچ DB/شبکه‌ی زنده. تمرکز:
  *   • نرمال‌سازیِ پلنِ تاریخی (payg→free) در planKey.
+ *   • موجودی = availableTomanِ کیف‌پولِ واحد؛ svc خطادار → ۰ (نمایشی، نه fail-closed).
  *   • وضعیتِ گرنتِ ماهِ جاری از روی وجود/نبودِ ردیفِ دفترِ 'grant' (بدونِ نوشتن).
  *   • پلنِ نامحدود (pro/…): سهمیه null و *بدونِ* کوئریِ شمارشِ اپلای (مسیرِ ارزان).
  *   • پلنِ Free: سهمیه ۱۰۰ و باقی‌مانده درست محاسبه می‌شود.
@@ -15,7 +16,7 @@ const h = vi.hoisted(() => {
   return { selectResults };
 });
 
-vi.mock("@/lib/billing/wallet", () => ({ getBalance: vi.fn() }));
+vi.mock("@/lib/billing/unified", () => ({ getUnifiedBalance: vi.fn() }));
 vi.mock("@/lib/billing/apply-quota", () => ({ countAppliesToday: vi.fn() }));
 vi.mock("@/db", () => ({
   db: {
@@ -33,15 +34,26 @@ vi.mock("@/db", () => ({
   },
 }));
 
-import { getBalance } from "@/lib/billing/wallet";
+import { getUnifiedBalance } from "@/lib/billing/unified";
 import { countAppliesToday } from "@/lib/billing/apply-quota";
 import { getUserPlanStatus } from "@/components/dashboard/plan-data";
 
-const getBalanceMock = vi.mocked(getBalance);
+const getUnifiedBalanceMock = vi.mocked(getUnifiedBalance);
 const countAppliesMock = vi.mocked(countAppliesToday);
 
 function pushSelect(rows: unknown[]) {
   h.selectResults.push(rows);
+}
+
+/** موجودیِ واحدِ جعلی — فقط availableToman برای نمایش مهم است. */
+function poolBalance(availableToman: number) {
+  return {
+    balanceToman: availableToman,
+    heldToman: 0,
+    availableToman,
+    isActive: true,
+    unlimited: false,
+  };
 }
 
 // زمانی قطعی برای period (UTC) — ۲۰۲۶-۰۶.
@@ -56,7 +68,7 @@ describe("getUserPlanStatus", () => {
   it("Free با گرنتِ اعمال‌نشده: سهمیه ۱۰۰، باقی‌مانده درست، اعتبار ۰", async () => {
     pushSelect([{ plan: "free" }]); // readRawPlan
     pushSelect([]); // readGrantApplied → ردیفِ گرنت نیست
-    getBalanceMock.mockResolvedValue(0);
+    getUnifiedBalanceMock.mockResolvedValue(poolBalance(0));
     countAppliesMock.mockResolvedValue(7);
 
     const status = await getUserPlanStatus("user-1", NOW);
@@ -74,7 +86,7 @@ describe("getUserPlanStatus", () => {
   it("پلنِ تاریخیِ payg به free نرمال می‌شود", async () => {
     pushSelect([{ plan: "payg" }]);
     pushSelect([]);
-    getBalanceMock.mockResolvedValue(5_000);
+    getUnifiedBalanceMock.mockResolvedValue(poolBalance(5_000));
     countAppliesMock.mockResolvedValue(0);
 
     const status = await getUserPlanStatus("user-1", NOW);
@@ -85,7 +97,7 @@ describe("getUserPlanStatus", () => {
   it("pro: سهمیه نامحدود (null) و هیچ کوئریِ شمارشِ اپلای زده نمی‌شود", async () => {
     pushSelect([{ plan: "pro" }]);
     pushSelect([{ id: "ledger-1" }]); // گرنتِ این ماه قبلاً اعمال شده
-    getBalanceMock.mockResolvedValue(120_000);
+    getUnifiedBalanceMock.mockResolvedValue(poolBalance(120_000));
 
     const status = await getUserPlanStatus("user-1", NOW);
     expect(status.planKey).toBe("pro");
@@ -93,15 +105,16 @@ describe("getUserPlanStatus", () => {
     expect(status.apply.usedToday).toBe(0);
     expect(status.apply.remaining).toBeNull();
     expect(status.grant.granted).toBe(true);
-    expect(status.grant.amountToman).toBe(100_000);
+    // پس از اتحاد با 1xai هیچ اعتبارِ ماهانه‌ای وجود ندارد — monthlyCreditToman همه‌جا ۰.
+    expect(status.grant.amountToman).toBe(0);
     // مسیرِ ارزانِ پلنِ نامحدود: شمارشِ اپلای صدا نمی‌شود.
     expect(countAppliesMock).not.toHaveBeenCalled();
   });
 
-  it("موجودیِ خطادار → ۰ (هرگز throw نمی‌کند)", async () => {
+  it("کیف‌پولِ واحدِ خطادار → ۰ (نمایشی؛ هرگز throw نمی‌کند)", async () => {
     pushSelect([{ plan: "free" }]);
     pushSelect([]);
-    getBalanceMock.mockRejectedValue(new Error("db down"));
+    getUnifiedBalanceMock.mockRejectedValue(new Error("svc down"));
     countAppliesMock.mockResolvedValue(0);
 
     const status = await getUserPlanStatus("user-1", NOW);
@@ -111,7 +124,7 @@ describe("getUserPlanStatus", () => {
   it("کاربرِ یافت‌نشده → پلنِ پیش‌فرضِ free", async () => {
     pushSelect([]); // readRawPlan → ردیفی نیست
     pushSelect([]);
-    getBalanceMock.mockResolvedValue(0);
+    getUnifiedBalanceMock.mockResolvedValue(poolBalance(0));
     countAppliesMock.mockResolvedValue(0);
 
     const status = await getUserPlanStatus("user-1", NOW);

@@ -1,38 +1,45 @@
 /**
  * تست‌های هندلرهای `/api/wallet`, `/api/wallet/topup`, `/api/usage` (Track B).
  *
- * نشستِ وب (getCurrentUser)، هسته‌ی بیلینگ (getBalance/credit) و DB کاملاً mock می‌شوند
- * — هیچ DB/شبکه‌ی زنده (قاعده‌ی پروژه). تمرکزِ بحرانی:
+ * نشستِ وب (getCurrentUser)، کیف‌پولِ واحدِ 1xai (getUnifiedBalance) و DB کاملاً mock
+ * می‌شوند — هیچ DB/شبکه‌ی زنده (قاعده‌ی پروژه). تمرکزِ بحرانی:
  *   • همه‌ی مسیرها بدونِ نشست → ۴۰۱ (gate شده).
- *   • قاعده‌ی ۴ (دادهٔ هر کاربر فقط برای همان کاربر): کوئری/شارژ همیشه به userIdِ نشست
+ *   • قاعده‌ی ۴ (دادهٔ هر کاربر فقط برای همان کاربر): کوئری همیشه به userIdِ نشست
  *     مقید است، نه از بدنه/کوئری؛ هرگز userId از کلاینت پذیرفته نمی‌شود.
- *   • topup: اعتبارسنجیِ مبلغ (کمینه/بیشینه/غیرعدد → ۴۰۰)؛ مبلغِ معتبر → credit(topup).
- *   • usage/wallet: صفحه‌بندی/فیلتر اعتبارسنجی می‌شود و به DB مقید به userId می‌رسد.
+ *   • wallet: موجودی = availableTomanِ کیف‌پولِ واحد؛ svc/گره در دسترس نبود → ۵۰۳
+ *     (fail-closed — هرگز موجودیِ جعلی)؛ دفترِ محلی به‌عنوانِ تاریخچه می‌ماند.
+ *   • topup: *بازنشسته* — پس از احراز (۴۰۱ اول)، همیشه ۴۱۰ + topupUrlِ 1xai.
+ *   • usage: صفحه‌بندی/فیلتر اعتبارسنجی می‌شود و به DB مقید به userId می‌رسد.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => {
   // صف‌های نتیجه‌ی select به ترتیبِ فراخوانی (هر route چند select می‌زند).
   const selectResults: unknown[][] = [];
-  // کارتِ مقصدِ کارت‌به‌کارت: پیش‌فرض پیکربندی‌شده؛ یک تست null می‌کند تا ۵۰۳ را بسنجد.
-  const card: { info: { cardNumber: string; holder: string } | null } = {
-    info: { cardNumber: "6037-9900-0000-0000", holder: "کارجو" },
-  };
-  return { selectResults, card };
+  return { selectResults };
 });
 
 vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
-vi.mock("@/lib/billing/wallet", () => ({
-  getBalance: vi.fn(),
-  credit: vi.fn(),
-}));
-// کارتِ مقصد را کنترل‌پذیر می‌کنیم (بقیه‌ی env واقعی می‌ماند).
-vi.mock("@/lib/env", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/env")>();
-  return { ...actual, cardToCardInfo: () => h.card.info };
+// کیف‌پولِ واحد: getUnifiedBalance جعلی + همان کلاسِ OnexaiLinkError برای instanceof.
+vi.mock("@/lib/billing/unified", () => {
+  class OnexaiLinkError extends Error {
+    constructor(message = "link failed") {
+      super(message);
+      this.name = "OnexaiLinkError";
+    }
+  }
+  return { getUnifiedBalance: vi.fn(), OnexaiLinkError };
 });
-// هسته‌ی پرداخت mock می‌شود: topup فقط یک درخواستِ pending می‌سازد (هیچ creditی).
-vi.mock("@/lib/billing/payments", () => ({ createPaymentRequest: vi.fn() }));
+// کلاینتِ svc فقط برای کلاسِ خطا mock می‌شود (بدونِ env/شبکه).
+vi.mock("@/lib/onexai/svc", () => {
+  class OnexaiSvcUnavailableError extends Error {
+    constructor(message = "svc unavailable") {
+      super(message);
+      this.name = "OnexaiSvcUnavailableError";
+    }
+  }
+  return { OnexaiSvcUnavailableError };
+});
 vi.mock("@/db", () => ({
   db: {
     select: vi.fn(() => {
@@ -58,20 +65,29 @@ vi.mock("@/db", () => ({
 
 import { db } from "@/db";
 import { getCurrentUser } from "@/lib/auth/http";
-import { credit, getBalance } from "@/lib/billing/wallet";
-import { createPaymentRequest } from "@/lib/billing/payments";
+import { getUnifiedBalance, OnexaiLinkError } from "@/lib/billing/unified";
+import { OnexaiSvcUnavailableError } from "@/lib/onexai/svc";
 
 import { GET as walletGET } from "@/app/api/wallet/route";
 import { POST as topupPOST } from "@/app/api/wallet/topup/route";
 import { GET as usageGET } from "@/app/api/usage/route";
 
 const getCurrentUserMock = vi.mocked(getCurrentUser);
-const getBalanceMock = vi.mocked(getBalance);
-const creditMock = vi.mocked(credit);
-const createPaymentRequestMock = vi.mocked(createPaymentRequest);
+const getUnifiedBalanceMock = vi.mocked(getUnifiedBalance);
 const dbSelectMock = vi.mocked(db.select);
 
 const USER = { id: "user-1", phone: "0912", isActive: true } as never;
+
+/** موجودیِ واحدِ جعلی — گیت/نمایش روی availableToman است. */
+function poolBalance(availableToman: number) {
+  return {
+    balanceToman: availableToman,
+    heldToman: 0,
+    availableToman,
+    isActive: true,
+    unlimited: false,
+  };
+}
 
 function pushSelect(rows: unknown[]) {
   h.selectResults.push(rows);
@@ -81,25 +97,9 @@ function getReq(url: string) {
   return new Request(url, { method: "GET" });
 }
 
-function jsonReq(url: string, body: unknown) {
-  return new Request(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
   h.selectResults.length = 0;
-  h.card.info = { cardNumber: "6037-9900-0000-0000", holder: "کارجو" };
-  createPaymentRequestMock.mockResolvedValue({
-    id: "pr-1",
-    amountToman: 100_000,
-    status: "pending",
-    referenceCode: "12345",
-    createdAt: new Date(0),
-  } as never);
 });
 
 /* ─────────────────────────────  GET /api/wallet  ───────────────────────────── */
@@ -109,12 +109,12 @@ describe("GET /api/wallet", () => {
     getCurrentUserMock.mockResolvedValue(null);
     const res = await walletGET(getReq("https://k.app/api/wallet"));
     expect(res.status).toBe(401);
-    expect(getBalanceMock).not.toHaveBeenCalled();
+    expect(getUnifiedBalanceMock).not.toHaveBeenCalled();
   });
 
-  it("موجودی + پلن + دفتر را برمی‌گرداند (مقید به userIdِ نشست)", async () => {
+  it("موجودیِ واحد (availableToman) + پلن + دفتر را برمی‌گرداند (مقید به userIdِ نشست)", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
-    getBalanceMock.mockResolvedValue(120_000);
+    getUnifiedBalanceMock.mockResolvedValue(poolBalance(120_000));
     pushSelect([{ plan: "payg" }]); // select پلن
     pushSelect([
       {
@@ -126,7 +126,7 @@ describe("GET /api/wallet", () => {
         description: "شارژ",
         createdAt: new Date("2026-06-30"),
       },
-    ]); // select دفتر
+    ]); // select دفتر (تاریخچه‌ی محلی)
 
     const res = await walletGET(getReq("https://k.app/api/wallet"));
     expect(res.status).toBe(200);
@@ -136,19 +136,44 @@ describe("GET /api/wallet", () => {
     expect(body.ledger).toHaveLength(1);
     expect(body.ledger[0].kind).toBe("topup");
     // موجودی با userIdِ نشست خوانده شد (نه از کوئری).
-    expect(getBalanceMock).toHaveBeenCalledWith("user-1");
+    expect(getUnifiedBalanceMock).toHaveBeenCalledWith("user-1");
+  });
+
+  it("svcِ 1xai در دسترس نیست → ۵۰۳ (هرگز موجودیِ جعلی)", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    getUnifiedBalanceMock.mockRejectedValue(new OnexaiSvcUnavailableError());
+    const res = await walletGET(getReq("https://k.app/api/wallet"));
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.error).toContain("1xai");
+    // هیچ select پلن/دفتری پس از شکستِ موجودی زده نشد.
+    expect(dbSelectMock).not.toHaveBeenCalled();
+  });
+
+  it("گره به استخر برقرار نشد (OnexaiLinkError) → ۵۰۳", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    getUnifiedBalanceMock.mockRejectedValue(new OnexaiLinkError("ایمیل ندارد"));
+    const res = await walletGET(getReq("https://k.app/api/wallet"));
+    expect(res.status).toBe(503);
+  });
+
+  it("خطای ناشناخته‌ی موجودی → ۵۰۰ (نه ۵۰۳ — فقط خطاهای typed نگاشت می‌شوند)", async () => {
+    getCurrentUserMock.mockResolvedValue(USER);
+    getUnifiedBalanceMock.mockRejectedValue(new Error("boom"));
+    const res = await walletGET(getReq("https://k.app/api/wallet"));
+    expect(res.status).toBe(500);
   });
 
   it("ledgerLimit نامعتبر (>۵۰) → ۴۰۰", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
     const res = await walletGET(getReq("https://k.app/api/wallet?ledgerLimit=999"));
     expect(res.status).toBe(400);
-    expect(getBalanceMock).not.toHaveBeenCalled();
+    expect(getUnifiedBalanceMock).not.toHaveBeenCalled();
   });
 
   it("پلنِ پیش‌فرض payg اگر ردیفِ کاربر یافت نشد", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
-    getBalanceMock.mockResolvedValue(0);
+    getUnifiedBalanceMock.mockResolvedValue(poolBalance(0));
     pushSelect([]); // پلن نیست
     pushSelect([]); // دفتر خالی
     const res = await walletGET(getReq("https://k.app/api/wallet"));
@@ -162,82 +187,23 @@ describe("GET /api/wallet", () => {
 
 /* ─────────────────────────  POST /api/wallet/topup  ────────────────────────── */
 
-describe("POST /api/wallet/topup", () => {
-  it("بدونِ نشست → ۴۰۱ و هیچ درخواستی", async () => {
+describe("POST /api/wallet/topup (بازنشسته — ۴۱۰)", () => {
+  it("بدونِ نشست → ۴۰۱ (احراز قبل از ۴۱۰)", async () => {
     getCurrentUserMock.mockResolvedValue(null);
-    const res = await topupPOST(jsonReq("https://k.app/api/wallet/topup", { amountToman: 100_000 }));
+    const res = await topupPOST();
     expect(res.status).toBe(401);
-    expect(createPaymentRequestMock).not.toHaveBeenCalled();
   });
 
-  it("کارتِ مقصد پیکربندی‌نشده → ۵۰۳ و هیچ درخواستی", async () => {
-    h.card.info = null;
+  it("با نشست → همیشه ۴۱۰ + پیام و topupUrlِ 1xai", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
-    const res = await topupPOST(
-      jsonReq("https://k.app/api/wallet/topup", { amountToman: 100_000, referenceCode: "12345" }),
-    );
-    expect(res.status).toBe(503);
-    expect(createPaymentRequestMock).not.toHaveBeenCalled();
-  });
-
-  it("مبلغ + کدِ پیگیریِ معتبر → درخواستِ pending (بدونِ credit) و ۲۰۱", async () => {
-    getCurrentUserMock.mockResolvedValue(USER);
-
-    const res = await topupPOST(
-      jsonReq("https://k.app/api/wallet/topup", { amountToman: 100_000, referenceCode: "12345" }),
-    );
-    expect(res.status).toBe(201);
+    const res = await topupPOST();
+    expect(res.status).toBe(410);
     const body = await res.json();
-    expect(body.ok).toBe(true);
-    expect(body.pending).toBe(true);
-    expect(body.request.status).toBe("pending");
-    expect(body.card).toBeTruthy();
-
-    // createPaymentRequest با userIdِ نشست + kind='topup' صدا شد (نه از بدنه)؛ هیچ credit.
-    expect(createPaymentRequestMock).toHaveBeenCalledTimes(1);
-    const [userId, input] = createPaymentRequestMock.mock.calls[0];
-    expect(userId).toBe("user-1");
-    expect(input.kind).toBe("topup");
-    expect(input.amountToman).toBe(100_000);
-    expect(input.referenceCode).toBe("12345");
-    expect(creditMock).not.toHaveBeenCalled();
-  });
-
-  it("مبلغِ زیرِ کمینه → ۴۰۰ و هیچ creditی", async () => {
-    getCurrentUserMock.mockResolvedValue(USER);
-    const res = await topupPOST(jsonReq("https://k.app/api/wallet/topup", { amountToman: 500 }));
-    expect(res.status).toBe(400);
-    expect(createPaymentRequestMock).not.toHaveBeenCalled();
-  });
-
-  it("مبلغِ بالای بیشینه → ۴۰۰", async () => {
-    getCurrentUserMock.mockResolvedValue(USER);
-    const res = await topupPOST(
-      jsonReq("https://k.app/api/wallet/topup", { amountToman: 999_999_999 }),
-    );
-    expect(res.status).toBe(400);
-    expect(createPaymentRequestMock).not.toHaveBeenCalled();
-  });
-
-  it("مبلغِ غیرعدد → ۴۰۰", async () => {
-    getCurrentUserMock.mockResolvedValue(USER);
-    const res = await topupPOST(
-      jsonReq("https://k.app/api/wallet/topup", { amountToman: "abc" }),
-    );
-    expect(res.status).toBe(400);
-    expect(createPaymentRequestMock).not.toHaveBeenCalled();
-  });
-
-  it("بدنه‌ی JSON نامعتبر → ۴۰۰", async () => {
-    getCurrentUserMock.mockResolvedValue(USER);
-    const req = new Request("https://k.app/api/wallet/topup", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{ not json",
-    });
-    const res = await topupPOST(req);
-    expect(res.status).toBe(400);
-    expect(createPaymentRequestMock).not.toHaveBeenCalled();
+    expect(body.error).toBe("شارژ از داشبوردِ 1xai انجام می‌شود");
+    expect(body.topupUrl).toBe("https://1xai.ir/topup");
+    // هیچ حرکتی روی پول/DB — کارجو دیگر پول نمی‌گیرد.
+    expect(getUnifiedBalanceMock).not.toHaveBeenCalled();
+    expect(dbSelectMock).not.toHaveBeenCalled();
   });
 });
 

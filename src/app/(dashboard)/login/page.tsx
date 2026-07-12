@@ -1,9 +1,11 @@
 /**
- * صفحه‌ی ورود — قابِ سبکِ RTL با تنها یک دکمه: «ورود با گوگل».
+ * صفحه‌ی ورود — قابِ سبکِ RTL با دو راه: «ورود با گوگل» و ایمیل/گذرواژه‌ی 1xai.
  *
- * Server component (بدونِ JSِ کلاینت): دکمه صرفاً یک لینکِ `<a>` به اندپوینتِ شروعِ
- * جریانِ OAuth (`/api/auth/google`) است؛ همان‌جا state ساخته و کاربر به Google هدایت
- * می‌شود، و بازگشت از کال‌بک کوکیِ نشست را ست می‌کند.
+ * Server component: دکمه‌ی گوگل صرفاً یک لینکِ `<a>` به اندپوینتِ شروعِ جریانِ OAuth
+ * (`/api/auth/google`) است؛ همان‌جا state ساخته و کاربر به Google هدایت می‌شود، و
+ * بازگشت از کال‌بک کوکیِ نشست را ست می‌کند. فرمِ ایمیل/گذرواژه (جزیره‌ی کلاینتیِ
+ * PasswordLoginForm) همان حسابِ استخرِ مشترکِ 1xai را می‌سنجد — حسابِ کارجو و 1xAi
+ * یکی است؛ ساختِ حساب و بازیابیِ گذرواژه در خودِ 1xai انجام می‌شود.
  *
  *   • اگر کاربر از پیش نشستِ معتبر دارد → مستقیم به /dashboard (تا فرمِ ورود را نبیند).
  *   • `?error=<code>` (بازگشتِ ناموفق از OAuth) به یک بنرِ فارسیِ دوستانه نگاشت می‌شود.
@@ -16,6 +18,7 @@ import { Logo } from "@/components/brand/logo";
 import { IconArrowStart } from "@/components/dashboard/icons";
 import { loginErrorMessage } from "@/components/dashboard/login-error";
 import { getDashboardUser } from "@/components/dashboard/session";
+import { PasswordLoginForm } from "./password-form";
 
 // به DB دست می‌زند (راستی‌آزماییِ نشست) → اجرای Node.
 export const runtime = "nodejs";
@@ -54,7 +57,8 @@ export default async function LoginPage({
         <div className="mt-8 rounded-3xl border border-border bg-card p-7 shadow-sm sm:p-8">
           <h1 className="text-xl font-extrabold">ورود به داشبورد</h1>
           <p className="mt-1.5 text-sm text-muted">
-            با حساب گوگل خود وارد شوید؛ اگر حساب ندارید، همین‌جا ساخته می‌شود.
+            با حساب گوگل یا ایمیل/گذرواژه‌ی 1xai وارد شوید؛ اگر حساب ندارید، همین‌جا
+            ساخته می‌شود.
           </p>
 
           {errorMessage ? (
@@ -74,6 +78,41 @@ export default async function LoginPage({
             <GoogleGlyph />
             ورود با گوگل
           </a>
+
+          {/* جداکننده‌ی «یا» بینِ گوگل و فرمِ ایمیل/گذرواژه. */}
+          <div
+            aria-hidden="true"
+            className="mt-6 flex items-center gap-3 text-xs font-bold text-muted"
+          >
+            <span className="h-px flex-1 bg-border" />
+            یا
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          {/* فرمِ ایمیل/گذرواژه — همان حسابِ استخرِ مشترکِ 1xai (جزیره‌ی کلاینتی). */}
+          <PasswordLoginForm />
+
+          <p className="mt-3 text-center text-xs text-muted">
+            حسابِ کارجو و 1xAi یکی است.
+          </p>
+          <p className="mt-2 flex items-center justify-center gap-4 text-xs">
+            <a
+              href="https://1xai.ir/register"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted hover:text-foreground"
+            >
+              ساختِ حساب در 1xai ↗
+            </a>
+            <a
+              href="https://1xai.ir/forgot"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted hover:text-foreground"
+            >
+              فراموشیِ گذرواژه ↗
+            </a>
+          </p>
 
           <p className="mt-4 text-center text-xs text-muted">
             با ورود، شرایطِ استفاده و حریمِ خصوصیِ کارجو را می‌پذیرید.

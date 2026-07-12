@@ -3,15 +3,18 @@ import "server-only";
 /**
  * مسیرهای پلنِ کاربرِ احرازشده (نشستِ وب):
  *   • GET  /api/me/plan — پلنِ فعلی + وضعیتِ گرنتِ ماهِ جاری + اپلای امروز/سهمیه + موجودی.
- *   • POST /api/me/plan — تغییرِ پلن (DEV: مستقیم users.plan را ست می‌کند و در صورتِ
- *     ارتقا grantMonthlyCredits را اعمال می‌کند؛ پرداختِ واقعی یک TODO seam است).
+ *   • POST /api/me/plan — تغییرِ پلن. پایین‌آوردن/همان پلن فوری اعمال می‌شود؛ *ارتقا*
+ *     قیمتِ پلن را همان لحظه از کیف‌پولِ واحدِ 1xai کسر می‌کند (debitUnified، idempotent
+ *     با referenceِ پایدارِ `plan:{userId}:{plan}:{YYYY-MM}`) و سپس users.plan ست می‌شود.
+ *     هیچ درخواستِ pending/تأییدِ ادمین/گرنتِ ماهانه‌ای دیگر وجود ندارد — پلن = استحقاق + قیمت.
+ *
+ * ترتیبِ پول (بحرانی): اول debit، بعد ثبتِ پلن. اگر ثبتِ پلن پس از debitِ موفق شکست
+ * بخورد، بلند لاگ می‌کنیم و خطا بالا می‌رود — retryِ کاربر با همان reference بی‌اثرِ
+ * مالی است (idempotent سمتِ 1xai) و فقط پلن را ست می‌کند.
  *
  * امنیت (قاعده‌ی ۴ CONTEXT — دادهٔ هر کاربر فقط برای همان کاربر): کاربرِ هدف همیشه از
  * کوکیِ نشست گرفته می‌شود، نه از بدنه/کوئری؛ بدنه فقط کلیدِ پلنِ مقصد را دارد و با zod
  * اعتبارسنجی می‌شود. هیچ userId از کلاینت پذیرفته نمی‌شود.
- *
- * توجه: این فایل از فایل‌های مالکیتیِ Foundation نیست؛ صرفاً مصرف‌کننده‌ی
- * plans.ts/grants.ts/apply-quota.ts/ai-budget.ts است (Track A).
  */
 import { eq } from "drizzle-orm";
 
@@ -22,12 +25,17 @@ import { changePlanBodySchema } from "@/lib/api/plan-schemas";
 import { getCurrentUser } from "@/lib/auth/http";
 import { getUserPlanStatus } from "@/components/dashboard/plan-data";
 import { planFor, type PlanKey } from "@/lib/billing/plans";
-import { cardToCardInfo } from "@/lib/env";
-import { createPaymentRequest } from "@/lib/billing/payments";
+import { periodMonthOf } from "@/lib/billing/ai-budget";
+import { InsufficientBalanceError } from "@/lib/billing/errors";
+import { debitUnified, OnexaiLinkError } from "@/lib/billing/unified";
+import { OnexaiSvcUnavailableError } from "@/lib/onexai/svc";
 
 // به DB و node API (cookies) دست می‌زند → اجرای Node و رندرِ پویا.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** نشانیِ یکتای شارژِ کیف‌پولِ واحد — تنها جایی که پول واردِ خانواده می‌شود. */
+const ONEXAI_TOPUP_URL = "https://1xai.ir/topup";
 
 /* ─────────────────────────────  GET /api/me/plan  ───────────────────────────── */
 
@@ -86,36 +94,48 @@ export async function POST(request: Request): Promise<Response> {
       return json({ ok: true, upgraded: false, plan: target, definition: targetDef });
     }
 
-    // ۵) ارتقا → پرداختِ کارت‌به‌کارت لازم است. پلن *تغییر نمی‌کند*؛ یک درخواستِ pending
-    //    ساخته می‌شود و پس از تأییدِ ادمین، پلن ارتقا و گرنتِ ماهانه اعمال می‌شود.
-    const card = cardToCardInfo();
-    if (!card) {
-      return errorJson("پرداختِ کارت‌به‌کارت هنوز پیکربندی نشده است.", 503);
+    // ۵) ارتقا → کسرِ فوریِ قیمتِ پلن از کیف‌پولِ واحدِ 1xai. reference برای «همین
+    //    رویداد» پایدار است (کاربر+پلن+ماه؛ بدونِ Date.now())، پس retry بی‌اثرِ مالی است.
+    const period = periodMonthOf(Date.now());
+    const reference = `plan:${user.id}:${target}:${period}`;
+    let balanceToman: number;
+    try {
+      const move = await debitUnified(user.id, targetDef.priceToman, reference);
+      balanceToman = move.balanceToman;
+    } catch (err) {
+      if (err instanceof InsufficientBalanceError) {
+        // موجودیِ واحد کافی نیست → ۴۰۲ + نشانیِ شارژ (فقط در داشبوردِ 1xai).
+        return json({ error: err.message, topupUrl: ONEXAI_TOPUP_URL }, 402);
+      }
+      if (err instanceof OnexaiSvcUnavailableError || err instanceof OnexaiLinkError) {
+        // گیتِ پول fail-closed است: svc/گره برقرار نشد → ۵۰۳، هیچ ارتقایی رخ نمی‌دهد.
+        return errorJson("کیف‌پولِ 1xai در دسترس نیست", 503);
+      }
+      throw err;
     }
 
-    const req = await createPaymentRequest(user.id, {
-      kind: "plan",
-      targetPlan: target as PlanKey,
-      amountToman: targetDef.priceToman,
-    });
+    // ۶) debit موفق بود → حالا پلن ست می‌شود. اگر این نوشتن شکست بخورد، *بلند* لاگ
+    //    می‌کنیم: پول کسر شده ولی پلن ست نشده — retryِ کاربر با همان reference فقط
+    //    پلن را ست می‌کند (debit تکرار نمی‌شود؛ idempotent سمتِ 1xai).
+    try {
+      await db
+        .update(users)
+        .set({ plan: target, updatedAt: new Date() })
+        .where(eq(users.id, user.id));
+    } catch (err) {
+      console.error(
+        `[billing] CRITICAL: debitِ ارتقا موفق بود (ref=karjoo:${reference}, ${targetDef.priceToman} تومان) اما ثبتِ users.plan شکست خورد — retry امن است:`,
+        err,
+      );
+      throw err;
+    }
 
-    return json(
-      {
-        ok: true,
-        pending: true,
-        upgraded: false,
-        targetPlan: target,
-        definition: targetDef,
-        request: {
-          id: req.id,
-          amountToman: req.amountToman,
-          status: req.status,
-          targetPlan: req.targetPlan,
-          createdAt: req.createdAt,
-        },
-        card,
-      },
-      201,
-    );
+    return json({
+      ok: true,
+      upgraded: true,
+      plan: target,
+      definition: targetDef,
+      balanceToman,
+    });
   });
 }

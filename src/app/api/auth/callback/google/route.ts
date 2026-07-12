@@ -107,6 +107,13 @@ export async function GET(request: Request): Promise<Response> {
       avatarUrl: profile.picture ?? null,
     });
 
+    // کاربرِ غیرفعال/بن‌شده هرگز نشست نمی‌گیرد — هم‌رفتار با مسیرِ گذرواژه. گرچه
+    // گیت‌های پایین‌دست (getUserFromToken) کوکیِ چنین کاربری را رد می‌کنند، صدورِ نشست
+    // برای حسابِ غیرفعال ناسازگاریِ بینِ دو مسیرِ ورود بود.
+    if (user.isActive === false) {
+      return redirect("/login?error=oauth");
+    }
+
     // ۵) صدورِ نشستِ وب + نشاندنِ کوکیِ نشست (userAgent برای رصد/ابطال).
     const userAgent = request.headers.get("user-agent");
     const { token } = await issueSession(user.id, "web", { userAgent });

@@ -62,24 +62,13 @@ export function PlanStatusPanel({ status }: { status: UserPlanStatus }) {
           </p>
         </StatCell>
 
-        {/* اعتبارِ ماهانه‌ی این ماه */}
-        <StatCell label="اعتبارِ ماهانه‌ی این ماه">
+        {/* هوش مصنوعی — کیف‌پولِ واحدِ 1xAi؛ بدونِ اعتبارِ ماهانه (پلن = استحقاق + قیمت) */}
+        <StatCell label="هوش مصنوعی">
           <p className="text-sm font-bold">
-            {status.grant.amountToman <= 0 ? (
-              <span className="text-muted">بدونِ اعتبار</span>
-            ) : status.grant.granted ? (
-              <span className="text-emerald-600 dark:text-emerald-400">
-                اعمال‌شده (
-                <span className="ltr-nums whitespace-nowrap">
-                  {toFaDigits(formatToman(status.grant.amountToman))}
-                </span>{" "}
-                تومان)
-              </span>
-            ) : (
-              <span className="text-amber-600 dark:text-amber-400">
-                در انتظارِ اعمال
-              </span>
-            )}
+            به‌میزانِ مصرف{" "}
+            <span className="text-xs font-normal text-muted">
+              — از کیف‌پولِ واحدِ 1xAi
+            </span>
           </p>
         </StatCell>
 

@@ -43,11 +43,15 @@ export interface PlanDefinition {
 }
 
 /**
- * تعریفِ پلن‌ها — مرجعِ واحد (CONTEXT بخش C):
- *   • Free    = ۰        | بدونِ اعتبارِ AI | ۱۰۰ اپلای/روز | همه‌ی قابلیت‌های غیر-AI
- *   • Pro     = ۲۹۹۰۰۰   | +۱۰۰۰۰۰ اعتبارِ ماهانه | اپلای نامحدود (افزونه) | اعتبارِ بیشتر خریدنی
- *   • Max     = ۹۹۹۰۰۰   | +۵۰۰۰۰۰ اعتبار | نامحدود | ورکرِ auto-apply با ۱ IP
- *   • MaxPlus = ۱۹۹۰۰۰۰  | +۲۰۰۰۰۰۰ اعتبار | نامحدود | ۵ IPِ ورکر | تماسِ مستقیم
+ * تعریفِ پلن‌ها — مرجعِ واحد (پس از اتحاد با 1xAi):
+ * پلن = «استحقاق + قیمت». هیچ اعتبارِ کیف‌پولی‌ای اعطا نمی‌شود (monthlyCreditToman
+ * همه‌جا ۰ است و فقط برای سازگاریِ نوع/ماشینِ خفته‌ی grants مانده) — هوش مصنوعی برای
+ * *همه‌ی* پلن‌ها با نرخِ خودِ 1xai از کیف‌پولِ واحد مصرف می‌شود؛ ارزشِ پلن‌های پولی
+ * سهمیه/ورکر/پشتیبانی است:
+ *   • Free    = ۰        | ۱۰۰ اپلای/روز | همه‌ی قابلیت‌ها + AI به‌میزانِ مصرف
+ *   • Pro     = ۲۹۹۰۰۰   | اپلای نامحدود (افزونه)
+ *   • Max     = ۹۹۹۰۰۰   | نامحدود | ورکرِ auto-apply با ۱ IP (۲۴/۷)
+ *   • MaxPlus = ۱۹۹۰۰۰۰  | نامحدود | ۵ IPِ ورکر | تماسِ مستقیم
  */
 export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
   free: {
@@ -59,7 +63,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     workerIpLimit: 0,
     directContact: false,
     features: [
-      "همه‌ی قابلیت‌های غیر-هوش‌مصنوعی",
+      "همه‌ی قابلیت‌های پایه + هوش مصنوعی به‌میزانِ مصرف (کیف‌پولِ واحدِ 1xAi)",
       "۱۰۰ اپلای در روز",
       "آپلود رزومه و استخراج متن",
       "ایمپورت پروفایل از سایت‌های کاریابی",
@@ -69,43 +73,43 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     key: "pro",
     labelFa: "حرفه‌ای",
     priceToman: 299_000,
-    monthlyCreditToman: 100_000,
+    monthlyCreditToman: 0,
     applyQuotaPerDay: null,
     workerIpLimit: 0,
     directContact: false,
     features: [
-      "اعتبارِ ماهانه‌ی هوش مصنوعی ۱۰۰٬۰۰۰ تومان",
       "اپلای نامحدود از طریقِ افزونه",
-      "خریدِ اعتبارِ بیشتر",
+      "هوش مصنوعی با نرخِ خودِ 1xAi (بدونِ حاشیه‌ی کارجو)",
+      "اولویتِ پشتیبانی",
     ],
   },
   max: {
     key: "max",
     labelFa: "مکس",
     priceToman: 999_000,
-    monthlyCreditToman: 500_000,
+    monthlyCreditToman: 0,
     applyQuotaPerDay: null,
     workerIpLimit: 1,
     directContact: false,
     features: [
-      "اعتبارِ ماهانه‌ی هوش مصنوعی ۵۰۰٬۰۰۰ تومان",
       "اپلای نامحدود",
-      "اپلای خودکارِ ورکر با ۱ IP",
+      "اپلای خودکارِ ۲۴/۷ روی سرور (۱ IPِ ورکر)",
+      "هوش مصنوعی با نرخِ خودِ 1xAi",
     ],
   },
   maxplus: {
     key: "maxplus",
     labelFa: "مکس پلاس",
     priceToman: 1_990_000,
-    monthlyCreditToman: 2_000_000,
+    monthlyCreditToman: 0,
     applyQuotaPerDay: null,
     workerIpLimit: 5,
     directContact: true,
     features: [
-      "اعتبارِ ماهانه‌ی هوش مصنوعی ۲٬۰۰۰٬۰۰۰ تومان",
       "اپلای نامحدود",
-      "اپلای خودکارِ ورکر با ۵ IP",
+      "اپلای خودکارِ ۲۴/۷ با ۵ IPِ ورکر",
       "تماسِ مستقیم و پشتیبانیِ اختصاصی",
+      "هوش مصنوعی با نرخِ خودِ 1xAi",
     ],
   },
 };

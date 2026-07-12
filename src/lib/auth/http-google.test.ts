@@ -1,9 +1,11 @@
 /**
  * تست‌های واحدِ بخشِ «ورود با Google» در لایه‌ی HTTP (`@/lib/auth/http`):
  *   • findOrCreateUserByGoogle — پیدا با googleSub، fallback با email، ساختِ تازه، به‌روزرسانیِ پروفایل.
+ *   • گرهِ best-effort به استخرِ 1xai (linkOnexai) — فقط وقتی onexaiUserId خالی است؛ شکستش ورود را نمی‌شکند.
  *   • publicUser — شکلِ جدید (id/email/name/avatarUrl، بدونِ phone).
  *
- * DB کاملاً تزریق می‌شود (FakeAuthDb)؛ بدونِ شبکه/DB زنده.
+ * DB کاملاً تزریق می‌شود (FakeAuthDb)؛ بدونِ شبکه/DB زنده. `linkOnexai` هم همیشه تزریق
+ * می‌شود تا هیچ تستی به ensureOnexaiLink واقعی (و از آن‌جا به /svcِ 1xai) نرسد.
  */
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -20,12 +22,17 @@ const USER_COLS = {
   name: "name",
   avatar_url: "avatarUrl",
   is_active: "isActive",
+  onexai_user_id: "onexaiUserId",
+  onexai_api_key: "onexaiApiKey",
 };
 
 function makeDb(): { db: AuthDb; fake: FakeAuthDb } {
   const fake = new FakeAuthDb().register(users, USER_COLS);
   return { db: fake as unknown as AuthDb, fake };
 }
+
+/** linkOnexaiِ بی‌اثر — تا هیچ تستی سراغِ /svcِ واقعی نرود. */
+const noLink = async () => {};
 
 const IDENTITY = {
   sub: "google-sub-1",
@@ -41,7 +48,11 @@ beforeEach(() => {
 describe("findOrCreateUserByGoogle", () => {
   it("بارِ اول کاربر را می‌سازد (googleSub + email + name + avatar)", async () => {
     const { db, fake } = makeDb();
-    const user = await findOrCreateUserByGoogle(IDENTITY, { db, now: () => 1_000 });
+    const user = await findOrCreateUserByGoogle(IDENTITY, {
+      db,
+      now: () => 1_000,
+      linkOnexai: noLink,
+    });
 
     expect(user.googleSub).toBe(IDENTITY.sub);
     expect(user.email).toBe(IDENTITY.email);
@@ -52,18 +63,26 @@ describe("findOrCreateUserByGoogle", () => {
 
   it("بارِ دوم همان کاربر را با googleSub پیدا می‌کند (نه ساختِ دوباره)", async () => {
     const { db, fake } = makeDb();
-    const a = await findOrCreateUserByGoogle(IDENTITY, { db, now: () => 1_000 });
-    const b = await findOrCreateUserByGoogle(IDENTITY, { db, now: () => 2_000 });
+    const a = await findOrCreateUserByGoogle(IDENTITY, {
+      db,
+      now: () => 1_000,
+      linkOnexai: noLink,
+    });
+    const b = await findOrCreateUserByGoogle(IDENTITY, {
+      db,
+      now: () => 2_000,
+      linkOnexai: noLink,
+    });
     expect(a.id).toBe(b.id);
     expect(fake.rows(users)).toHaveLength(1);
   });
 
   it("name/avatar را در هر ورود به‌روزرسانی می‌کند", async () => {
     const { db, fake } = makeDb();
-    await findOrCreateUserByGoogle(IDENTITY, { db, now: () => 1_000 });
+    await findOrCreateUserByGoogle(IDENTITY, { db, now: () => 1_000, linkOnexai: noLink });
     const updated = await findOrCreateUserByGoogle(
       { ...IDENTITY, name: "Ali New", avatarUrl: "https://img/b.png" },
-      { db, now: () => 2_000 },
+      { db, now: () => 2_000, linkOnexai: noLink },
     );
     expect(updated.name).toBe("Ali New");
     expect(updated.avatarUrl).toBe("https://img/b.png");
@@ -75,7 +94,11 @@ describe("findOrCreateUserByGoogle", () => {
     // کاربری که قبلاً فقط با ایمیل شناخته شده (googleSub خالی).
     await db.insert(users).values({ email: IDENTITY.email }).returning();
 
-    const user = await findOrCreateUserByGoogle(IDENTITY, { db, now: () => 1_000 });
+    const user = await findOrCreateUserByGoogle(IDENTITY, {
+      db,
+      now: () => 1_000,
+      linkOnexai: noLink,
+    });
     expect(fake.rows(users)).toHaveLength(1);
     expect(user.googleSub).toBe(IDENTITY.sub);
     expect(user.email).toBe(IDENTITY.email);
@@ -86,62 +109,60 @@ describe("findOrCreateUserByGoogle", () => {
     const { db } = makeDb();
     const user = await findOrCreateUserByGoogle(
       { sub: "s2", email: "e2@e.com" },
-      { db, now: () => 1_000 },
+      { db, now: () => 1_000, linkOnexai: noLink },
     );
     expect(user.googleSub).toBe("s2");
     expect(user.name ?? null).toBeNull();
     expect(user.avatarUrl ?? null).toBeNull();
   });
 
-  it("اعتبارِ خوش‌آمد را فقط برای کاربرِ تازه‌ساخته‌شده اعطا می‌کند", async () => {
+  it("کاربرِ بدونِ گره (onexaiUserId خالی) → linkOnexai در هر ورود صدا زده می‌شود", async () => {
     const { db } = makeDb();
-    const calls: Array<{ userId: string; now: number }> = [];
-    const grantSignupCredit = async (userId: string, now: number) => {
-      calls.push({ userId, now });
+    const calls: string[] = [];
+    const linkOnexai = async (userId: string) => {
+      calls.push(userId);
     };
 
     const created = await findOrCreateUserByGoogle(IDENTITY, {
       db,
       now: () => 5_000,
-      grantSignupCredit,
+      linkOnexai,
     });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toEqual({ userId: created.id, now: 5_000 });
+    expect(calls).toEqual([created.id]);
 
-    // ورودِ دومِ همان کاربر (پیدا با googleSub) → دیگر اعتبار نمی‌گیرد.
-    await findOrCreateUserByGoogle(IDENTITY, {
-      db,
-      now: () => 6_000,
-      grantSignupCredit,
-    });
-    expect(calls).toHaveLength(1);
+    // ورودِ دوم — گره هنوز برقرار نشده (linkِ تستی چیزی ذخیره نمی‌کند) → دوباره تلاش.
+    await findOrCreateUserByGoogle(IDENTITY, { db, now: () => 6_000, linkOnexai });
+    expect(calls).toEqual([created.id, created.id]);
   });
 
-  it("fallback با email اعتبارِ خوش‌آمد نمی‌دهد (کاربرِ تازه نیست)", async () => {
+  it("کاربرِ از‌پیش‌گره‌خورده (onexaiUserId پُر) → linkOnexai صدا زده نمی‌شود", async () => {
     const { db } = makeDb();
-    await db.insert(users).values({ email: IDENTITY.email }).returning();
+    await db
+      .insert(users)
+      .values({ googleSub: IDENTITY.sub, email: IDENTITY.email, onexaiUserId: 42 })
+      .returning();
     const calls: string[] = [];
 
     await findOrCreateUserByGoogle(IDENTITY, {
       db,
       now: () => 1_000,
-      grantSignupCredit: async (userId) => {
+      linkOnexai: async (userId) => {
         calls.push(userId);
       },
     });
     expect(calls).toHaveLength(0);
   });
 
-  it("شکستِ اعتبارِ خوش‌آمد ورود را نمی‌شکند (best-effort)", async () => {
+  it("شکستِ گره به 1xai ورود را نمی‌شکند (best-effort)", async () => {
     const { db, fake } = makeDb();
     const user = await findOrCreateUserByGoogle(IDENTITY, {
       db,
       now: () => 1_000,
-      grantSignupCredit: async () => {
-        throw new Error("wallet down");
+      linkOnexai: async () => {
+        throw new Error("1xai down");
       },
     });
-    // با وجودِ شکستِ اعتبار، کاربر ساخته و برگردانده می‌شود.
+    // با وجودِ شکستِ گره، کاربر ساخته و برگردانده می‌شود.
     expect(user.googleSub).toBe(IDENTITY.sub);
     expect(fake.rows(users)).toHaveLength(1);
   });
@@ -158,6 +179,8 @@ describe("publicUser", () => {
       phone: null,
       fullName: null,
       plan: "free",
+      onexaiUserId: null,
+      onexaiApiKey: null,
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -170,6 +193,9 @@ describe("publicUser", () => {
     });
     // هرگز نباید phone فاش شود.
     expect(out).not.toHaveProperty("phone");
+    // و هرگز نباید کلید/شناسه‌ی 1xai فاش شود.
+    expect(out).not.toHaveProperty("onexaiApiKey");
+    expect(out).not.toHaveProperty("onexaiUserId");
   });
 
   it("فیلدهای خالی → null", () => {
@@ -182,6 +208,8 @@ describe("publicUser", () => {
       phone: null,
       fullName: null,
       plan: "free",
+      onexaiUserId: null,
+      onexaiApiKey: null,
       isActive: true,
       createdAt: new Date(),
       updatedAt: new Date(),

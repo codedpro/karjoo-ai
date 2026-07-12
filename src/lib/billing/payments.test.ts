@@ -1,25 +1,25 @@
 /**
- * تست‌های هسته‌ی پرداختِ کارت‌به‌کارت (payments.ts).
+ * تست‌های هسته‌ی پرداختِ کارت‌به‌کارت (payments.ts) — *در حالِ بازنشستگی*.
  *
  * تمرکزِ بحرانی (امنیت): اعتبار/پلن *فقط* در approvePaymentRequest (تأییدِ ادمین) تغییر
- * می‌کند، تأیید ایدمپوتنت است (درخواستِ approved دوباره credit نمی‌شود)، و رد فقط روی
- * درخواستِ pending اثر دارد. یک fake dbِ کوچک زنجیره‌ی Drizzle + transaction را تقلید می‌کند.
+ * می‌کند، تأیید ایدمپوتنت است، و رد فقط روی درخواستِ pending اثر دارد. با کیف‌پولِ
+ * واحدِ 1xai: تأییدِ topupِ تاریخی به کیف‌پولِ *واحد* (creditPool، با referenceِ
+ * idempotentِ karjoo:payment:<id>) واریز می‌شود — نه کیف‌پولِ محلیِ بازنشسته — و تأییدِ
+ * plan فقط users.plan را ست می‌کند (هیچ گرنتِ ماهانه‌ای). وابستگی‌های pool از طریقِ
+ * deps تزریق می‌شوند؛ یک fake dbِ کوچک زنجیره‌ی Drizzle + transaction را تقلید می‌کند.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/billing/wallet", () => ({ credit: vi.fn() }));
-vi.mock("@/lib/billing/grants", () => ({ grantMonthlyCredits: vi.fn() }));
-
-import { credit } from "@/lib/billing/wallet";
-import { grantMonthlyCredits } from "@/lib/billing/grants";
 import {
   approvePaymentRequest,
   createPaymentRequest,
   rejectPaymentRequest,
 } from "@/lib/billing/payments";
 
-const creditMock = vi.mocked(credit);
-const grantMock = vi.mocked(grantMonthlyCredits);
+/** موکِ واریزِ کیف‌پولِ واحد + گرهِ استخر — به‌جای mockِ ماژول، از deps تزریق می‌شوند. */
+const creditPoolMock = vi.fn();
+const ensureLinkMock = vi.fn();
+const POOL_DEPS = { creditPoolFn: creditPoolMock, ensureLinkFn: ensureLinkMock } as never;
 
 type Row = Record<string, unknown> & { status?: string };
 
@@ -77,8 +77,8 @@ function makeDb(initialRow: Row | null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  creditMock.mockResolvedValue({ balanceToman: 100_000, ledgerId: "l-1" });
-  grantMock.mockResolvedValue({ granted: true } as never);
+  ensureLinkMock.mockResolvedValue(72);
+  creditPoolMock.mockResolvedValue({ balanceToman: 150_000, already: false });
 });
 
 describe("payments — کارت‌به‌کارت", () => {
@@ -91,10 +91,10 @@ describe("payments — کارت‌به‌کارت", () => {
     );
     expect(r.status).toBe("pending");
     expect(r.amountToman).toBe(50_000);
-    expect(creditMock).not.toHaveBeenCalled();
+    expect(creditPoolMock).not.toHaveBeenCalled();
   });
 
-  it("approve(topup) → credit(topup) صدا می‌شود و وضعیت approved", async () => {
+  it("approve(topup تاریخی) → creditPoolِ کیف‌پولِ *واحد* با referenceِ idempotent و وضعیت approved", async () => {
     const { db } = makeDb({
       id: "pr-1",
       userId: "u1",
@@ -103,16 +103,20 @@ describe("payments — کارت‌به‌کارت", () => {
       status: "pending",
       targetPlan: null,
     });
-    const res = await approvePaymentRequest("pr-1", "admin", db as never);
+    const res = await approvePaymentRequest("pr-1", "admin", db as never, Date.now(), POOL_DEPS);
     expect(res.status).toBe("approved");
-    expect(creditMock).toHaveBeenCalledTimes(1);
-    const [uid, kind, amount] = creditMock.mock.calls[0];
-    expect(uid).toBe("u1");
-    expect(kind).toBe("topup");
-    expect(amount).toBe(50_000);
+    // پولِ واقعیِ کاربر باید جایی برود که گیت‌ها می‌خوانند: کیف‌پولِ واحدِ 1xai.
+    expect(ensureLinkMock).toHaveBeenCalledWith("u1", expect.anything());
+    expect(creditPoolMock).toHaveBeenCalledTimes(1);
+    expect(creditPoolMock).toHaveBeenCalledWith({
+      onexaiUserId: 72,
+      amountToman: 50_000,
+      kind: "topup",
+      reference: "karjoo:payment:pr-1",
+    });
   });
 
-  it("approve دوباره روی درخواستِ approved → already و بدونِ credit (ایدمپوتنت)", async () => {
+  it("approve دوباره روی درخواستِ approved → already و بدونِ هیچ واریزی (ایدمپوتنت)", async () => {
     const { db } = makeDb({
       id: "pr-1",
       userId: "u1",
@@ -120,13 +124,13 @@ describe("payments — کارت‌به‌کارت", () => {
       amountToman: 50_000,
       status: "approved",
     });
-    const res = await approvePaymentRequest("pr-1", "admin", db as never);
+    const res = await approvePaymentRequest("pr-1", "admin", db as never, Date.now(), POOL_DEPS);
     expect(res.status).toBe("already");
-    expect(creditMock).not.toHaveBeenCalled();
+    expect(creditPoolMock).not.toHaveBeenCalled();
   });
 
-  it("approve(plan) → بدونِ credit، گرنتِ ماهانه پس از commit اجرا می‌شود", async () => {
-    const { db } = makeDb({
+  it("approve(plan تاریخی) → فقط ثبتِ پلن؛ نه واریزی، نه گرنتِ ماهانه (حذف شده)", async () => {
+    const { db, state } = makeDb({
       id: "pr-1",
       userId: "u1",
       kind: "plan",
@@ -134,10 +138,11 @@ describe("payments — کارت‌به‌کارت", () => {
       amountToman: 299_000,
       status: "pending",
     });
-    const res = await approvePaymentRequest("pr-1", "admin", db as never);
+    const res = await approvePaymentRequest("pr-1", "admin", db as never, Date.now(), POOL_DEPS);
     expect(res.status).toBe("approved");
-    expect(creditMock).not.toHaveBeenCalled();
-    expect(grantMock).toHaveBeenCalledTimes(1);
+    expect(state.row?.status).toBe("approved");
+    // با کیف‌پولِ واحدِ 1xai هیچ اعتباری واریز نمی‌شود — پلن = استحقاق + قیمت.
+    expect(creditPoolMock).not.toHaveBeenCalled();
   });
 
   it("reject(pending) → rejected", async () => {
@@ -150,6 +155,6 @@ describe("payments — کارت‌به‌کارت", () => {
     });
     const res = await rejectPaymentRequest("pr-1", "admin", "دلیل", db as never);
     expect(res.status).toBe("rejected");
-    expect(creditMock).not.toHaveBeenCalled();
+    expect(creditPoolMock).not.toHaveBeenCalled();
   });
 });

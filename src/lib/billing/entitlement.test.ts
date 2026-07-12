@@ -1,5 +1,9 @@
 /**
- * تست‌های گیتِ استحقاق — با تزریقِ readPlan/readBalance (بدونِ DB).
+ * تست‌های گیتِ استحقاق — با تزریقِ readPlan/readBalance (بدونِ DB و بدونِ svcِ 1xai).
+ *
+ * موجودی حالا از کیف‌پولِ واحدِ 1xai می‌آید (availableToman)؛ تزریقِ readBalance همان
+ * درز است. دو تضمینِ تازه قفل می‌شوند: پیامِ «شارژ در 1xai» و propagate شدنِ
+ * OnexaiSvcUnavailableError (fail-closed).
  */
 import { describe, expect, it } from "vitest";
 
@@ -9,6 +13,7 @@ import {
   FREE_ACTIONS,
 } from "@/lib/billing/entitlement";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
+import { OnexaiSvcUnavailableError } from "@/lib/onexai/svc";
 import type { Plan } from "@/db/schema";
 
 function deps(plan: Plan, balance: number) {
@@ -67,5 +72,21 @@ describe("assertCanUsePaidAi", () => {
   it("payg با موجودیِ منفی ⇒ InsufficientBalanceError", async () => {
     const err = await assertCanUsePaidAi("u1", deps("payg", -10)).catch((e) => e);
     expect(err).toBeInstanceOf(InsufficientBalanceError);
+  });
+
+  it("پیامِ موجودیِ ناکافی، شارژ در 1xai را نشان می‌دهد (کیف‌پولِ واحد)", async () => {
+    const err = await assertCanUsePaidAi("u1", deps("payg", 0)).catch((e) => e);
+    expect(err).toBeInstanceOf(InsufficientBalanceError);
+    expect((err as InsufficientBalanceError).message).toContain("1xai");
+  });
+
+  it("svcِ 1xai در دسترس نیست ⇒ OnexaiSvcUnavailableError propagate می‌شود (fail-closed)", async () => {
+    const err = await assertCanUsePaidAi("u1", {
+      readPlan: async () => "payg" as Plan,
+      readBalance: async () => {
+        throw new OnexaiSvcUnavailableError();
+      },
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(OnexaiSvcUnavailableError);
   });
 });

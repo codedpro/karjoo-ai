@@ -4,8 +4,9 @@
  * شبکه‌ی کارت‌های پلن (client component) — Free/Pro/Max/Max+ با CTAِ ارتقا.
  *
  * فهرستِ پلن‌ها و پلنِ فعلیِ کاربر از سرور (RSC) می‌آیند؛ این کامپوننت فقط تغییرِ پلن
- * را مدیریت می‌کند: کلیکِ CTA → POST /api/me/plan با کلیدِ پلن → نمایشِ نتیجه (شاملِ
- * گرنتِ ماهانه در صورتِ ارتقا) + router.refresh تا RSCها (موجودی/وضعیت) تازه شوند.
+ * را مدیریت می‌کند: کلیکِ CTA → POST /api/me/plan با کلیدِ پلن. *ارتقا* قیمتِ پلن را
+ * همان لحظه از کیف‌پولِ واحدِ 1xAi کسر می‌کند؛ موجودیِ ناکافی → ۴۰۲ + لینکِ شارژ در
+ * 1xai (topupUrl). سپس router.refresh تا RSCها (موجودی/وضعیت) تازه شوند.
  *
  * هیچ توکن/رازی نمی‌بیند؛ فقط با کوکیِ نشستِ httpOnly کار می‌کند (مرورگر خودش کوکی را
  * می‌فرستد). userId هرگز از کلاینت فرستاده نمی‌شود — سرور آن را از نشست می‌گیرد.
@@ -24,13 +25,16 @@ import {
 } from "./plans-labels";
 import type { PlanDefinition, PlanKey } from "@/lib/billing/plans";
 
-/** پاسخِ POST /api/me/plan (موفق). */
+/** پاسخِ POST /api/me/plan — موفق یا خطا (۴۰۲ با لینکِ شارژِ 1xai می‌آید). */
 interface ChangePlanResult {
   ok?: boolean;
   error?: string;
+  /** فقط روی ۴۰۲ (موجودیِ ناکافی): نشانیِ شارژِ کیف‌پولِ واحد. */
+  topupUrl?: string;
   plan?: PlanKey;
   upgraded?: boolean;
-  grant?: { granted: boolean; amount: number; period: string } | null;
+  /** موجودیِ واحد پس از کسر (فقط روی ارتقای موفق). */
+  balanceToman?: number;
 }
 
 export function PlansGrid({
@@ -44,6 +48,8 @@ export function PlansGrid({
   const router = useRouter();
   const [busyKey, setBusyKey] = useState<PlanKey | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** لینکِ شارژِ 1xai — فقط وقتی سرور ۴۰۲ (موجودیِ ناکافی) برگرداند پر می‌شود. */
+  const [topupUrl, setTopupUrl] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const currentDef = plans.find((p) => p.key === currentPlan);
@@ -52,6 +58,7 @@ export function PlansGrid({
   async function changePlan(target: PlanDefinition) {
     if (target.key === currentPlan || busyKey) return;
     setError(null);
+    setTopupUrl(null);
     setNotice(null);
     setBusyKey(target.key);
     try {
@@ -63,16 +70,18 @@ export function PlansGrid({
       const data: ChangePlanResult = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.ok) {
+        // ۴۰۲ = موجودیِ کیف‌پولِ واحد کافی نیست → پیام + لینکِ شارژ در 1xai.
         setError(data.error ?? "تغییرِ پلن ناموفق بود.");
+        if (res.status === 402 && data.topupUrl) setTopupUrl(data.topupUrl);
         return;
       }
 
-      // پیامِ موفقیت — اگر ارتقا بود و گرنتِ ماهانه اعمال شد، مبلغ را هم بگو.
-      if (data.grant?.granted && data.grant.amount > 0) {
+      // پیامِ موفقیت — ارتقا مبلغ را همان لحظه از کیف‌پولِ واحد کسر کرده است.
+      if (data.upgraded) {
         setNotice(
-          `پلنِ شما به «${target.labelFa}» تغییر کرد و ${toFaDigits(
-            formatToman(data.grant.amount),
-          )} تومان اعتبارِ ماهانه به کیف‌پول اضافه شد.`,
+          `پلنِ شما به «${target.labelFa}» ارتقا یافت و ${toFaDigits(
+            formatToman(target.priceToman),
+          )} تومان از کیف‌پولِ 1xAi شما کسر شد.`,
         );
       } else {
         setNotice(`پلنِ شما به «${target.labelFa}» تغییر کرد.`);
@@ -144,17 +153,11 @@ export function PlansGrid({
                 )}
               </div>
 
-              {/* اعتبارِ ماهانه‌ی هوش مصنوعی */}
+              {/* هوش مصنوعی — در همه‌ی پلن‌ها به‌میزانِ مصرف از کیف‌پولِ واحدِ 1xAi */}
               <div className="mt-4 rounded-xl border border-border bg-surface/60 px-3.5 py-2.5">
-                <p className="text-xs text-muted">اعتبارِ ماهانه‌ی هوش مصنوعی</p>
+                <p className="text-xs text-muted">هوش مصنوعی</p>
                 <p className="mt-0.5 text-sm font-bold">
-                  {plan.monthlyCreditToman > 0 ? (
-                    <span className="ltr-nums whitespace-nowrap">
-                      {toFaDigits(formatToman(plan.monthlyCreditToman))} تومان
-                    </span>
-                  ) : (
-                    "—"
-                  )}
+                  به‌میزانِ مصرف — نرخِ خودِ 1xAi
                 </p>
               </div>
 
@@ -209,6 +212,19 @@ export function PlansGrid({
           className="mt-5 text-pretty rounded-xl bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400"
         >
           {error}
+          {topupUrl ? (
+            <>
+              {" "}
+              <a
+                href={topupUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-bold underline underline-offset-4"
+              >
+                شارژِ کیف‌پول در 1xai ↗
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
       {notice ? (
@@ -220,12 +236,21 @@ export function PlansGrid({
         </p>
       ) : null}
 
-      {/* یادآوریِ DEV: پرداختِ واقعی هنوز فعال نیست */}
-      <p className="mt-5 flex items-start gap-2 text-pretty rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs leading-6 text-amber-700 dark:text-amber-400">
-        <IconWarn className="mt-0.5 h-4 w-4" />
+      {/* نحوه‌ی پرداخت: کسرِ فوری از کیف‌پولِ واحدِ 1xAi */}
+      <p className="mt-5 flex items-start gap-2 text-pretty rounded-xl border border-border bg-surface/60 px-4 py-3 text-xs leading-6 text-muted">
+        <IconWarn className="mt-0.5 h-4 w-4 shrink-0" />
         <span>
-          درگاهِ پرداختِ واقعی (زرین‌پال) به‌زودی فعال می‌شود. در این نسخه‌ی آزمایشی،
-          تغییرِ پلن بدونِ پرداختِ واقعی اعمال می‌شود تا سرویس قابلِ آزمایش باشد.
+          هزینه‌ی ارتقا همان لحظه از کیف‌پولِ واحدِ 1xAi شما کسر می‌شود (یک موجودی برای
+          همه‌ی محصولات). اگر موجودی کافی نبود، ابتدا کیف‌پول را در{" "}
+          <a
+            href="https://1xai.ir/topup"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-bold text-brand underline underline-offset-4"
+          >
+            داشبوردِ 1xai
+          </a>{" "}
+          شارژ کنید؛ پایین‌آوردنِ پلن رایگان و فوری است.
         </span>
       </p>
     </div>

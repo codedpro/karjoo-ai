@@ -252,6 +252,18 @@ export const users = pgTable(
     fullName: text("full_name"),
     /** پلنِ اشتراکِ کاربر — پیش‌فرض رایگان (free). */
     plan: planEnum("plan").notNull().default("free"),
+    /**
+     * شناسه‌ی همین کاربر در استخرِ مشترکِ 1xai (users.id آن‌جا) — هویت و کیف‌پولِ
+     * واحدِ خانواده. nullable: در اولین ورود/نیازِ پولی از طریقِ /svc resolve و
+     * ذخیره می‌شود (ensureOnexaiLink).
+     */
+    onexaiUserId: bigint("onexai_user_id", { mode: "number" }),
+    /**
+     * کلیدِ APIِ 1xaiِ *خودِ کاربر* (خام؛ 1xai فقط هش نگه می‌دارد) — فراخوانی‌های AI
+     * کارجو با این کلید انجام می‌شوند تا مصرف با نرخِ خودِ کاربر از کیف‌پولِ واحد
+     * متر شود. server-only؛ هرگز به کلاینت نمی‌رود.
+     */
+    onexaiApiKey: text("onexai_api_key"),
     isActive: boolean("is_active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

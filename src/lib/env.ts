@@ -146,6 +146,13 @@ const envSchema = z.object({
   // سرور چیزی اجرا نمی‌کند. اختیاری؛ پیش‌فرض './update.sh'.
   KARJOO_FLEET_UPDATE_SCRIPT: optionalNonEmpty(z.string().min(1)),
 
+  // ── درگاهِ سرویسِ 1xai (اتحادِ خانواده: یک استخرِ کاربر/کیف‌پول) ────────────────
+  // آدرسِ لوپ‌بکِ APIِ داخلیِ 1xai روی همین میزبان + رازِ HMACِ مشترکِ /svc.
+  // اختیاری در بوت: اگر تنظیم نشده باشند، لایه‌ی unified «سرویس در دسترس نیست» می‌دهد
+  // (fail-closed) و هیچ درخواستی بیرون نمی‌رود. راز hex است (هم‌قراردادِ pay-worker).
+  ONEXAI_SVC_URL: optionalNonEmpty(z.string().url()),
+  ONEXAI_SVC_SECRET: optionalNonEmpty(z.string().min(32)),
+
   // ── کارت‌به‌کارت (billing) — شماره‌کارت و نامِ صاحبِ کارتِ مقصد که به کاربر نشان داده
   // می‌شود تا مبلغ را منتقل کند. اختیاری در بوت: اگر تنظیم نشده باشد، فرمِ شارژ «هنوز
   // فعال نیست» را می‌دهد (fail-closed؛ هرگز کارتِ ساختگی نشان داده نمی‌شود). این‌ها را
@@ -411,6 +418,26 @@ export function fleetEnrollmentTokenRaw(): string | null {
 /** آیا ثبت‌نامِ ناوگان باز است؟ (آیا رازِ ثبت‌نام تنظیم شده) — برای پاسخِ سریعِ ۵۰۳. */
 export function isFleetEnrollmentOpen(): boolean {
   return Boolean(env.KARJOO_FLEET_ENROLLMENT_TOKEN);
+}
+
+/** پیکربندیِ درگاهِ سرویسِ 1xai (استخرِ مشترکِ کاربر/کیف‌پول). */
+export interface OnexaiSvcConfig {
+  /** ریشه‌ی API داخلی، مثلاً http://127.0.0.1:8081 (بدونِ اسلشِ پایانی). */
+  baseUrl: string;
+  /** رازِ HMAC به‌صورتِ hex (هم‌قراردادِ pay-worker). */
+  secretHex: string;
+}
+
+/**
+ * پیکربندیِ /svcِ 1xai، یا null اگر تنظیم نشده باشد (هر دو متغیر لازم‌اند).
+ * هرگز throw نمی‌کند — لایه‌ی unified با null «سرویس در دسترس نیست» می‌دهد.
+ */
+export function onexaiSvcConfig(): OnexaiSvcConfig | null {
+  if (!env.ONEXAI_SVC_URL || !env.ONEXAI_SVC_SECRET) return null;
+  return {
+    baseUrl: env.ONEXAI_SVC_URL.replace(/\/+$/, ""),
+    secretHex: env.ONEXAI_SVC_SECRET,
+  };
 }
 
 /** اطلاعاتِ کارتِ مقصدِ کارت‌به‌کارت که به کاربر نشان داده می‌شود. */

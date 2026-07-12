@@ -2,74 +2,78 @@ import "server-only";
 
 /**
  * مترینگِ فراخوانیِ پولیِ هوش مصنوعی (server-only) — درِ ورودیِ تولید برای هر فراخوانیِ
- * مدلی که باید از کاربر هزینه بگیرد.
+ * مدلی که به کیف‌پولِ واحدِ 1xai مقید است.
  *
- * گردشِ کار (مدلِ بیلینگِ قفل‌شده):
+ * گردشِ کار (مدلِ بیلینگِ قفل‌شده — «کارجو فقط از پلن پول درمی‌آورد»):
  *   ۱) مدل را حل کن: req.model یا مدلِ انتخابیِ کاربر (user_ai_settings) یا پیش‌فرضِ
  *      «recommended» از کاتالوگ.
- *   ۲) گیت: assertCanUsePaidAi(userId) — *پیش از* فراخوانیِ گیت‌وی. اگر موجودی کافی
- *      نباشد، InsufficientBalanceError و هیچ هزینه‌ی بالادستی خرج نمی‌شود.
- *   ۳) فراخوانیِ گیت‌وی (chatComplete/chatCompleteJson).
- *   ۴) در صورتِ موفقیت: هزینه را از usage محاسبه کن، سپس *اتمیک* یک usage_record +
- *      کسرِ کیف‌پول + ردیفِ دفتر بنویس (یک تراکنش). در صورتِ خطای گیت‌وی/مدل: هیچ کسری.
+ *   ۲) گیت: assertCanUsePaidAi(userId) — *پیش از* فراخوانیِ گیت‌وی. موجودیِ واحدِ
+ *      1xai ≤ ۰ ⇒ InsufficientBalanceError و هیچ هزینه‌ی بالادستی خرج نمی‌شود.
+ *   ۳) کلیدِ APIِ 1xaiِ *خودِ کاربر* را بگیر (ensureOnexaiApiKey) و گیت‌وی را با همان
+ *      کلید صدا بزن — 1xai خودش مصرف را با نرخِ خودِ کاربر از کیف‌پولِ واحد متر می‌کند.
+ *      کارجو *هیچ* حاشیه‌ای نمی‌گیرد و *هیچ* کسرِ محلی انجام نمی‌دهد.
+ *   ۴) در صورتِ موفقیت: یک usage_record با هزینه‌ی *تخمینی* (نرخِ لیستِ 1xai از
+ *      کاتالوگ، حاشیه ۰) بنویس — فقط برای گاردریلِ بودجه‌ی سراسری (ai-budget) و
+ *      تاریخچه/حسابرسی؛ شارژِ معتبر همان است که 1xai خودش ثبت می‌کند.
  *
- * درزِ تست‌پذیری: تسویه پشتِ `MeteringStore` کپسوله شده؛ پیاده‌سازیِ تولید
- * (drizzleMeteringStore) همه‌چیز را در یک تراکنشِ Drizzle انجام می‌دهد، تست یک storeِ
- * in-memory تزریق می‌کند.
+ * درزِ تست‌پذیری: ثبتِ مصرف پشتِ `MeteringStore` کپسوله شده؛ پیاده‌سازیِ تولید
+ * (drizzleMeteringStore) usage_record + شمارنده‌ی بودجه را در یک تراکنشِ Drizzle
+ * می‌نویسد، تست یک storeِ in-memory تزریق می‌کند.
  */
-import { and, asc, eq, gte, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import {
   aiModelCatalog,
   userAiSettings,
   usageRecords,
-  wallets,
-  walletLedger,
   type AiProvider,
   type UsageKind,
 } from "@/db/schema";
 import {
   chatComplete,
   chatCompleteJson,
+  GatewayError,
   type ChatCompletionRequest,
   type ChatCompletionResult,
+  type GatewayConfig,
   type GatewayOptions,
 } from "@/lib/ai/gateway";
-import { resolveMarginPct } from "@/lib/env";
+import { requireOneXai } from "@/lib/env";
 import { assertCanUsePaidAi, type EntitlementDeps } from "@/lib/billing/entitlement";
 import { assertAiAvailable, incrementMonthUpstream } from "@/lib/billing/ai-budget";
-import { InsufficientBalanceError } from "@/lib/billing/errors";
+import { ensureOnexaiApiKey } from "@/lib/billing/unified";
 import { computeCostFromPrice, priceFor, type ModelPrice } from "@/lib/billing/pricing";
 import { providerFromModelId } from "@/lib/billing/provider";
 
 /** هندلِ کاملِ Drizzle (به transaction نیاز داریم؛ پس کلِ کلاینت). */
 export type MeteringDb = typeof defaultDb;
 
-/** اطلاعاتِ هزینه‌ی یک فراخوانیِ مترشده (پس از تسویه). */
+/**
+ * اطلاعاتِ هزینه‌ی یک فراخوانیِ مترشده. costToman/upstreamCostToman *تخمین* با نرخِ
+ * لیستِ 1xai است (حاشیه ۰ — این دو برابرند)؛ شارژِ معتبر را 1xai با کلیدِ خودِ کاربر
+ * انجام داده است.
+ */
 export interface MeteredCharge {
   modelId: string;
   provider: AiProvider;
   promptTokens: number;
   completionTokens: number;
   upstreamCostToman: number;
-  marginPct: number;
   costToman: number;
-  /** موجودیِ کیف‌پول پس از کسر. */
-  balanceAfterToman: number;
   /** شناسه‌ی usage_record ساخته‌شده. */
   usageRecordId: string;
 }
 
-/** نتیجه‌ی یک فراخوانیِ مترشده: نتیجه‌ی خامِ گیت‌وی + هزینه‌ی محاسبه/کسرشده. */
+/** نتیجه‌ی یک فراخوانیِ مترشده: نتیجه‌ی خامِ گیت‌وی + هزینه‌ی تخمینیِ ثبت‌شده. */
 export interface MeteredResult<T> {
   result: T;
   charge: MeteredCharge;
 }
 
 /**
- * درزِ تسویه‌ی مترینگ — usage_record + کسرِ کیف‌پول + دفتر، اتمیک. یک متد، چون
- * این سه نوشتن جدانشدنی‌اند (یا هر سه، یا هیچ‌کدام).
+ * درزِ ثبتِ مصرفِ مترینگ — usage_record + شمارنده‌ی بودجه‌ی سراسری، اتمیک.
+ * *هیچ* کسرِ کیف‌پولی این‌جا انجام نمی‌شود (شارژِ معتبر سمتِ 1xai است).
  */
 export interface MeteringStore {
   settle(args: {
@@ -83,18 +87,25 @@ export interface MeteringStore {
     marginPct: number;
     costToman: number;
     now: number;
-  }): Promise<{ usageRecordId: string; balanceAfterToman: number }>;
+  }): Promise<{ usageRecordId: string }>;
 }
 
 /* ───────────────────  پیاده‌سازیِ تولید (Drizzle, اتمیک)  ─────────────────── */
 
-/** storeِ تولید: درجِ usage_record + کسرِ کیف‌پول + دفتر، همه در یک تراکنش. */
+/**
+ * storeِ تولید: درجِ usage_record + افزایشِ شمارنده‌ی بودجه، در یک تراکنش.
+ *
+ * نکته: مبالغِ ثبت‌شده *تخمین* با نرخِ لیستِ 1xai (از کاتالوگ) هستند — برای گاردریلِ
+ * بودجه‌ی سراسری (assertAiAvailable روی جمعِ همین رکوردها کار می‌کند) و تاریخچه‌ی
+ * کاربر. شارژِ معتبر همان لحظه سمتِ 1xai با کلیدِ خودِ کاربر انجام شده است؛ این‌جا
+ * دیگر هیچ debit/دفتری روی کیف‌پولِ محلیِ بازنشسته نوشته نمی‌شود.
+ */
 export function drizzleMeteringStore(db: MeteringDb): MeteringStore {
   return {
     async settle(args) {
       return db.transaction(async (tx) => {
         // ۰) گاردریلِ بودجه‌ی سراسری: شمارنده‌ی هزینه‌ی بالادستِ ماه را *داخلِ همین
-        //    تراکنش* افزایش بده (اتمیک با usage_record + debit). no-op اگر upstream ≤ ۰.
+        //    تراکنش* افزایش بده (اتمیک با usage_record). no-op اگر upstream ≤ ۰.
         await incrementMonthUpstream(args.upstreamCostToman, tx, args.now);
 
         // ۱) usage_record — همیشه ثبت می‌شود (حتی هزینه‌ی صفر، برای حسابرسی).
@@ -113,68 +124,7 @@ export function drizzleMeteringStore(db: MeteringDb): MeteringStore {
           })
           .returning({ id: usageRecords.id });
 
-        let balanceAfterToman: number;
-        if (args.costToman > 0) {
-          // تضمینِ وجودِ کیف‌پول (idempotent).
-          await tx
-            .insert(wallets)
-            .values({ userId: args.userId })
-            .onConflictDoNothing({ target: wallets.userId });
-
-          // کسرِ اتمیک و *مشروط*: فقط اگر موجودی ≥ هزینه. شرطِ `balance >= cost` داخلِ
-          // همان UPDATE است؛ قفلِ ردیف، debitهای همزمان را سریالایز می‌کند تا موجودی
-          // هرگز منفی نشود (رفعِ TOCTOU: گیتِ پیش‌فراخوانی فقط balance>0 را چک می‌کند و
-          // چند فراخوانیِ همزمان می‌توانستند با هم از آن رد شوند).
-          const [updated] = await tx
-            .update(wallets)
-            .set({
-              balanceToman: sql`${wallets.balanceToman} - ${args.costToman}`,
-              updatedAt: new Date(args.now),
-            })
-            .where(
-              and(
-                eq(wallets.userId, args.userId),
-                gte(wallets.balanceToman, args.costToman),
-              ),
-            )
-            .returning({ balanceToman: wallets.balanceToman });
-
-          if (!updated) {
-            // موجودی در لحظه‌ی کسر کافی نبود (رقابتِ همزمان یا overspendِ یک فراخوانی) →
-            // پرتابِ خطا کلِ تراکنش را rollback می‌کند (نه usage_record، نه ledger). مدل
-            // قبلاً پاسخ داده ولی شارژ نمی‌شود؛ هزینه‌ی نادرِ این حالت به حسابِ کارجوست —
-            // امن‌تر از منفی‌کردنِ کیف‌پولِ کاربر.
-            const [w] = await tx
-              .select({ balanceToman: wallets.balanceToman })
-              .from(wallets)
-              .where(eq(wallets.userId, args.userId))
-              .limit(1);
-            throw new InsufficientBalanceError({
-              balanceToman: w?.balanceToman ?? 0,
-              plan: "payg",
-            });
-          }
-          balanceAfterToman = updated.balanceToman;
-
-          await tx.insert(walletLedger).values({
-            userId: args.userId,
-            kind: "charge",
-            amountToman: -args.costToman,
-            balanceAfterToman,
-            refType: "usage_record",
-            refId: usage.id,
-            description: `هزینه‌ی ${args.kind} با مدل ${args.modelId}`,
-          });
-        } else {
-          const [w] = await tx
-            .select({ balanceToman: wallets.balanceToman })
-            .from(wallets)
-            .where(eq(wallets.userId, args.userId))
-            .limit(1);
-          balanceAfterToman = w?.balanceToman ?? 0;
-        }
-
-        return { usageRecordId: usage.id, balanceAfterToman };
+        return { usageRecordId: usage.id };
       });
     },
   };
@@ -240,9 +190,7 @@ export async function resolveUserModel(
 export interface MeteringOptions {
   db?: MeteringDb;
   now?: () => number;
-  /** درصدِ حاشیه — پیش‌فرض resolveMarginPct از env. */
-  marginPct?: number;
-  /** آپشن‌های گیت‌وی (fetch/adapter/config برای تست). */
+  /** آپشن‌های گیت‌وی (fetch/adapter/config برای تست). apiKey با کلیدِ کاربر جایگزین می‌شود. */
   gateway?: GatewayOptions;
   /** وابستگی‌های گیتِ استحقاق (برای تست). */
   entitlement?: EntitlementDeps;
@@ -251,7 +199,12 @@ export interface MeteringOptions {
    * assertAiAvailable(db) از ai-budget. تزریقی برای تست (تا بدونِ DB اجرا شود).
    */
   assertAiAvailable?: (db: MeteringDb) => Promise<void>;
-  /** storeِ تسویه — پیش‌فرض drizzleMeteringStore(db). تزریقی برای تست. */
+  /**
+   * تأمین‌کننده‌ی کلیدِ APIِ 1xaiِ خودِ کاربر — پیش‌فرض ensureOnexaiApiKey از
+   * @/lib/billing/unified (صدور/کشِ کلید روی ردیفِ کاربر). تزریقی برای تست.
+   */
+  ensureApiKey?: (userId: string) => Promise<string>;
+  /** storeِ ثبتِ مصرف — پیش‌فرض drizzleMeteringStore(db). تزریقی برای تست. */
   store?: MeteringStore;
   /** خواننده‌ی مدل/قیمت — تزریقی برای تست (وگرنه از کاتالوگ). */
   resolveModel?: (
@@ -263,17 +216,39 @@ export interface MeteringOptions {
 
 /* ─────────────────────────────  هسته‌ی مشترک  ───────────────────────────── */
 
+/**
+ * پیکربندیِ پایه‌ی گیت‌وی از env (baseUrl/model) — apiKey آن بعداً با کلیدِ خودِ کاربر
+ * جایگزین می‌شود. غیابِ env ⇒ همان GatewayError('not_configured') همیشگی (typed).
+ */
+function resolveEnvGatewayConfig(): GatewayConfig {
+  try {
+    return requireOneXai();
+  } catch (cause) {
+    throw new GatewayError(
+      "not_configured",
+      cause instanceof Error
+        ? cause.message
+        : "سرویس هوش مصنوعی پیکربندی نشده است (ONEXAI_*).",
+      { cause },
+    );
+  }
+}
+
 async function meter<T>(
   userId: string,
   kind: UsageKind,
   modelOverride: string | undefined,
-  call: (modelId: string) => Promise<{ result: T; usage: ChatCompletionResult["usage"] }>,
+  call: (
+    modelId: string,
+    gateway: GatewayOptions,
+  ) => Promise<{ result: T; usage: ChatCompletionResult["usage"] }>,
   opts: MeteringOptions,
 ): Promise<MeteredResult<T>> {
   const db = opts.db ?? defaultDb;
   const now = opts.now ?? Date.now;
-  const marginPct = opts.marginPct ?? resolveMarginPct();
   const store = opts.store ?? drizzleMeteringStore(db);
+  const ensureApiKey =
+    opts.ensureApiKey ?? ((id: string) => ensureOnexaiApiKey(id, { db }));
   const resolveModel =
     opts.resolveModel ??
     ((id: string, m: string | undefined) => resolveUserModel(id, m, db));
@@ -286,6 +261,7 @@ async function meter<T>(
   const price = await getPrice(modelId);
 
   // ۳) گیتِ استحقاق — *پیش از* فراخوانیِ گیت‌وی (هرگز بی‌سروصدا هزینه‌ی بالادست خرج نشود).
+  //    موجودی از کیف‌پولِ واحدِ 1xai خوانده می‌شود؛ svcِ در دسترس‌نبودن fail-closed است.
   await assertCanUsePaidAi(userId, opts.entitlement ?? { db });
 
   // ۳٫۵) گاردریلِ بودجه‌ی سراسری — اگر اپ در حالتِ نگه‌داریِ هوش مصنوعی باشد (سقفِ ماهانه
@@ -294,17 +270,29 @@ async function meter<T>(
   const checkAiAvailable = opts.assertAiAvailable ?? ((d: MeteringDb) => assertAiAvailable(d));
   await checkAiAvailable(db);
 
-  // ۴) فراخوانیِ گیت‌وی. اگر اینجا خطا بدهد، propagate می‌شود و *هیچ کسری* انجام نمی‌شود.
-  const { result, usage } = await call(modelId);
+  // ۴) کلیدِ خودِ کاربر (پس از گیت‌ها — برای کاربرِ بی‌موجودی کلیدی صادر نمی‌شود) و
+  //    فراخوانیِ گیت‌وی با همان کلید: 1xai مصرف را با نرخِ خودِ کاربر از کیف‌پولِ واحد
+  //    متر می‌کند (بدونِ حاشیه/کسرِ کارجو). baseUrl/model از env (یا configِ تزریقی).
+  const userKey = await ensureApiKey(userId);
+  const baseConfig = opts.gateway?.config ?? resolveEnvGatewayConfig();
+  const gatewayOpts: GatewayOptions = {
+    ...opts.gateway,
+    config: { ...baseConfig, apiKey: userKey },
+  };
 
-  // ۵) محاسبه‌ی هزینه + تسویه‌ی اتمیک (usage_record + debit + ledger).
+  // اگر گیت‌وی خطا بدهد، propagate می‌شود و *هیچ رکوردی* ثبت نمی‌شود.
+  const { result, usage } = await call(modelId, gatewayOpts);
+
+  // ۵) ثبتِ مصرف: هزینه‌ی *تخمینی* با نرخِ لیستِ 1xai (حاشیه ۰ — کارجو مارجین ندارد).
+  //    این عدد فقط خوراکِ گاردریلِ بودجه‌ی سراسری (ai-budget) و تاریخچه است؛ شارژِ
+  //    معتبر همان است که 1xai هنگامِ فراخوانی با کلیدِ کاربر انجام داده.
   const promptTokens = Math.max(0, usage?.promptTokens ?? 0);
   const completionTokens = Math.max(0, usage?.completionTokens ?? 0);
   const { upstreamCostToman, costToman } = computeCostFromPrice(
     promptTokens,
     completionTokens,
     price,
-    marginPct,
+    0,
   );
 
   const settled = await store.settle({
@@ -315,7 +303,7 @@ async function meter<T>(
     promptTokens,
     completionTokens,
     upstreamCostToman,
-    marginPct,
+    marginPct: 0,
     costToman,
     now: now(),
   });
@@ -328,9 +316,7 @@ async function meter<T>(
       promptTokens,
       completionTokens,
       upstreamCostToman,
-      marginPct,
       costToman,
-      balanceAfterToman: settled.balanceAfterToman,
       usageRecordId: settled.usageRecordId,
     },
   };
@@ -340,7 +326,8 @@ async function meter<T>(
 
 /**
  * یک فراخوانیِ چتِ مترشده (خروجیِ متن). مدلِ درخواست در صورتِ نبود از تنظیماتِ کاربر
- * حل می‌شود. هزینه پس از فراخوانی محاسبه و از کیف‌پول کسر می‌شود.
+ * حل می‌شود. فراخوانی با کلیدِ 1xaiِ خودِ کاربر انجام و همان‌جا متر می‌شود؛ این‌جا فقط
+ * usage_record تخمینی ثبت می‌گردد.
  */
 export async function meteredChat(
   userId: string,
@@ -352,8 +339,8 @@ export async function meteredChat(
     userId,
     kind,
     req.model,
-    async (modelId) => {
-      const result = await chatComplete({ ...req, model: modelId }, opts.gateway);
+    async (modelId, gateway) => {
+      const result = await chatComplete({ ...req, model: modelId }, gateway);
       return { result, usage: result.usage };
     },
     opts,
@@ -374,8 +361,8 @@ export async function meteredChatJson(
     userId,
     kind,
     req.model,
-    async (modelId) => {
-      const out = await chatCompleteJson({ ...req, model: modelId }, opts.gateway);
+    async (modelId, gateway) => {
+      const out = await chatCompleteJson({ ...req, model: modelId }, gateway);
       return { result: out, usage: out.result.usage };
     },
     opts,
@@ -384,29 +371,20 @@ export async function meteredChatJson(
 
 /* ───────────────────────  storeِ in-memory برای تست  ────────────────────── */
 
-/** یک MeteringStoreِ in-memory برای تست — usage/charge را در حافظه نگه می‌دارد. */
-export function inMemoryMeteringStore(
-  initialBalances: Record<string, number> = {},
-): MeteringStore & {
+/** یک MeteringStoreِ in-memory برای تست — usage را در حافظه نگه می‌دارد (بدونِ کیف‌پول). */
+export function inMemoryMeteringStore(): MeteringStore & {
   usage: Array<Record<string, unknown>>;
-  balances: Map<string, number>;
 } {
   const usage: Array<Record<string, unknown>> = [];
-  const balances = new Map<string, number>(Object.entries(initialBalances));
   let seq = 0;
 
   return {
     usage,
-    balances,
     async settle(args) {
       seq += 1;
       const usageRecordId = `usage-${seq}`;
       usage.push({ id: usageRecordId, ...args });
-      const current = balances.get(args.userId) ?? 0;
-      const balanceAfterToman =
-        args.costToman > 0 ? current - args.costToman : current;
-      if (args.costToman > 0) balances.set(args.userId, balanceAfterToman);
-      return { usageRecordId, balanceAfterToman };
+      return { usageRecordId };
     },
   };
 }
