@@ -14,7 +14,10 @@ declare const process: { env: { KARJOO_API_DEFAULT?: string } };
 
 export const DEFAULT_API_ORIGIN: string =
   (typeof process !== "undefined" && process.env?.KARJOO_API_DEFAULT) ||
-  "https://karjooai.itmaster.uk";
+  "https://karjoo.1xai.ir";
+// (کارجو اکنون زیرِ برندِ 1xAi است. دامنه‌ی قدیمِ karjooai.itmaster.uk هنوز همان بک‌اند
+//  را سرو می‌کند، پس نشست‌های Bearerِ جفت‌شده‌ی موجود با سوییچِ دامنه نمی‌شکنند — همان
+//  DB و همان توکن؛ فراخوانی‌های افزونه Bearer-authاند، نه کوکی‌محور.)
 
 /** chrome.storage keys — centralized so every module agrees on the names. */
 export const STORAGE_KEYS = {

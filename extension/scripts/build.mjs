@@ -93,7 +93,7 @@ const sharedDefine = {
   // (see src/lib/config.ts + src/lib/storage.ts getApiOrigin, which is locked to
   // this compile-time constant). Override only for local dev builds via KARJOO_API.
   "process.env.KARJOO_API_DEFAULT": JSON.stringify(
-    process.env.KARJOO_API ?? "https://karjooai.itmaster.uk",
+    process.env.KARJOO_API ?? "https://karjoo.1xai.ir",
   ),
   // Auto-apply timing (mirrors the control-plane env defaults). Optional
   // build-time overrides; the server toggle + daily cap remain authoritative.

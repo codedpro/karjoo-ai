@@ -34,7 +34,15 @@ export function SiteFooter() {
       <div className="border-t border-border/70">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-5 py-5 text-xs text-muted sm:flex-row">
           <p>
-            © <span className="ltr-nums">۱۴۰۵</span> {site.name}. تمام حقوق محفوظ است.
+            © <span className="ltr-nums">۱۴۰۵</span> {site.name}. تمام حقوق محفوظ است. ·{" "}
+            <a
+              href="https://1xai.ir"
+              target="_blank"
+              rel="noopener"
+              className="hover:text-foreground"
+            >
+              از خانواده‌ی 1xAi ↗
+            </a>
           </p>
           <p className="ltr-nums">ساخته‌شده با هوش مصنوعی · Powered by IT Master</p>
         </div>

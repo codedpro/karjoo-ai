@@ -385,9 +385,19 @@ export default function Home() {
               karjoo · {site.name}
             </span>
           </div>
-          <p className="ltr-nums font-mono text-[11px] text-[#8A9099]" dir="ltr">
-            © ۱۴۰۴ — اپلای با نشستِ خودت · بدونِ دور زدنِ تشخیص
-          </p>
+          <div className="flex flex-col items-center gap-1.5 sm:items-end">
+            <a
+              href="https://1xai.ir"
+              target="_blank"
+              rel="noopener"
+              className="text-[11px] text-[#8A9099] transition-colors hover:text-[#FFB020]"
+            >
+              از خانواده‌ی <span className="font-mono">1xAi</span> ↗
+            </a>
+            <p className="ltr-nums font-mono text-[11px] text-[#8A9099]" dir="ltr">
+              © ۱۴۰۵ — اپلای با نشستِ خودت · بدونِ دور زدنِ تشخیص
+            </p>
+          </div>
         </div>
       </footer>
     </div>

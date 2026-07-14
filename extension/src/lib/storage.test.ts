@@ -87,7 +87,7 @@ describe("API origin (LOCKED — not user-overridable)", () => {
 
   it("defaults to the production control-plane origin", () => {
     // Locked to prod so a user can never repoint the extension at a rogue plane.
-    expect(DEFAULT_API_ORIGIN).toBe("https://karjooai.itmaster.uk");
+    expect(DEFAULT_API_ORIGIN).toBe("https://karjoo.1xai.ir");
   });
 
   it("ignores any origin value present in storage (cannot be overridden)", async () => {

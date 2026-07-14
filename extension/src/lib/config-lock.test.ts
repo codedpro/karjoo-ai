@@ -12,7 +12,7 @@ import { getApiOrigin, type StorageArea } from "@ext/lib/storage";
 
 describe("locked control-plane origin", () => {
   it("is the production HTTPS control plane", () => {
-    expect(DEFAULT_API_ORIGIN).toBe("https://karjooai.itmaster.uk");
+    expect(DEFAULT_API_ORIGIN).toBe("https://karjoo.1xai.ir");
   });
 
   it("is https (never plaintext) and has no trailing slash", () => {
