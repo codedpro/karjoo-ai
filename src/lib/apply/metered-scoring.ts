@@ -15,6 +15,7 @@ import "server-only";
 import { buildScoreAndDraftPrompt } from "@/lib/ai/prompts";
 import { scoreAndDraftSchema } from "@/lib/ai/schema";
 import { ScoringError, type ScoreAndDraftResult } from "@/lib/apply/scoring";
+import { sanitizePgText } from "@/lib/apply/pg-text";
 import type { CandidateProfile, JobListing } from "@/lib/apply/types";
 import { meteredChatJson, type MeteringOptions } from "@/lib/billing/metering";
 
@@ -64,10 +65,13 @@ export async function meteredScoreAndDraft(
   const reason =
     parsed.data.reasons.length > 0 ? parsed.data.reasons.join("؛ ") : undefined;
 
+  // نقطه‌ی یگانه‌ی پاک‌سازی: متنِ خروجیِ مدل را برای ستونِ text پستگرس امن کن (NUL/C0/نیم-سوروگیت)
+  // تا درجِ تطبیقِ *امتیازخورده و پرداخت‌شده* قطعی نشکند و در هیچ مسیری (runFilterApply یا
+  // runJobinjaIngest) حلقه‌ی شارژِ دوباره نسازد.
   return {
     matchScore: parsed.data.matchScore,
-    coverLetter: parsed.data.coverLetter,
-    reason,
+    coverLetter: sanitizePgText(parsed.data.coverLetter) ?? "",
+    reason: sanitizePgText(reason ?? null) ?? undefined,
   };
 }
 

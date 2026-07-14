@@ -158,7 +158,12 @@ async function TopMatches({ userId }: { userId: string }) {
       <EmptyState
         icon={<IconTarget className="h-7 w-7 text-brand" />}
         title="هنوز تطبیقی نداریم"
-        body="به‌محضِ اینکه پروفایلت با آگهی‌های تازه تطبیق داده شود، بهترین فرصت‌ها همین‌جا ظاهر می‌شوند."
+        body="فیلترهای اپلای را تنظیم کن و «جست‌وجوی مشاغل» را بزن تا فرصت‌های تازه پیدا و به صفِ اپلای اضافه شوند."
+        action={
+          <ButtonLink href="/dashboard/apply-filters">
+            تنظیمِ فیلتر و جست‌وجوی مشاغل
+          </ButtonLink>
+        }
       />
     );
   }

@@ -166,11 +166,46 @@ describe("jobinja.scrapePublicWith (fetch تزریق‌شده — بدون شب�
       { fetchImpl: fakeFetch, maxPages: 2, delayMs: 0 },
     );
 
-    expect(result.length).toBe(20);
-    expect(result[0]?.board).toBe("jobinja");
-    expect(result[0]?.id).toMatch(/^jobinja:/);
+    expect(result.listings.length).toBe(20);
+    expect(result.listings[0]?.board).toBe("jobinja");
+    expect(result.listings[0]?.id).toMatch(/^jobinja:/);
     // صفحه‌ی دوم خالی بود؛ پس fetch دو بار صدا شد و بعدش متوقف شد.
     expect(calls).toBe(2);
+    // صفحه‌ی دوم خالی → به انتها رسیدیم (مکان‌نما باید به ۱ بازنشانی شود).
+    expect(result.pagesFetched).toBe(2);
+    expect(result.reachedEnd).toBe(true);
+  });
+
+  it("از startPage آغاز می‌کند و در رسیدن به targetCount می‌ایستد (reachedEnd=false)", async () => {
+    // کارتِ حداقلی و معتبر برای parseSearchHtml: بلوکِ c-jobListView__item با titleLink و
+    // shortIdِ الفبی-عددی (بدون _). هر صفحه ۲۰ آگهیِ یکتا تولید می‌کند.
+    const card = (id: string): string =>
+      `<li class="c-jobListView__item">` +
+      `<a class="c-jobListView__titleLink" href="/companies/acme/jobs/${id}/t">عنوان</a>` +
+      `</li>`;
+    const pages: string[] = [];
+    const fakeFetch: typeof fetch = async (input) => {
+      pages.push(String(input));
+      const n = pages.length;
+      const rows = Array.from({ length: 20 }, (_, i) => card(`P${n}a${i}`)).join("");
+      return new Response(`<ul>${rows}</ul>`, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    };
+
+    const result = await jobinja.scrapePublicWith(
+      { titles: ["x"] },
+      { fetchImpl: fakeFetch, maxPages: 5, startPage: 4, targetCount: 25, delayMs: 0 },
+    );
+
+    // targetCount=25 با ۲۰ آگهی در هر صفحه → دو صفحه واکشی می‌شود، نه انتها.
+    expect(result.listings.length).toBeGreaterThanOrEqual(25);
+    expect(result.pagesFetched).toBe(2);
+    expect(result.reachedEnd).toBe(false);
+    // باید از صفحه‌ی ۴ آغاز کرده باشد.
+    expect(pages[0]).toContain("page=4");
+    expect(pages[1]).toContain("page=5");
   });
 
   it("روی پاسخ غیر-200 خطای روشن پرتاب می‌کند", async () => {

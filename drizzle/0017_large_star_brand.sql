@@ -1,0 +1,2 @@
+ALTER TABLE "user_server_auto_apply" ADD COLUMN "last_discovery_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "user_server_auto_apply_last_discovery_idx" ON "user_server_auto_apply" USING btree ("last_discovery_at");

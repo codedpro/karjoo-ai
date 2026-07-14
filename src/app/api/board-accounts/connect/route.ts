@@ -18,9 +18,10 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { boardAccounts } from "@/db/schema";
-import { json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
+import { HttpError, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
 import { requireBearerSession } from "@/lib/api/bearer-auth";
 import { boardConnectBodySchema } from "@/lib/api/extension-schemas";
+import { isBoardLive } from "@/lib/apply/registry";
 
 // به DB دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -55,10 +56,21 @@ export async function POST(request: Request): Promise<Response> {
     // ۲) اعتبارسنجیِ بدنه. `.strict()` هر فیلدِ سری/ناشناخته را رد می‌کند (قاعده‌ی ۱).
     const body = await parseJsonBody(request, boardConnectBodySchema);
 
+    // ۳) گیتِ زنده‌بودنِ سایت — پیش از هر نوشتنی در DB. فقط سایت‌های واقعاً کارکننده
+    //    (BOARD_STATUS === "live") قابلِ اتصال‌اند؛ داربست‌ها (search/apply آن‌ها throw
+    //    می‌کند) رد می‌شوند تا کاربر گمان نکند اتصالْ کاری می‌کند. ۴۰۹ (نه ۴۰۰) تا از
+    //    خطای اعتبارسنجیِ بدنه (۴۰۰) قابلِ تمایز باشد؛ enumِ افزونه دست‌نخورده می‌ماند.
+    if (!isBoardLive(body.board)) {
+      throw new HttpError(
+        409,
+        "این سایت هنوز پشتیبانی نمی‌شود و به‌زودی اضافه می‌شود.",
+      );
+    }
+
     const now = new Date();
     const sessionShape = SESSION_SHAPE_BY_BOARD[body.board];
 
-    // ۳) upsert روی یکتاییِ (userId, board) → connected. فقط متادیتا.
+    // ۴) upsert روی یکتاییِ (userId, board) → connected. فقط متادیتا.
     await db
       .insert(boardAccounts)
       .values({
@@ -83,7 +95,7 @@ export async function POST(request: Request): Promise<Response> {
         },
       });
 
-    // ۴) ردیفِ نهاییِ همین کاربر را بخوان و برگردان (فقط متادیتا).
+    // ۵) ردیفِ نهاییِ همین کاربر را بخوان و برگردان (فقط متادیتا).
     const [row] = await db
       .select({
         board: boardAccounts.board,

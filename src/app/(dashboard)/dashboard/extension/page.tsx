@@ -13,7 +13,10 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { getDashboardUser } from "@/components/dashboard/session";
-import { PairExtensionPanel } from "@/components/dashboard/pair-extension-panel";
+import {
+  ConnectedDevicesPanel,
+  PairExtensionPanel,
+} from "@/components/dashboard/pair-extension-panel";
 import {
   IconBolt,
   IconCheck,
@@ -65,6 +68,7 @@ export default async function ExtensionPage() {
         </div>
         <div className="space-y-6">
           <PairExtensionPanel />
+          <ConnectedDevicesPanel />
           <PrivacyNote />
         </div>
       </div>

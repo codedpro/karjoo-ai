@@ -32,3 +32,40 @@ export const connectors: Record<string, JobBoardConnector> = {
 export function getConnector(id: JobBoardId): JobBoardConnector | undefined {
   return connectors[id];
 }
+
+/**
+ * وضعیتِ آماده‌به‌کار بودنِ هر سایت — **تنها منبعِ حقیقت** برای «آیا این سایت واقعاً
+ * کار می‌کند؟». عمداً اینجا (نه داخلِ لیترالِ هر کانکتور در boards/*.ts) نگه داشته
+ * می‌شود تا افزودنِ این پرچم به تداخلِ فایل با ترک‌های دیگر نینجامد.
+ *
+ *   • `live`        — search()/apply() واقعاً پیاده شده‌اند (فقط جابینجا).
+ *   • `coming_soon` — کانکتور داربست است؛ search()/apply() هنوز throw می‌کنند.
+ *
+ * `Record<JobBoardId, …>` عمداً روی کلِ یونیونِ JobBoardId جامع است؛ اگر شناسه‌ی
+ * تازه‌ای به یونیون اضافه شود، TypeScript تا زمانِ افزودنِ وضعیتِ آن اینجا کامپایل
+ * نمی‌شود (fail-safe: پیش‌فرضِ ضمنی «زنده» وجود ندارد).
+ */
+export const BOARD_STATUS: Record<JobBoardId, "live" | "coming_soon"> = {
+  jobinja: "live",
+  jobvision: "coming_soon",
+  "e-estekhdam": "coming_soon",
+  irantalent: "coming_soon",
+  karboom: "coming_soon",
+  linkedin: "coming_soon",
+};
+
+/**
+ * آیا سایتِ داده‌شده واقعاً کار می‌کند؟ ورودی `string` است (نه JobBoardId) تا در
+ * مرزهای اعتبارسنجی (مثلِ بدنه‌ی درخواست) بدونِ cast قابلِ استفاده باشد؛ شناسه‌ی
+ * ناشناخته → `false` (fail-closed).
+ */
+export function isBoardLive(id: string): boolean {
+  return BOARD_STATUS[id as JobBoardId] === "live";
+}
+
+/** فهرستِ شناسه‌ی سایت‌هایی که واقعاً کار می‌کنند — درزِ یکپارچگی برای orchestrator. */
+export function liveBoardIds(): JobBoardId[] {
+  return (Object.keys(BOARD_STATUS) as JobBoardId[]).filter(
+    (id) => BOARD_STATUS[id] === "live",
+  );
+}

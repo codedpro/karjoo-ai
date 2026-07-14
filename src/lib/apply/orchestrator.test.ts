@@ -79,6 +79,15 @@ function makeFakeDb(opts: {
   queuedToday?: number;
   /** وضعیتِ از-پیش‌موجودِ match پس از upsert، به‌ازای externalId (برای تستِ dedupe). */
   matchStatusByExternal?: Record<string, string>;
+  /** وضعیتِ تطبیقِ از-قبل-موجود که pre-score findFirst برمی‌گرداند (برای dedupe پیش از هزینه). */
+  priorMatchStatus?: string;
+  /** تطبیقِ کاملِ از-قبل-موجود (status+score+…) برای تستِ بازاستفاده‌ی امتیاز. */
+  priorMatch?: {
+    status: string;
+    score?: number | null;
+    reason?: string | null;
+    coverLetter?: string | null;
+  };
 }) {
   const inserts: { table: string; values: unknown }[] = [];
   const updates: { set: unknown }[] = [];
@@ -150,6 +159,24 @@ function makeFakeDb(opts: {
           return chain;
         },
       };
+    },
+    // مکان‌نمای صفحه‌بندی: پیش‌فرضِ «ردیفی نیست» → readFilterCursor صفحه‌ی ۱ می‌دهد؛
+    // advanceFilterCursor از همان insertِ جعلیِ بالا (awaitable) استفاده می‌کند.
+    query: {
+      filterCursors: {
+        async findFirst() {
+          return undefined;
+        },
+      },
+      // pre-score dedupe/reuse: پیش‌فرض «تطبیقی از قبل نیست»؛ با priorMatch(+score) قابلِ‌تنظیم.
+      matches: {
+        async findFirst() {
+          if (opts.priorMatch) return opts.priorMatch;
+          return opts.priorMatchStatus
+            ? { status: opts.priorMatchStatus, score: null, reason: null, coverLetter: null }
+            : undefined;
+        },
+      },
     },
     // برای raw_listings که returning ندارد، insert(...).values(...) باید awaitable باشد.
     _stats: () => ({ inserts, updates, countCalls }),
@@ -605,5 +632,277 @@ describe("runFilterApply — فیلترمود (بدونِ AI)", () => {
 
   it("سقفِ پیش‌فرضِ فیلترمود صادر شده", () => {
     expect(DEFAULT_FILTER_DAILY_CAP).toBeGreaterThan(0);
+  });
+});
+
+/* ──────────────────  runFilterApply — مکان‌نمای صفحه‌بندی  ─────────────────── */
+
+describe("runFilterApply — مکان‌نمای صفحه‌بندی (pagination cursor)", () => {
+  const loadProfile = async (): Promise<LoadedFilterProfile> => ({
+    profile,
+    prefs: { categorySlugs: ["software"], cities: ["تهران"] },
+  });
+  let enqueueFn: ReturnType<typeof vi.fn>;
+
+  /** کانکتورِ جعلیِ صفحه‌بندی‌شده با نتیجه‌ی قابلِ‌تنظیم و ثبتِ startPage. */
+  function pagedConnector(res: {
+    listings: JobListing[];
+    pagesFetched: number;
+    reachedEnd: boolean;
+  }) {
+    const calls: { startPage?: number; targetCount?: number }[] = [];
+    return {
+      calls,
+      connector: {
+        id: "jobinja" as const,
+        displayName: "جابینجا",
+        applyType: "structured" as const,
+        sessionShape: "cookie" as const,
+        async scrapePublic() {
+          return res.listings;
+        },
+        async scrapePublicWith(_prefs: unknown, opts: { startPage?: number; targetCount?: number }) {
+          calls.push({ startPage: opts.startPage, targetCount: opts.targetCount });
+          return res;
+        },
+        async search() {
+          return res.listings;
+        },
+        async apply(): Promise<ApplicationResult> {
+          throw new Error("apply نباید صدا شود");
+        },
+      } as unknown as JobBoardConnector,
+    };
+  }
+
+  beforeEach(() => {
+    enqueueFn = vi.fn(async (input: { matchId: string }) => ({
+      task: { id: `task-${input.matchId}` },
+      created: true,
+    }));
+  });
+
+  it("از startPageِ مکان‌نما آغاز می‌کند و پس از مصرفِ کامل، آن را به startPage+pagesFetched می‌برد", async () => {
+    const conn = makeFakeDb({});
+    const { connector, calls } = pagedConnector({
+      listings: [listing("a"), listing("b")],
+      pagesFetched: 2,
+      reachedEnd: false,
+    });
+    const advanceCursorFn = vi.fn(
+      async (_conn: unknown, _u: string, _b: string, _sig: string, _nextPage: number) => {},
+    );
+
+    const report = await runFilterApply({
+      userId: "u1",
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+      readCursorFn: async () => 4, // مکان‌نما روی صفحه‌ی ۴
+      advanceCursorFn,
+    });
+
+    expect(calls[0]?.startPage).toBe(4); // برداشت از صفحه‌ی ۴ آغاز شد
+    expect(report.queued).toBe(2);
+    // مصرفِ کامل (نه انتها، نه cutShort) → 4 + 2 = 6
+    expect(advanceCursorFn).toHaveBeenCalledTimes(1);
+    expect(advanceCursorFn.mock.calls[0]?.[4]).toBe(6);
+  });
+
+  it("رسیدن به انتها → مکان‌نما به صفحه‌ی ۱ بازنشانی می‌شود", async () => {
+    const conn = makeFakeDb({});
+    const { connector } = pagedConnector({
+      listings: [listing("a")],
+      pagesFetched: 1,
+      reachedEnd: true,
+    });
+    const advanceCursorFn = vi.fn(
+      async (_conn: unknown, _u: string, _b: string, _sig: string, _nextPage: number) => {},
+    );
+
+    const report = await runFilterApply({
+      userId: "u1",
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+      readCursorFn: async () => 7,
+      advanceCursorFn,
+    });
+
+    expect(report.reachedEnd).toBe(true);
+    expect(advanceCursorFn.mock.calls[0]?.[4]).toBe(1); // بازنشانی
+  });
+
+  it("نیمه‌کاره به‌خاطرِ سقفِ روزانه → مکان‌نما جلو نمی‌رود (آگهی‌های صف‌نشده از دست نمی‌روند)", async () => {
+    // سقفِ روزانه ۱؛ دو آگهی → دومی به‌خاطرِ سقف صف نمی‌شود (cutShort).
+    const conn = makeFakeDb({ queuedToday: 0 });
+    const { connector } = pagedConnector({
+      listings: [listing("a"), listing("b")],
+      pagesFetched: 1,
+      reachedEnd: false,
+    });
+    const advanceCursorFn = vi.fn(
+      async (_conn: unknown, _u: string, _b: string, _sig: string, _nextPage: number) => {},
+    );
+
+    const report = await runFilterApply({
+      userId: "u1",
+      dailyCap: 1,
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+      readCursorFn: async () => 3,
+      advanceCursorFn,
+    });
+
+    expect(report.queued).toBe(1);
+    expect(report.skippedByCap).toBe(1);
+    expect(advanceCursorFn).not.toHaveBeenCalled(); // نیمه‌کاره → مکان‌نما دست‌نخورده
+  });
+
+  it("همه‌ی آگهی‌های واکشی‌شده پردازش می‌شوند — دُمِ overshoot دور ریخته نمی‌شود (بدونِ جاافتادن)", async () => {
+    // کانکتور ۳۰ آگهی برمی‌گرداند در حالی که perRunListingCap پیش‌فرض ۲۵ است. با اصلاح،
+    // چون صفحه‌ها با تعدادِ پردازش‌شده هم‌تراز است، هر ۳۰ باید صف شوند (نه slice به ۲۵).
+    const conn = makeFakeDb({});
+    const many = Array.from({ length: 30 }, (_, i) => listing(`p${i}`));
+    const { connector } = pagedConnector({ listings: many, pagesFetched: 2, reachedEnd: false });
+    const advanceCursorFn = vi.fn(
+      async (_conn: unknown, _u: string, _b: string, _sig: string, _nextPage: number) => {},
+    );
+
+    const report = await runFilterApply({
+      userId: "u1",
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+      readCursorFn: async () => 1,
+      advanceCursorFn,
+    });
+
+    expect(report.ingested).toBe(30);
+    expect(report.queued).toBe(30); // هیچ آگهیِ واکشی‌شده‌ای جا نیفتاد
+    expect(advanceCursorFn.mock.calls[0]?.[4]).toBe(3); // 1 + 2 صفحه
+  });
+
+  it("aiFilter: آگهیِ از-قبل-صف‌شده دوباره امتیاز/شارژ نمی‌شود (dedupe پیش از هزینه)", async () => {
+    const conn = makeFakeDb({ priorMatchStatus: "queued" });
+    const { connector } = pagedConnector({
+      listings: [listing("a")],
+      pagesFetched: 1,
+      reachedEnd: false,
+    });
+    const scoreFn = vi.fn(async () => ({ matchScore: 0.95, coverLetter: "x" }));
+
+    const report = await runFilterApply({
+      userId: "u1",
+      aiFilter: true,
+      connectors: { jobinja: connector },
+      scoreFn: scoreFn as never,
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+      readCursorFn: async () => 1,
+    });
+
+    expect(scoreFn).not.toHaveBeenCalled(); // بدونِ فراخوانیِ گیت‌ویِ مترشده → بدونِ شارژ
+    expect(report.scored).toBe(0);
+    expect(report.alreadyQueued).toBe(1);
+    expect(report.queued).toBe(0);
+  });
+
+  it("aiFilter: آگهیِ از-قبل-امتیازخورده (drafted) بازاستفاده می‌شود، نه دوباره‌شارژ — سپس صف می‌شود", async () => {
+    // تطبیقِ قبلی امتیازِ ۰٫۹ دارد (بالای آستانه) ولی هنوز صف نشده (drafted، مثلاً enqueueِ
+    // قبلی شکست خورده). اجرای بعد باید امتیاز را بازاستفاده کند (scoreFn صدا نشود) و صفش کند.
+    const conn = makeFakeDb({
+      priorMatch: { status: "drafted", score: 0.9, reason: "قبلی", coverLetter: "نامه‌ی قبلی" },
+    });
+    const { connector } = pagedConnector({
+      listings: [listing("a")],
+      pagesFetched: 1,
+      reachedEnd: false,
+    });
+    const scoreFn = vi.fn(async () => ({ matchScore: 0.5, coverLetter: "نو" }));
+
+    const report = await runFilterApply({
+      userId: "u1",
+      aiFilter: true,
+      threshold: 0.7,
+      connectors: { jobinja: connector },
+      scoreFn: scoreFn as never,
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+      readCursorFn: async () => 1,
+    });
+
+    expect(scoreFn).not.toHaveBeenCalled(); // بازاستفاده از امتیازِ ذخیره‌شده → بدونِ شارژ
+    expect(report.scored).toBe(0);
+    expect(report.queued).toBe(1); // امتیازِ ۰٫۹ ≥ ۰٫۷ → صف شد
+  });
+
+  it("خطای enqueue (زیرساخت) → مکان‌نما جلو نمی‌رود (تلاشِ دوباره در اجرای بعد)", async () => {
+    const conn = makeFakeDb({});
+    const { connector } = pagedConnector({
+      listings: [listing("a"), listing("b")],
+      pagesFetched: 1,
+      reachedEnd: false,
+    });
+    const throwingEnqueue = vi.fn(async () => {
+      throw new Error("queue DB blip");
+    });
+    const advanceCursorFn = vi.fn(
+      async (_conn: unknown, _u: string, _b: string, _sig: string, _nextPage: number) => {},
+    );
+
+    const report = await runFilterApply({
+      userId: "u1",
+      connectors: { jobinja: connector },
+      enqueueFn: throwingEnqueue as never,
+      db: conn as never,
+      loadProfile,
+      readCursorFn: async () => 5,
+      advanceCursorFn,
+    });
+
+    expect(report.queued).toBe(0);
+    expect(report.errors.some((e) => e.includes("enqueue"))).toBe(true);
+    expect(advanceCursorFn).not.toHaveBeenCalled(); // نگه‌داشتنِ مکان‌نما برای تلاشِ دوباره
+  });
+
+  it("aiFilter: پس از پرشدنِ سقفِ روزانه، آگهی‌های بعدی امتیاز/شارژ نمی‌شوند (گیتِ بودجه پیش از امتیاز)", async () => {
+    // سقفِ روزانه ۱؛ سه آگهی. فقط اولی امتیاز می‌خورد و صف می‌شود؛ دو تای بعدی پیش از
+    // امتیازدهیِ مترشده رد می‌شوند (بدونِ شارژِ بی‌فایده).
+    const conn = makeFakeDb({ queuedToday: 0 });
+    const { connector } = pagedConnector({
+      listings: [listing("a"), listing("b"), listing("c")],
+      pagesFetched: 1,
+      reachedEnd: false,
+    });
+    const scoreFn = vi.fn(async () => ({ matchScore: 0.95, coverLetter: "x" }));
+    const advanceCursorFn = vi.fn(
+      async (_c: unknown, _u: string, _b: string, _s: string, _n: number) => {},
+    );
+
+    const report = await runFilterApply({
+      userId: "u1",
+      aiFilter: true,
+      dailyCap: 1,
+      connectors: { jobinja: connector },
+      scoreFn: scoreFn as never,
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+      readCursorFn: async () => 1,
+      advanceCursorFn,
+    });
+
+    expect(scoreFn).toHaveBeenCalledTimes(1); // فقط آگهیِ اول امتیاز خورد — نه سه‌بار
+    expect(report.queued).toBe(1);
+    expect(report.skippedByCap).toBe(2);
+    expect(advanceCursorFn).not.toHaveBeenCalled(); // نیمه‌کاره → مکان‌نما نگه داشته شد
   });
 });

@@ -223,7 +223,8 @@ describe("اتصالِ robots به jobinja.scrapePublicWith", () => {
       { fetchImpl, maxPages: 2, delayMs: 0, isAllowed: async () => false },
     );
 
-    expect(result).toEqual([]);
+    expect(result.listings).toEqual([]);
+    expect(result.reachedEnd).toBe(true); // منعِ robots = انتها (مکان‌نما بازنشانی)
     expect(pageFetches).toBe(0); // هیچ صفحه‌ای واکشی نشد
   });
 

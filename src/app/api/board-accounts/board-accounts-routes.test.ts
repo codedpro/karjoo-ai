@@ -90,12 +90,12 @@ describe("POST /api/board-accounts/connect — قاعده‌ی ایمنیِ ۱",
     expect(Object.keys(inserted)).not.toContain("token");
   });
 
-  it("jobvision → sessionShape='token'", async () => {
+  it("سایتِ داربستی (jobvision) هنوز زنده نیست → ۴۰۹ و هیچ DB-write (board gating)", async () => {
+    // jobvision/e-estekhdam/irantalent داربست‌اند؛ اتصالشان پیش از هر نوشتنی رد می‌شود.
     authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
-    pushSelect([{ board: "jobvision", status: "connected", accountLabel: null }]);
-    await connectPOST(connectReq({ board: "jobvision" }));
-    const inserted = h.insertValues.mock.calls[0][0] as Record<string, unknown>;
-    expect(inserted.sessionShape).toBe("token");
+    const res = await connectPOST(connectReq({ board: "jobvision" }));
+    expect(res.status).toBe(409);
+    expect(dbInsert).not.toHaveBeenCalled();
   });
 
   it("فیلدِ cookie در بدنه → ۴۰۰ و هیچ DB-write (مادهٔ سری رد می‌شود)", async () => {

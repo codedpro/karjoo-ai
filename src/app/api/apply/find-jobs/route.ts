@@ -123,6 +123,8 @@ export async function POST(request: Request): Promise<Response> {
       ingested: report.ingested,
       skippedByCap: report.skippedByCap,
       aiFilter: report.aiFilter,
+      // آیا به انتهای نتایجِ فعلی رسیدیم (اجرای بعد از سرِ فهرست دوباره اسکن می‌کند)؟
+      reachedEnd: report.reachedEnd,
     });
   });
 }

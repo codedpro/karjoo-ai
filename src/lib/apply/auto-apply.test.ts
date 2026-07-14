@@ -39,6 +39,7 @@ function serverRow(
     userId: "u1",
     enabled: true,
     minScore: 0.7,
+    lastDiscoveryAt: null,
     updatedAt: new Date(),
     createdAt: new Date(),
     ...overrides,

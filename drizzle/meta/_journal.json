@@ -113,6 +113,20 @@
       "when": 1783868355350,
       "tag": "0015_slow_salo",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784040465933,
+      "tag": "0016_aromatic_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784043722819,
+      "tag": "0017_large_star_brand",
+      "breakpoints": true
     }
   ]
 }

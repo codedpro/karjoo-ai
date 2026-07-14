@@ -1156,12 +1156,51 @@ export const userServerAutoApply = pgTable(
     enabled: boolean("enabled").notNull().default(false),
     /** آستانه‌ی امتیازِ تطبیقِ سطحِ سرور (۰..۱). پیش‌فرض ۰٫۷ (هم‌راستا با افزونه). */
     minScore: doublePrecision("min_score").notNull().default(0.7),
+    /**
+     * آخرین باری که زمان‌بندِ کشفِ سرور این کاربر را *تلاش* کرد (موفق یا ردشده). مبنای
+     * چرخشِ منصفانه است: هر دور کاربرانِ دیرترین‌تلاش‌شده را می‌گیرد و این را به‌روز می‌کند،
+     * پس کاربرانِ همیشه-ردشده (مثلاً بی‌موجودی) جلوی صف را قفل نمی‌کنند و کسی گرسنه نمی‌ماند.
+     */
+    lastDiscoveryAt: timestamp("last_discovery_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     // یک ردیفِ تنظیماتِ سرور به‌ازای هر کاربر.
     uniqueIndex("user_server_auto_apply_user_uq").on(t.userId),
+    // چرخشِ زمان‌بند: کاربرانِ دیرترین‌تلاش‌شده را سریع بیاب.
+    index("user_server_auto_apply_last_discovery_idx").on(t.lastDiscoveryAt),
+  ],
+);
+
+/**
+ * مکان‌نمای صفحه‌بندیِ فیلترمود — به‌ازای (کاربر × سایت × امضای فیلتر).
+ *
+ * `runFilterApply` در هر اجرا از `nextPage` آغاز می‌کند و آن را جلو می‌برد تا اجراهای
+ * پیاپیِ «جست‌وجوی مشاغل» (دستی یا زمان‌بندِ سرور) به‌جای اسکنِ همیشگیِ صفحاتِ نخست، در
+ * عمقِ نتایج پیش بروند. با تغییرِ فیلترها `filter_sig` عوض می‌شود و مکان‌نمای تازه‌ای از
+ * صفحه‌ی ۱ می‌سازد. رسیدن به انتهای نتایج → بازنشانی به ۱ (اسکنِ دوباره‌ی سرِ فهرست برای
+ * آگهی‌های تازه؛ dedupe در لایه‌ی matches/tasks از اپلای تکراری جلوگیری می‌کند).
+ */
+export const filterCursors = pgTable(
+  "filter_cursors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** سایتِ کاریابی (فعلاً فقط 'jobinja' زنده است). متن، نه enum — کلیدِ مکان‌نماست. */
+    board: text("board").notNull(),
+    /** امضای پایدارِ فیلترهای هدف‌گیری؛ تغییرِ فیلتر → امضای نو → مکان‌نمای نو. */
+    filterSig: text("filter_sig").notNull(),
+    /** صفحه‌ای که اجرای بعدی باید از آن آغاز کند (۱-مبنا). */
+    nextPage: integer("next_page").notNull().default(1),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // یک مکان‌نما به‌ازای هر (کاربر، سایت، امضای فیلتر).
+    uniqueIndex("filter_cursors_user_board_sig_uq").on(t.userId, t.board, t.filterSig),
   ],
 );
 
@@ -1181,6 +1220,8 @@ export type BoardAccount = typeof boardAccounts.$inferSelect;
 export type NewBoardAccount = typeof boardAccounts.$inferInsert;
 export type SessionBlob = typeof sessionBlobs.$inferSelect;
 export type NewSessionBlob = typeof sessionBlobs.$inferInsert;
+export type FilterCursor = typeof filterCursors.$inferSelect;
+export type NewFilterCursor = typeof filterCursors.$inferInsert;
 export type JobListingRow = typeof jobListings.$inferSelect;
 export type NewJobListingRow = typeof jobListings.$inferInsert;
 export type RawListing = typeof rawListings.$inferSelect;

@@ -20,6 +20,7 @@ import { useMemo, useState } from "react";
 import { Briefcase, Globe, Search } from "lucide-react";
 
 import { Badge, Button, cn, toFaDigits } from "./ui";
+import { FindJobsButton } from "./find-jobs-button";
 import {
   IconChart,
   IconCheck,
@@ -270,6 +271,9 @@ export function ApplyFiltersEditor({
           </Button>
         </div>
       </div>
+
+      {/* ───── اقدامِ «جست‌وجوی مشاغل» — مستقل از ذخیره ───── */}
+      <FindJobsButton />
 
       {/* ───── پیش‌نمایشِ هدف ───── */}
       <TargetPreview

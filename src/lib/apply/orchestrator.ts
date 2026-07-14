@@ -31,7 +31,13 @@ import {
 // این کار رفتارِ زمان‌اجرا را تغییر نمی‌دهد، فقط ترتیبِ ارزیابیِ ماژول‌ها را امن می‌کند.
 import { isInsufficientBalance, meteredScoreAndDraft } from "@/lib/apply/metered-scoring";
 import { toJobPreferences as preferencesToJobPreferences } from "@/lib/apply/filters";
-import { getConnector } from "@/lib/apply/registry";
+import {
+  advanceFilterCursor,
+  computeFilterSignature,
+  readFilterCursor,
+} from "@/lib/apply/filter-cursor";
+import { getConnector, isBoardLive, liveBoardIds } from "@/lib/apply/registry";
+import { sanitizePgText } from "@/lib/apply/pg-text";
 import { orchestratorRunCap } from "@/lib/env";
 import { enqueue as defaultEnqueue } from "@/lib/queue";
 import type {
@@ -42,6 +48,14 @@ import type {
   JobPreferences,
 } from "@/lib/apply/types";
 import { HttpError, NotImplementedError } from "@/lib/api/http";
+
+/** مکثِ کوتاه (برای تلاشِ دوباره‌ی نوشتنِ گذرا). */
+const sleepMs = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** تلاش‌های نوشتنِ تطبیقِ امتیازخورده — امتیازِ *پرداخت‌شده به 1xai* نباید با یک خطای گذرای
+ *  DBِ محلی هدر رود و در اجرای بعد دوباره شارژ شود. */
+const MATCH_UPSERT_ATTEMPTS = 3;
+const MATCH_UPSERT_RETRY_MS = 100;
 
 /** آستانه‌ی پیش‌فرضِ «بالای آستانه» برای drafted-شدنِ یک تطبیق. */
 const DEFAULT_SCORE_THRESHOLD = 0.6;
@@ -675,6 +689,25 @@ export async function runAutoApply(
 /** سقفِ پیش‌فرضِ روزانه‌ی فیلترمود (هم‌راستا با سهمیه‌ی اپلای رایگان ۱۰۰/روز). */
 export const DEFAULT_FILTER_DAILY_CAP = 100;
 
+/**
+ * سقفِ صفحه‌ی پنجره‌ی برداشت در هر اجرا (گاردِ ادب/runaway). با `targetCount` عملاً زودتر
+ * می‌ایستیم؛ این فقط بیشینه‌ی مطلقِ صفحه‌های یک اجراست.
+ */
+export const FILTER_SCRAPE_MAX_PAGES = 5;
+
+/** قراردادِ برداشتِ صفحه‌بندی‌شده (افزونه‌ی کانکتور؛ فعلاً فقط jobinja آن را دارد). */
+interface PagedScrape {
+  scrapePublicWith(
+    prefs: JobPreferences,
+    opts: { startPage?: number; maxPages?: number; targetCount?: number },
+  ): Promise<{ listings: JobListing[]; pagesFetched: number; reachedEnd: boolean }>;
+}
+
+/** آیا این کانکتور برداشتِ صفحه‌بندی‌شده (مکان‌نما) را پشتیبانی می‌کند؟ */
+function supportsPagedScrape(c: JobBoardConnector): c is JobBoardConnector & PagedScrape {
+  return typeof (c as Partial<PagedScrape>).scrapePublicWith === "function";
+}
+
 /** پروفایل + ترجیحاتِ بارگذاری‌شده‌ی یک کاربر (ورودیِ داخلیِ فیلترمود). */
 export interface LoadedFilterProfile {
   profile: CandidateProfile;
@@ -712,6 +745,21 @@ export interface RunFilterApplyOptions {
     userId: string,
     conn: OrchestratorDb,
   ) => Promise<LoadedFilterProfile | null>;
+  /** خواندنِ مکان‌نمای صفحه‌بندی — تزریقی برای تست؛ پیش‌فرض readFilterCursor. */
+  readCursorFn?: (
+    conn: OrchestratorDb,
+    userId: string,
+    board: string,
+    filterSig: string,
+  ) => Promise<number>;
+  /** جلوبردنِ مکان‌نما — تزریقی برای تست؛ پیش‌فرض advanceFilterCursor. */
+  advanceCursorFn?: (
+    conn: OrchestratorDb,
+    userId: string,
+    board: string,
+    filterSig: string,
+    nextPage: number,
+  ) => Promise<void>;
 }
 
 /** خلاصه‌ی نتیجه‌ی یک اجرای runFilterApply. */
@@ -734,6 +782,11 @@ export interface RunFilterApplyReport {
   scored: number;
   /** (فقط aiFilter) آگهی‌های زیرِ آستانه که صف نشدند. */
   belowThreshold: number;
+  /**
+   * آیا برداشت به انتهای نتایجِ سایتِ زنده رسید (مکان‌نما به صفحه‌ی ۱ بازنشانی شد)؟ برای
+   * چند-سایته، مقدارِ آخرین سایتِ پردازش‌شده. فعلاً فقط jobinja زنده است.
+   */
+  reachedEnd: boolean;
   errors: string[];
 }
 
@@ -763,13 +816,15 @@ export async function runFilterApply(
 ): Promise<RunFilterApplyReport> {
   const {
     userId,
-    boards = ["jobinja"],
+    boards = liveBoardIds(),
     aiFilter = false,
     threshold = DEFAULT_MATCH_THRESHOLD,
     dailyCap = DEFAULT_FILTER_DAILY_CAP,
     db: conn = db,
     enqueueFn = defaultEnqueue,
     perRunListingCap = orchestratorRunCap(),
+    readCursorFn = readFilterCursor,
+    advanceCursorFn = advanceFilterCursor,
   } = options;
 
   const loadProfile = options.loadProfile ?? defaultLoadFilterProfile;
@@ -797,6 +852,7 @@ export async function runFilterApply(
     skippedDismissed: 0,
     scored: 0,
     belowThreshold: 0,
+    reachedEnd: false,
     errors: [],
   };
 
@@ -815,26 +871,71 @@ export async function runFilterApply(
   // سقفِ روزانه: ظرفیتِ باقی‌مانده (همان شمارشِ tasks امروزِ این کاربر — فیلتر + AI).
   let remainingCap = Math.max(0, dailyCap - (await countQueuedToday(conn, userId)));
 
+  // امضای فیلتر برای مکان‌نما — با تغییرِ فیلترها عوض می‌شود و پیمایش از صفحه‌ی ۱ آغاز می‌شود.
+  const filterSig = computeFilterSignature(prefs);
+
   boardsLoop: for (const boardId of boards) {
+    // گِیتِ سایت: فقط سایت‌های زنده (jobinja). داربست‌ها را رد کن تا اپلایِ توخالی نسازند.
+    if (!isBoardLive(boardId)) {
+      report.errors.push(`سایت ${boardId} هنوز پشتیبانی نمی‌شود (به‌زودی)`);
+      continue;
+    }
     const connector = resolveConnector(boardId);
     if (!connector) {
       report.errors.push(`کانکتور برای سایت ${boardId} ثبت نشده است`);
       continue;
     }
+    // بودجه‌ی روزانه تمام شد → نه برداشت کن، نه مکان‌نما را جلو ببر (اجرای بعد همین صفحات را می‌گیرد).
+    if (remainingCap <= 0) break boardsLoop;
 
-    // ۱) ingestِ عمومیِ فیلترشده (فقط-خواندنی).
+    // مکان‌نما: از کجای نتایج ادامه دهیم؟ هدفِ این اجرا = min(سقفِ اجرا، بودجه‌ی روزانه‌ی مانده).
+    const startPage = await readCursorFn(conn, userId, boardId, filterSig);
+    const targetCount = Math.max(1, Math.min(perRunListingCap, remainingCap));
+
+    // ۱) ingestِ عمومیِ فیلترشده (فقط-خواندنی)، از startPage با پنجره‌ی صفحه.
+    //    مهم: در مسیرِ صفحه‌بندی *همه‌ی* آگهی‌های واکشی‌شده پردازش می‌شوند (بدونِ slice)، تا
+    //    «صفحه‌های واکشی‌شده» دقیقاً با «صفحه‌های پردازش‌شده» یکی باشد و مکان‌نما هیچ آگهیِ
+    //    واکشی‌شده‌ای را جا نیندازد. سقفِ اجرا (perRunListingCap) از راهِ targetCount محدود
+    //    می‌کند «چقدر» واکشی شود (نه اینکه بعداً دور ریخته شود). فقط مسیرِ بدونِ صفحه‌بندی
+    //    (fallback) برای ایمنی slice می‌شود.
     let listings: JobListing[];
+    let pagesFetched = 1;
+    let reachedEnd = true; // پیش‌فرضِ محافظه‌کار برای کانکتورهای بدونِ صفحه‌بندی.
     try {
-      listings = await connector.scrapePublic(prefs);
+      if (supportsPagedScrape(connector)) {
+        const res = await connector.scrapePublicWith(prefs, {
+          startPage,
+          maxPages: FILTER_SCRAPE_MAX_PAGES,
+          targetCount,
+        });
+        listings = res.listings;
+        pagesFetched = res.pagesFetched;
+        reachedEnd = res.reachedEnd;
+      } else {
+        listings = (await connector.scrapePublic(prefs)).slice(0, Math.max(0, perRunListingCap));
+      }
     } catch (err) {
       report.errors.push(`scrapePublic(${boardId}): ${errMsg(err)}`);
       continue;
     }
     report.ingested += listings.length;
 
-    const capped = listings.slice(0, Math.max(0, perRunListingCap));
+    // آیا این اجرا نیمه‌کاره ماند (سقفِ روزانه/موجودی، یا خطای زیرساختِ نوشتن)؟ اگر بله،
+    // مکان‌نما را جلو نمی‌بریم تا آگهی‌های صف‌نشده‌ی همین صفحات در اجرای بعد از دست نروند.
+    let cutShort = false;
 
-    for (const job of capped) {
+    for (let i = 0; i < listings.length; i += 1) {
+      const job = listings[i]!;
+
+      // ۰) گیتِ بودجه *پیش از هر کاری* (به‌ویژه پیش از امتیازدهیِ مترشده): وقتی سقفِ روزانه
+      //    پر شد، هیچ آگهیِ تازه‌ای صف نمی‌شود؛ پس ادامه‌ی امتیازدهی صرفاً کیف‌پول را بی‌فایده
+      //    شارژ می‌کند. می‌ایستیم، بقیه را «ردشده به‌خاطرِ سقف» می‌شماریم و مکان‌نما را نگه می‌داریم.
+      if (remainingCap <= 0) {
+        report.skippedByCap += listings.length - i;
+        cutShort = true;
+        break;
+      }
+
       // ۲) پایدارسازیِ آگهی.
       let listingRow: JobListingRow;
       try {
@@ -845,28 +946,68 @@ export async function runFilterApply(
         continue;
       }
 
+      // ۲.۵) خواندنِ تطبیقِ موجود *پیش از هزینه*. دو نقشِ حیاتیِ ضدِ دوباره‌شارژ:
+      //   • 'queued'/'dismissed' به سرانجام رسیده → کلاً رد کن.
+      //   • هر تطبیقِ *از قبل امتیازخورده* (score غیرِ null، یعنی 'drafted'/'scored') → امتیازش
+      //     را **بازاستفاده** کن و scoreFnِ مترشده را دوباره صدا نزن. بدونِ این، اسکنِ دوباره‌ی
+      //     همان صفحات (بازنشانی مکان‌نما، تلاشِ دوباره پس از خطای enqueue، یا همپوشانیِ اجراها)
+      //     آگهیِ زیرِ-آستانه یا drafted-نشده‌ی-قبلی را دوباره امتیاز و شارژ می‌کرد. قاعده: هر
+      //     (کاربر×آگهی) حداکثر یک‌بار امتیاز می‌خورد؛ اجراهای بعد از امتیازِ ذخیره‌شده استفاده می‌کنند.
+      let prior:
+        | { status: string; score: number | null; reason: string | null; coverLetter: string | null }
+        | undefined;
+      try {
+        prior = await conn.query.matches.findFirst({
+          columns: { status: true, score: true, reason: true, coverLetter: true },
+          where: and(eq(matches.userId, userId), eq(matches.listingId, listingRow.id)),
+        });
+      } catch (err) {
+        // خواندنِ وضعیتِ تطبیق شکست خورد (زیرساخت) — امن‌ترین کار: این آگهی را رد کن و
+        // مکان‌نما را نگه‌دار تا اجرای بعد دوباره تلاش کند (نه امتیازدهیِ کورکورانه).
+        report.errors.push(`priorMatch(${job.id}): ${errMsg(err)}`);
+        cutShort = true;
+        continue;
+      }
+      if (prior?.status === "dismissed") {
+        report.skippedDismissed += 1;
+        continue;
+      }
+      if (prior?.status === "queued") {
+        report.alreadyQueued += 1;
+        continue;
+      }
+
       // ۳) (فقط aiFilter) امتیازدهی. زیرِ آستانه → 'scored'، صف نمی‌شود.
       let matchScore: number | null = null;
       let coverLetter: string | null = null;
       let reason: string | null = null;
       let aboveThreshold = true;
       if (aiFilter) {
-        try {
-          const s = await scoreFn(job, profile);
-          report.scored += 1;
-          matchScore = s.matchScore;
-          reason = s.reason ?? null;
-          coverLetter = s.coverLetter;
-          aboveThreshold = s.matchScore >= threshold;
-        } catch (err) {
-          // اتمامِ موجودی → کلِ اجرا را متوقف کن (break از حلقه‌ی برچسب‌دارِ سایت‌ها)، تا
-          // آگهی‌های بعدی فراخوانیِ گیت‌ویِ بی‌محاسبه نسازند. نتیجه‌ی جزئی برمی‌گردد.
-          if (isInsufficientBalance(err)) {
-            report.errors.push("اجرا به‌خاطرِ اتمامِ موجودیِ هوش مصنوعی متوقف شد");
-            break boardsLoop;
+        if (prior && prior.score !== null && prior.score !== undefined) {
+          // قبلاً امتیاز خورده → بازاستفاده، بدونِ فراخوانیِ مترشده (بدونِ شارژِ دوباره).
+          matchScore = prior.score;
+          reason = prior.reason ?? null;
+          coverLetter = prior.coverLetter ?? null;
+          aboveThreshold = prior.score >= threshold;
+        } else {
+          try {
+            const s = await scoreFn(job, profile);
+            report.scored += 1;
+            matchScore = s.matchScore;
+            reason = s.reason ?? null;
+            coverLetter = s.coverLetter;
+            aboveThreshold = s.matchScore >= threshold;
+          } catch (err) {
+            // اتمامِ موجودی → کلِ اجرا را متوقف کن (break از حلقه‌ی برچسب‌دارِ سایت‌ها)، تا
+            // آگهی‌های بعدی فراخوانیِ گیت‌ویِ بی‌محاسبه نسازند. نتیجه‌ی جزئی برمی‌گردد.
+            if (isInsufficientBalance(err)) {
+              report.errors.push("اجرا به‌خاطرِ اتمامِ موجودیِ هوش مصنوعی متوقف شد");
+              cutShort = true; // نیمه‌کاره → مکان‌نما جلو نمی‌رود.
+              break boardsLoop;
+            }
+            report.errors.push(`score(${job.id}): ${errMsg(err)}`);
+            continue;
           }
-          report.errors.push(`score(${job.id}): ${errMsg(err)}`);
-          continue;
         }
       }
 
@@ -874,47 +1015,67 @@ export async function runFilterApply(
       //    فیلترمود: امتیاز/انگیزه‌نامه‌ی موجود (احتمالاً از مسیرِ AI) را پاک نمی‌کند.
       const insertStatus: "scored" | "drafted" =
         aiFilter && aboveThreshold ? "drafted" : "scored";
-      let matchId: string;
-      let matchStatus: string;
-      try {
-        const [matchRow] = await conn
-          .insert(matches)
-          .values({
-            userId,
-            listingId: listingRow.id,
-            score: matchScore,
-            status: insertStatus,
-            reason: reason ?? (aiFilter ? null : "filter"),
-            coverLetter: aiFilter && aboveThreshold ? coverLetter : null,
-            scoredAt: aiFilter ? sql`now()` : null,
-          })
-          .onConflictDoUpdate({
-            target: [matches.userId, matches.listingId],
-            set: aiFilter
-              ? {
-                  score: sql`excluded.score`,
-                  reason: sql`excluded.reason`,
-                  coverLetter: sql`excluded.cover_letter`,
-                  status: sql`CASE WHEN ${matches.status} IN ('queued','dismissed')
-                                   THEN ${matches.status}
-                                   ELSE excluded.status END`,
-                  scoredAt: sql`now()`,
-                  updatedAt: sql`now()`,
-                }
-              : {
-                  // فیلترمود: امتیاز/انگیزه‌نامه/زمانِ امتیاز را دست نمی‌زنیم (حفظ).
-                  reason: sql`COALESCE(${matches.reason}, 'filter')`,
-                  status: sql`CASE WHEN ${matches.status} IN ('queued','dismissed')
-                                   THEN ${matches.status}
-                                   ELSE 'scored'::match_status END`,
-                  updatedAt: sql`now()`,
-                },
-          })
-          .returning({ id: matches.id, status: matches.status });
-        matchId = matchRow.id;
-        matchStatus = matchRow.status;
-      } catch (err) {
-        report.errors.push(`persistMatch(${job.id}): ${errMsg(err)}`);
+      let matchId = "";
+      let matchStatus = "";
+      let upsertOk = false;
+      let upsertErr: unknown;
+      // تلاشِ دوباره: امتیازِ AI پیش از این *به 1xai پرداخت شده*؛ اگر نوشتنِ تطبیقِ محلی به
+      // خطای گذرا بخورد و امتیاز ذخیره نشود، اجرای بعد (چون prior.score هنوز null است) دوباره
+      // شارژ می‌کرد. چند تلاش، پنجره‌ی این دوباره‌شارژ را تقریباً صفر می‌کند.
+      for (let attempt = 1; attempt <= MATCH_UPSERT_ATTEMPTS; attempt += 1) {
+        try {
+          const [matchRow] = await conn
+            .insert(matches)
+            .values({
+              userId,
+              listingId: listingRow.id,
+              score: matchScore,
+              status: insertStatus,
+              // متنِ خروجیِ AI پاک‌سازی می‌شود (NUL/C0) تا یک آگهیِ مسموم درجِ تطبیق را قطعی
+              // نشکند و حلقه‌ی شارژِ دوباره نسازد.
+              reason: sanitizePgText(reason) ?? (aiFilter ? null : "filter"),
+              // انگیزه‌نامه‌ی *پرداخت‌شده* را صرف‌نظر از آستانه ذخیره کن؛ اگر بعداً آستانه پایین
+              // بیاید و امتیاز بازاستفاده شود، این آرتیفکت بدونِ شارژِ دوباره در دسترس است.
+              coverLetter: aiFilter ? sanitizePgText(coverLetter) : null,
+              scoredAt: aiFilter ? sql`now()` : null,
+            })
+            .onConflictDoUpdate({
+              target: [matches.userId, matches.listingId],
+              set: aiFilter
+                ? {
+                    score: sql`excluded.score`,
+                    reason: sql`excluded.reason`,
+                    coverLetter: sql`excluded.cover_letter`,
+                    status: sql`CASE WHEN ${matches.status} IN ('queued','dismissed')
+                                     THEN ${matches.status}
+                                     ELSE excluded.status END`,
+                    scoredAt: sql`now()`,
+                    updatedAt: sql`now()`,
+                  }
+                : {
+                    // فیلترمود: امتیاز/انگیزه‌نامه/زمانِ امتیاز را دست نمی‌زنیم (حفظ).
+                    reason: sql`COALESCE(${matches.reason}, 'filter')`,
+                    status: sql`CASE WHEN ${matches.status} IN ('queued','dismissed')
+                                     THEN ${matches.status}
+                                     ELSE 'scored'::match_status END`,
+                    updatedAt: sql`now()`,
+                  },
+            })
+            .returning({ id: matches.id, status: matches.status });
+          matchId = matchRow.id;
+          matchStatus = matchRow.status;
+          upsertOk = true;
+          break;
+        } catch (err) {
+          upsertErr = err;
+          if (attempt < MATCH_UPSERT_ATTEMPTS) await sleepMs(MATCH_UPSERT_RETRY_MS * attempt);
+        }
+      }
+      if (!upsertOk) {
+        // خطای پایدارِ نوشتن — آگهیِ صف‌نشده باقی ماند؛ مکان‌نما را نگه‌دار تا اجرای بعد دوباره
+        // تلاش کند (این خطاها همه‌یا-هیچ‌اند، نه مسمومِ تک‌آگهی، پس گیر نمی‌اندازد).
+        report.errors.push(`persistMatch(${job.id}): ${errMsg(upsertErr)}`);
+        cutShort = true;
         continue;
       }
 
@@ -934,11 +1095,7 @@ export async function runFilterApply(
         continue;
       }
 
-      // سقفِ روزانه.
-      if (remainingCap <= 0) {
-        report.skippedByCap += 1;
-        continue;
-      }
+      // سقفِ روزانه پیشاپیش در گیتِ بالای حلقه بررسی شد (پیش از امتیازدهی)؛ اینجا remainingCap>0 است.
 
       // ۶) ورود به صف (idempotent). mode برچسب می‌خورد تا claim فیلتر/AI را تفکیک کند.
       try {
@@ -971,8 +1128,23 @@ export async function runFilterApply(
           report.alreadyQueued += 1;
         }
       } catch (err) {
+        // خطای نوشتنِ صف (DB) — این آگهی صف نشد؛ مکان‌نما را نگه‌دار تا اجرای بعد دوباره
+        // تلاش کند. idempotencyKey از صف‌شدنِ دوباره‌ی همان تطبیق جلوگیری می‌کند.
         report.errors.push(`enqueue(apply:${matchId}): ${errMsg(err)}`);
+        cutShort = true;
         continue;
+      }
+    }
+
+    // مکان‌نما را فقط وقتی جلو ببر که این اجرا کامل مصرف شد (نه نیمه‌کاره به‌خاطرِ سقفِ روزانه/
+    // موجودی/خطای زیرساخت). رسیدن به انتها → بازنشانی به ۱ تا اجرای بعد سرِ فهرست را دوباره اسکن کند.
+    report.reachedEnd = reachedEnd;
+    if (!cutShort) {
+      const nextPage = reachedEnd ? 1 : startPage + Math.max(1, pagesFetched);
+      try {
+        await advanceCursorFn(conn, userId, boardId, filterSig, nextPage);
+      } catch (err) {
+        report.errors.push(`advanceCursor(${boardId}): ${errMsg(err)}`);
       }
     }
   }

@@ -44,8 +44,19 @@ const REQUEST_TIMEOUT_MS = 25_000;
 
 /** آپشن‌های داخلی برداشت (برای تست/تنظیم؛ بخشی از قرارداد عمومی نیست). */
 export interface ScrapeOptions {
-  /** بیشینه‌ی صفحه‌های پیمایش‌شده. */
+  /** بیشینه‌ی صفحه‌های پیمایش‌شده در این اجرا (پنجره؛ سقفِ ادب). */
   maxPages?: number;
+  /**
+   * صفحه‌ای که پیمایش از آن آغاز می‌شود (۱-مبنا؛ پیش‌فرض ۱). با مکان‌نمای صفحه‌بندیِ
+   * `runFilterApply` تغذیه می‌شود تا اجراهای پیاپی در عمقِ نتایج پیش بروند.
+   */
+  startPage?: number;
+  /**
+   * اگر داده شود، به‌محضِ رسیدنِ تعدادِ آگهیِ *یکتا*ی جمع‌آوری‌شده به این عدد، پیمایش
+   * می‌ایستد (تا آگهیِ اضافه‌ای فراتر از سقفِ اجرا واکشی/دورریز نشود؛ مکان‌نما دقیقاً
+   * به‌اندازه‌ی صفحاتِ مصرف‌شده جلو می‌رود).
+   */
+  targetCount?: number;
   /** مکث بین صفحه‌ها (میلی‌ثانیه) — برای رعایت ادب. */
   delayMs?: number;
   /** پیاده‌سازی fetch قابل‌تزریق (تست). پیش‌فرض: fetch سراسری. */
@@ -56,6 +67,20 @@ export interface ScrapeOptions {
    * fetchِ تزریقی) به‌صورت «همیشه مجاز» تا شبکه/شمارشِ fetch دست‌نخورده بماند.
    */
   isAllowed?: (url: string) => Promise<boolean>;
+}
+
+/** نتیجه‌ی برداشتِ صفحه‌بندی‌شده — آگهی‌ها به‌همراه پیشرفتِ صفحه (برای مکان‌نما). */
+export interface ScrapeResult {
+  /** آگهی‌های یکتای جمع‌آوری‌شده در این اجرا. */
+  listings: JobListing[];
+  /** تعدادِ صفحه‌هایی که در این اجرا با موفقیت واکشی و پارس شدند. */
+  pagesFetched: number;
+  /**
+   * آیا به انتهای نتایج رسیدیم؟ (صفحه‌ی خالی، تکرارِ کامل، یا منعِ robots) — در این صورت
+   * مکان‌نما به صفحه‌ی ۱ بازنشانی می‌شود تا اجرای بعد سرِ فهرست را دوباره اسکن کند.
+   * اگر به‌خاطرِ `targetCount` یا سقفِ `maxPages` ایستادیم false است (احتمالاً صفحه‌ی بیشتری هست).
+   */
+  reachedEnd: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -343,7 +368,7 @@ function sleep(ms: number): Promise<void> {
 /* ------------------------------------------------------------------ */
 
 export const jobinja: JobBoardConnector & {
-  scrapePublicWith(prefs: JobPreferences, opts: ScrapeOptions): Promise<JobListing[]>;
+  scrapePublicWith(prefs: JobPreferences, opts: ScrapeOptions): Promise<ScrapeResult>;
 } = {
   id: "jobinja",
   displayName: "جابینجا",
@@ -351,16 +376,23 @@ export const jobinja: JobBoardConnector & {
   sessionShape: "cookie",
 
   async scrapePublic(prefs: JobPreferences): Promise<JobListing[]> {
-    return this.scrapePublicWith(prefs, {});
+    return (await this.scrapePublicWith(prefs, {})).listings;
   },
 
   /**
-   * نسخه‌ی قابل‌تنظیمِ `scrapePublic` با تزریق fetch/سقف صفحه (برای تست و orchestrator).
-   * بخشی از قرارداد عمومی کانکتور نیست؛ صرفاً افزونه‌ی این پیاده‌سازی است.
+   * نسخه‌ی قابل‌تنظیمِ `scrapePublic` با تزریق fetch/پنجره‌ی صفحه (برای تست و orchestrator).
+   * بخشی از قرارداد عمومی کانکتور نیست؛ صرفاً افزونه‌ی این پیاده‌سازی است. `ScrapeResult`
+   * علاوه بر آگهی‌ها، پیشرفتِ صفحه را برمی‌گرداند تا orchestrator مکان‌نما را جلو ببرد.
    */
-  async scrapePublicWith(prefs: JobPreferences, opts: ScrapeOptions): Promise<JobListing[]> {
+  async scrapePublicWith(prefs: JobPreferences, opts: ScrapeOptions): Promise<ScrapeResult> {
     const fetchImpl = opts.fetchImpl ?? fetch;
     const maxPages = Math.max(1, opts.maxPages ?? DEFAULT_MAX_PAGES);
+    const startPage = Math.max(1, Math.floor(opts.startPage ?? 1));
+    const endPage = startPage + maxPages - 1;
+    const targetCount =
+      typeof opts.targetCount === "number" && opts.targetCount > 0
+        ? opts.targetCount
+        : Number.POSITIVE_INFINITY;
     const delayMs = opts.delayMs ?? DELAY_BETWEEN_PAGES_MS;
 
     // بررسیِ robots: اگر صریحاً تزریق شده از همان؛ وگرنه در مسیرِ واقعی (fetchِ پیش‌فرض)
@@ -374,19 +406,22 @@ export const jobinja: JobBoardConnector & {
 
     const collected: JobListing[] = [];
     const seen = new Set<string>();
+    let pagesFetched = 0;
+    let reachedEnd = false;
 
-    for (let page = 1; page <= maxPages; page += 1) {
-      if (page > 1) {
+    for (let page = startPage; page <= endPage; page += 1) {
+      if (page > startPage) {
         await sleep(delayMs); // ادب: مکث بین صفحه‌ها (نه قبل از اولین درخواست).
       }
 
       const target = buildSearchUrl(prefs, page);
 
       // ادب: پیش از واکشی، robots.txt را احترام بگذار. اگر این مسیر disallow باشد،
-      // مودبانه رد می‌شویم و برداشت را متوقف می‌کنیم (لاگ می‌زنیم).
+      // مودبانه رد می‌شویم و آن را «انتها» می‌شماریم (مکان‌نما به ۱ بازنشانی می‌شود).
       const allowed = await checkAllowed(target);
       if (!allowed) {
         console.warn(`[jobinja] robots.txt واکشیِ ${target} را منع کرد — رد شد.`);
+        reachedEnd = true;
         break;
       }
 
@@ -413,9 +448,12 @@ export const jobinja: JobBoardConnector & {
         clearTimeout(timer);
       }
 
+      pagesFetched += 1;
+
       const pageListings = parseSearchHtml(html);
       if (pageListings.length === 0) {
-        break; // صفحه‌ی خالی یا انتهای نتایج → توقف زودهنگام.
+        reachedEnd = true; // صفحه‌ی خالی یا انتهای نتایج.
+        break;
       }
 
       let added = 0;
@@ -425,11 +463,16 @@ export const jobinja: JobBoardConnector & {
         collected.push(listing);
         added += 1;
       }
-      // اگر این صفحه هیچ آگهی تازه‌ای نداشت، احتمالاً به تکرار رسیده‌ایم.
-      if (added === 0) break;
+      // اگر این صفحه هیچ آگهی تازه‌ای نداشت، احتمالاً به تکرار/انتها رسیده‌ایم.
+      if (added === 0) {
+        reachedEnd = true;
+        break;
+      }
+      // به سهمیه‌ی این اجرا رسیدیم → بایست (انتها نیست؛ مکان‌نما پس از این صفحات ادامه می‌یابد).
+      if (collected.length >= targetCount) break;
     }
 
-    return collected;
+    return { listings: collected, pagesFetched, reachedEnd };
   },
 
   async search(_prefs: JobPreferences): Promise<JobListing[]> {

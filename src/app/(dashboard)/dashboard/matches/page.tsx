@@ -22,7 +22,10 @@ import {
 import { BOARD_ACCOUNT_STATUS, boardLabel } from "@/components/dashboard/labels";
 import { IconCompass } from "@/components/dashboard/icons";
 import { MatchCard } from "@/components/dashboard/match-card";
-import { PairExtensionPanel } from "@/components/dashboard/pair-extension-panel";
+import {
+  DisconnectBoardButton,
+  PairExtensionPanel,
+} from "@/components/dashboard/pair-extension-panel";
 import { getDashboardUser } from "@/components/dashboard/session";
 import {
   Badge,
@@ -172,7 +175,12 @@ async function ConnectedBoards({ userId }: { userId: string }) {
                     </div>
                   ) : null}
                 </div>
-                <Badge tone={status.tone}>{status.label}</Badge>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <Badge tone={status.tone}>{status.label}</Badge>
+                  {acc.status === "connected" ? (
+                    <DisconnectBoardButton board={acc.board} />
+                  ) : null}
+                </div>
               </li>
             );
           })}

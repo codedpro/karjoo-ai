@@ -30,3 +30,10 @@ export const db = drizzle(client, { schema });
 
 export { schema };
 export type Database = typeof db;
+
+/**
+ * اتصالِ خامِ postgres — برای مواردی که به کانکشنِ اختصاصی نیاز است (مثلِ قفلِ مشورتیِ
+ * سطحِ نشست `pg_advisory_lock` که باید قفل و بازکردنش روی یک کانکشنِ ثابت انجام شود؛
+ * از `client.reserve()` استفاده کنید). برای کوئریِ معمول همیشه `db` را ترجیح دهید.
+ */
+export { client };
