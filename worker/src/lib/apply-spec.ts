@@ -73,46 +73,57 @@ const JOBINJA_SPEC: BoardApplySpec = {
   board: "jobinja",
   maturity: "best-effort",
   urlPattern: /^https:\/\/jobinja\.ir\/companies\/[^/]+\/jobs\/[A-Za-z0-9]+/,
-  applyButtonSelector: "a.c-jobView__applyButton, button.c-jobView__applyButton",
-  coverLetterFieldSelector:
-    "textarea[name='application[body]'], textarea.c-applyForm__message",
-  submitSelector:
-    "form.c-applyForm button[type='submit'], button.c-applyForm__submit",
-  confirmSelector: ".c-applyForm__success, .c-flashMessage--success",
+  // Validated against a live account (2026-07-18): on desktop the #apply-form is
+  // rendered and VISIBLE directly; the "ارسال رزومه" button is only the mobile form
+  // toggler (hidden on desktop) — so the open step is OPTIONAL. Submit is the
+  // input[type=submit] inside the form.
+  applyButtonSelector: ".c-slideToggle__mobileFormToggler button.c-btn--primary, .c-sticky-button__holder button.c-btn--primary",
+  // jobinja has NO cover-letter field — intentionally omitted (per-job custom résumé
+  // upload replaces it, phase 5).
+  submitSelector: "#apply-form input[type='submit'], #apply-form button[type='submit']",
+  confirmSelector: ".js-flashMessageMsg, .c-flashMessage__message",
   steps: [
     {
       kind: "click",
-      selector: "a.c-jobView__applyButton, button.c-jobView__applyButton",
-      note: "Open the resume-submit form.",
+      selector: ".c-slideToggle__mobileFormToggler button.c-btn--primary, .c-sticky-button__holder button.c-btn--primary",
+      optional: true,
+      note: "Reveal the form on mobile (mobile toggler); hidden on desktop → skipped.",
     },
     {
       kind: "waitFor",
-      selector: "form.c-applyForm",
-      note: "Wait for the apply form to render.",
+      selector: "#apply-form",
+      note: "Wait for the apply form (#apply-form) to render.",
+    },
+    {
+      // Base path: apply with the Jobinja profile résumé. When a per-job custom résumé
+      // (resumeFile) is present, phase 5 clicks #apply_choice_uploaded_cv + uploads it.
+      kind: "click",
+      selector: "#apply_choice_jobinja_profile",
+      optional: true,
+      note: "Choose 'apply with Jobinja résumé'.",
     },
     {
       kind: "fill",
-      selector:
-        "textarea[name='application[body]'], textarea.c-applyForm__message",
-      valueKey: "coverLetter",
+      selector: "#contactInp, input[name='telephone']",
+      valueKey: "phone",
       optional: true,
-      note: "Cover letter — filled if the field is present.",
+      note: "Phone — filled if not prefilled.",
     },
     {
       kind: "click",
-      selector:
-        "form.c-applyForm button[type='submit'], button.c-applyForm__submit",
-      note: "Final submit.",
+      selector: "#apply-form input[type='submit'], #apply-form button[type='submit']",
+      note: "Final submit ('ارسال رزومه').",
     },
     {
       kind: "waitFor",
-      selector: ".c-applyForm__success, .c-flashMessage--success",
-      note: "Confirm the submit succeeded.",
+      selector: ".js-flashMessageMsg, .c-flashMessage__message",
+      note: "Confirm via the flash message.",
     },
   ],
   notes: [
     "Uses the user's OWN cookie session (sessionShape=cookie).",
-    "Selectors are best-effort; verify against a real jobinja account before GA.",
+    "Selectors validated on a live account (2026-07-18); jobinja has no cover letter. End-to-end submit still to be confirmed.",
+    "Per-job custom résumé upload path is added in phase 5 (apply_choice_uploaded_cv + upload resumeFile).",
   ],
 };
 

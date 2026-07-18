@@ -230,6 +230,10 @@ export async function runPlan(
           break;
       }
     } catch (err) {
+      // An OPTIONAL step whose action can't fire (e.g. a control that is present but
+      // hidden on this viewport — the mobile-only form toggler on desktop) is skipped,
+      // not fatal. Required steps still fail the job.
+      if (step.optional) continue;
       return { status: "failed", confirmed: false, reason: `step '${step.kind}' failed: ${errMessage(err)}` };
     }
   }

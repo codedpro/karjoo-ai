@@ -88,42 +88,55 @@ const JOBINJA_SPEC: BoardApplySpec = {
   board: "jobinja",
   maturity: "best-effort",
   urlPattern: /^https:\/\/jobinja\.ir\/companies\/[^/]+\/jobs\/[A-Za-z0-9]+/,
-  applyButtonSelector: "a.c-jobView__applyButton, button.c-jobView__applyButton",
-  coverLetterFieldSelector: "textarea[name='application[body]'], textarea.c-applyForm__message",
-  submitSelector: "form.c-applyForm button[type='submit'], button.c-applyForm__submit",
-  confirmSelector: ".c-applyForm__success, .c-flashMessage--success",
+  // اعتبارسنجی‌شده روی حسابِ زنده (۲۰۲۶-۰۷-۱۸): در دسکتاپ فرمِ #apply-form مستقیم رندر و
+  // *نمایان* است؛ دکمه‌ی «ارسال رزومه» فقط togglerِ موبایل است (در دسکتاپ مخفی) — پس گامِ
+  // بازکردن اختیاری است. submit همان input[type=submit]ِ داخلِ فرم است.
+  applyButtonSelector: ".c-slideToggle__mobileFormToggler button.c-btn--primary, .c-sticky-button__holder button.c-btn--primary",
+  // jobinja فیلدِ انگیزه‌نامه ندارد — عمداً تعریف نشده (به‌جایش رزومه‌ی سفارشی آپلود می‌شود، فاز ۵).
+  submitSelector: "#apply-form input[type='submit'], #apply-form button[type='submit']",
+  confirmSelector: ".js-flashMessageMsg, .c-flashMessage__message",
   steps: [
     {
       kind: "click",
-      selector: "a.c-jobView__applyButton, button.c-jobView__applyButton",
-      note: "بازکردنِ فرمِ ارسالِ رزومه.",
+      selector: ".c-slideToggle__mobileFormToggler button.c-btn--primary, .c-sticky-button__holder button.c-btn--primary",
+      optional: true,
+      note: "بازکردنِ فرم در موبایل (togglerِ موبایل)؛ در دسکتاپ مخفی است و رد می‌شود.",
     },
     {
       kind: "waitFor",
-      selector: "form.c-applyForm",
-      note: "انتظار تا رندرِ فرمِ اپلای.",
+      selector: "#apply-form",
+      note: "انتظار تا رندرِ فرمِ اپلای (#apply-form).",
+    },
+    {
+      // مسیرِ پایه: رزومه‌ی پروفایلِ jobinja. اگر رزومه‌ی سفارشی (resumeFile) داشته باشیم،
+      // فاز ۵ به‌جای این، رادیوی apply_choice_uploaded_cv را می‌زند و فایل را آپلود می‌کند.
+      kind: "click",
+      selector: "#apply_choice_jobinja_profile",
+      optional: true,
+      note: "انتخابِ «ارسال با رزومه‌ی جابینجا».",
     },
     {
       kind: "fill",
-      selector: "textarea[name='application[body]'], textarea.c-applyForm__message",
-      valueKey: "coverLetter",
+      selector: "#contactInp, input[name='telephone']",
+      valueKey: "phone",
       optional: true,
-      note: "انگیزه‌نامه — اگر فیلد موجود بود پر می‌شود.",
+      note: "شماره‌ی تماس — اگر از پیش پر نشده باشد.",
     },
     {
       kind: "click",
-      selector: "form.c-applyForm button[type='submit'], button.c-applyForm__submit",
-      note: "ثبتِ نهاییِ اپلای.",
+      selector: "#apply-form input[type='submit'], #apply-form button[type='submit']",
+      note: "ثبتِ نهاییِ اپلای («ارسال رزومه»).",
     },
     {
       kind: "waitFor",
-      selector: ".c-applyForm__success, .c-flashMessage--success",
-      note: "تأییدِ ثبتِ موفق.",
+      selector: ".js-flashMessageMsg, .c-flashMessage__message",
+      note: "تأییدِ ثبت (پیامِ فلش).",
     },
   ],
   notes: [
     "نشستِ کوکیِ خودِ کاربر استفاده می‌شود (sessionShape=cookie).",
-    "سلکتورها best-effort‌اند؛ پیش از انتشار با یک حسابِ واقعیِ jobinja صحت‌سنجی شوند.",
+    "سلکتورها روی حسابِ زنده اعتبارسنجی شدند (۲۰۲۶-۰۷-۱۸)؛ jobinja انگیزه‌نامه ندارد. تأییدِ end-to-end submit باقی است.",
+    "مسیرِ رزومه‌ی سفارشیِ هر شغل (آپلود) در فاز ۵ اضافه می‌شود (apply_choice_uploaded_cv + upload resumeFile).",
   ],
 };
 

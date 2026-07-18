@@ -58,7 +58,7 @@ function baseOpts(launcher: ReturnType<typeof makeFakeBrowser>["launcher"], logg
 }
 
 describe("processJob — happy path (jobinja best-effort)", () => {
-  it("injects the session, fills the cover letter, submits, and returns proof", async () => {
+  it("injects the session, chooses the résumé, submits, and returns proof", async () => {
     const { launcher, record } = makeFakeBrowser({ finalUrl: `${LISTING}?applied=1` });
     const report = await processJob(jobinjaJob(), baseOpts(launcher));
 
@@ -75,9 +75,11 @@ describe("processJob — happy path (jobinja best-effort)", () => {
     // Navigated to the listing.
     expect(record.navigations).toContain(LISTING);
 
-    // The cover letter was filled into the jobinja textarea.
-    const fill = record.actions.find((a) => a.kind === "fill");
-    expect(fill?.value).toBe("با سلام، من برای این موقعیت مناسبم.");
+    // jobinja has NO cover-letter field; the flow chooses the Jobinja profile résumé.
+    const choseResume = record.actions.some((a) => a.kind === "click" && a.selector.includes("apply_choice_jobinja_profile"));
+    expect(choseResume).toBe(true);
+    // No cover-letter text was filled (the only fill is an optional phone, absent here).
+    expect(record.actions.some((a) => a.kind === "fill")).toBe(false);
 
     // Proof is non-secret: a final URL + confirmation flag + screenshot SIZE only.
     expect(report.proof?.finalUrl).toBe(`${LISTING}?applied=1`);
@@ -118,7 +120,7 @@ describe("processJob — skip / fail branches", () => {
     // Make the apply button absent → the first click step fails.
     const { launcher, record } = makeFakeBrowser({
       selectors: {
-        "a.c-jobView__applyButton, button.c-jobView__applyButton": { count: 0 },
+        "#apply-form input[type='submit'], #apply-form button[type='submit']": { count: 0 },
       },
     });
     const report = await processJob(jobinjaJob(), baseOpts(launcher));
@@ -165,7 +167,7 @@ describe("processJob — §10 session is NEVER logged", () => {
 describe("runPlan — confirm handling", () => {
   it("reports confirmed:false when the success selector is absent", async () => {
     const { launcher } = makeFakeBrowser({
-      selectors: { ".c-applyForm__success, .c-flashMessage--success": { count: 0 } },
+      selectors: { ".js-flashMessageMsg, .c-flashMessage__message": { count: 0 } },
     });
     const browser = await launcher({ headless: true, executablePath: null });
     const ctx = await browser.newContext();

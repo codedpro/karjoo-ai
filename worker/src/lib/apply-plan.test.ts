@@ -42,25 +42,28 @@ describe("buildApplyPlan", () => {
     expect(buildApplyPlan(job({ board: "linkedin" }))).toBeNull();
   });
 
-  it("resolves the cover letter into the jobinja fill step", () => {
+  it("builds the jobinja résumé-choice flow (no cover letter — jobinja has none)", () => {
     const plan = buildApplyPlan(job())!;
     expect(plan.board).toBe("jobinja");
     expect(plan.maturity).toBe("best-effort");
-    const fill = plan.steps.find((s) => s.kind === "fill");
-    expect(fill?.value).toBe("سلام، علاقه‌مندم.");
+    // jobinja apply has no cover-letter field; the only fill is an OPTIONAL phone,
+    // which drops when no phone value is injected.
+    expect(plan.steps.some((s) => s.kind === "fill")).toBe(false);
+    // it opens the form + chooses the Jobinja profile résumé.
+    const clicks = plan.steps.filter((s) => s.kind === "click").map((s) => s.selector).join(" ");
+    expect(clicks).toContain("apply_choice_jobinja_profile");
   });
 
-  it("drops the optional cover-letter step when there is no value", () => {
-    const plan = buildApplyPlan(job({ coverLetter: null }))!;
-    expect(plan.steps.some((s) => s.kind === "fill")).toBe(false);
-    // The click+waitFor steps remain.
-    expect(plan.steps.some((s) => s.kind === "click")).toBe(true);
+  it("resolves an injected phone into the optional fill step", () => {
+    const plan = buildApplyPlan(job(), { phone: "09120000000" })!;
+    const fill = plan.steps.find((s) => s.kind === "fill");
+    expect(fill?.value).toBe("09120000000");
   });
 
   it("carries the submit + confirm selectors from the spec", () => {
     const plan = buildApplyPlan(job())!;
-    expect(plan.submitSelector).toContain("c-applyForm");
-    expect(plan.confirmSelector).toContain("success");
+    expect(plan.submitSelector).toContain("#apply-form");
+    expect(plan.confirmSelector).toContain("flashMessage");
   });
 });
 
