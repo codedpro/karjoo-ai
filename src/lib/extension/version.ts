@@ -16,7 +16,7 @@
  */
 
 /** نسخه‌ی جاریِ افزونه (semver «MAJOR.MINOR.PATCH»). = extension/manifest.json#version */
-export const KARJOO_EXTENSION_VERSION = "0.2.8";
+export const KARJOO_EXTENSION_VERSION = "0.2.9";
 
 /** مسیرِ دانلودِ ZIPِ افزونه (نسبی به ریشه‌ی سایت؛ در public سرو می‌شود). */
 export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
@@ -26,4 +26,4 @@ export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
  * اگر خالی بماند، `notes` در پاسخِ مسیر حذف می‌شود.
  */
 export const KARJOO_EXTENSION_RELEASE_NOTES =
-  "کارجو اکنون زیرِ برندِ 1xAi است: یک حساب و یک کیف‌پولِ واحد در همه‌ی محصولاتِ خانواده. افزونه به دامنه‌ی تازه (karjoo.1xai.ir) منتقل شد — نشستِ جفت‌شده‌ی شما همان می‌ماند و نیازی به اتصالِ دوباره نیست. برای شارژ و ورود، حساب همان حسابِ 1xAi است.";
+  "یکپارچگیِ کاملِ جابینجا: افزونه اکنون شناسه‌ی رزومه‌ی جابینجای شما را (هم‌مبدأ، فقط شناسه—نه کوکی) می‌خواند تا کارجو بتواند پروفایلِ جابینجا را از داشبورد ویرایش کند، تحلیلِ درخواست‌ها و پروفایل را همگام کند، و رزومه‌ی سفارشیِ هر شغل را در اپلای آپلود کند.";

@@ -29,6 +29,8 @@ const entryPoints = {
   background: resolve(root, "src/background/service-worker.ts"),
   popup: resolve(root, "src/popup/popup.ts"),
   "content/jobinja": resolve(root, "src/content/jobinja.ts"),
+  // MAIN-world hook that lifts the Jobinja cvId from the SPA's own cv-builder API calls.
+  "content/jobinja-cvid": resolve(root, "src/content/jobinja-cvid.ts"),
   "content/jobvision": resolve(root, "src/content/jobvision.ts"),
   // Profile-import content scripts (one per board) — read the user's OWN profile
   // DOM and return DATA only (§10). See src/content/import/*.

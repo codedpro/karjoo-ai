@@ -97,6 +97,12 @@ export interface RunAutoApplyNowMsg {
   type: "RUN_AUTO_APPLY_NOW";
 }
 
+/** cvIdِ جابینجا که هوکِ دنیای MAIN برداشته — از content به SW برای ذخیره در سرور. */
+export interface JobinjaCvidMsg {
+  type: "JOBINJA_CVID";
+  cvId: string;
+}
+
 /**
  * Popup → background: populate the apply queue on demand from the user's saved
  * FILTER selections (the pivot's default, NON-AI flow). The background POSTs
@@ -173,6 +179,7 @@ export type PopupToBackground =
   | SetAutoApplyMsg
   | GetAutoApplyStatusMsg
   | RunAutoApplyNowMsg
+  | JobinjaCvidMsg
   | FindJobsMsg;
 
 export type BackgroundToContent =

@@ -216,6 +216,17 @@ async function handleGetAutoApplyStatus(): Promise<AutoApplyStatus | null> {
 }
 
 /** Manual "run now" from the popup → one background tick (still fully gated). */
+/**
+ * cvIdِ جابینجا (که هوکِ دنیای MAIN برداشته) را روی سرور ذخیره می‌کند تا نوشتنِ سمتِ سرورِ
+ * پروفایل بتواند CV را آدرس‌دهی کند. فقط id — نه کوکی/داده. خطا بی‌صدا (پیش‌فرضِ push بعدی).
+ */
+async function handleJobinjaCvid(cvId: string): Promise<{ ok: boolean }> {
+  if (!/^[A-Za-z0-9]{2,8}$/.test(cvId)) return { ok: false };
+  const api = await apiFromStorage();
+  await api.pushJobinja({ profile: { cvId } });
+  return { ok: true };
+}
+
 async function handleRunAutoApplyNow(): Promise<AutoApplyStatus> {
   return runAutoApplyTick();
 }
@@ -342,6 +353,8 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
       return { ok: true, data: await handleGetAutoApplyStatus() };
     case "RUN_AUTO_APPLY_NOW":
       return { ok: true, data: await handleRunAutoApplyNow() };
+    case "JOBINJA_CVID":
+      return { ok: true, data: await handleJobinjaCvid(msg.cvId) };
     default: {
       const _exhaustive: never = msg;
       return { ok: false, error: `unknown message: ${JSON.stringify(_exhaustive)}` };

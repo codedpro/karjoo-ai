@@ -319,6 +319,20 @@ export class KarjooApi {
   }
 
   /**
+   * داده‌ی *پارس‌شده‌ی* جابینجا (تحلیلِ درخواست‌ها/پروفایل/cvId) را push می‌کند. هرگز کوکی/توکن؛
+   * فقط داده. سرور کلیدهای شبیهِ اعتبارنامه را هم رد می‌کند (§10).
+   */
+  async pushJobinja(body: {
+    applications?: unknown[];
+    profile?: Record<string, unknown>;
+  }): Promise<{ ok: boolean; applications?: number; profile?: boolean }> {
+    return this.request<{ ok: boolean; applications?: number; profile?: boolean }>(
+      "/api/boards/jobinja/push",
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  }
+
+  /**
    * Report the outcome of a user-approved (or skipped) application. The task id
    * is in the PATH; the server's result schema is `.strict()` and rejects an `id`
    * in the body — so we send only { status, externalRef?, reason? }.
