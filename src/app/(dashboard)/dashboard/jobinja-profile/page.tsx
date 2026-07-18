@@ -14,6 +14,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { getDashboardUser } from "@/components/dashboard/session";
+import { JobinjaProfileEdit } from "@/components/dashboard/jobinja-profile-edit";
 import {
   JobinjaProfileCard,
   type JobinjaProfileView,
@@ -52,7 +53,16 @@ export default async function JobinjaProfilePage() {
 async function ProfileSection({ userId }: { userId: string }) {
   const snapshot = await getProfileSnapshot(userId, "jobinja");
   const profile = snapshot ? toProfileView(snapshot) : null;
-  return <JobinjaProfileCard profile={profile} />;
+  const data = (snapshot?.data as Record<string, unknown> | undefined) ?? {};
+  return (
+    <div className="space-y-6">
+      <JobinjaProfileCard profile={profile} />
+      <JobinjaProfileEdit
+        initialJobTitle={pick(data, "headline", "jobTitle", "job_title", "title")}
+        initialFullName={pick(data, "fullName", "full_name", "name")}
+      />
+    </div>
+  );
 }
 
 /* ─────────────────────────  نگاشتِ مدافعانه‌ی داده  ─────────────────────── */
