@@ -54,3 +54,32 @@ export const scoreAndDraftSchema = z.object({
 });
 
 export type ScoreAndDraftOutput = z.infer<typeof scoreAndDraftSchema>;
+
+/**
+ * خروجیِ «رزومه‌ی سفارشیِ هر شغل» — محتوای بازنویسی‌شده‌ی رزومه، هدف‌گیری‌شده روی شرحِ آگهی.
+ * قاعده‌ی سختی که در prompt هم می‌آید: هیچ چیزِ نادرست/جعلی اضافه نمی‌شود؛ فقط ترتیب/تأکید/
+ * بازنویسیِ همان واقعیت‌های کاربر. عنوان‌ها انگلیسی/فارسی هرچه در داده‌ی کاربر بود.
+ */
+export const resumeTailorSchema = z.object({
+  /** عنوانِ حرفه‌ایِ هدف‌گیری‌شده برای این نقش (مثلِ عنوانِ آگهی، منطبق با تجربه‌ی کاربر). */
+  headline: z.string().min(1).max(160),
+  /** خلاصه‌ی حرفه‌ایِ ۲–۴ جمله‌ای، بازنویسی‌شده برای این آگهی. */
+  summary: z.string().min(1).max(1200),
+  /** مهارت‌های مرتبط، *مرتب‌شده بر اساسِ ربط به آگهی* (زیرمجموعه‌ای از مهارت‌های واقعیِ کاربر). */
+  skills: z.array(z.string().min(1).max(60)).max(40),
+  /** تجربه‌های شغلی با bulletهای هدف‌گیری‌شده (بازنویسیِ همان نقش‌های واقعی). */
+  experience: z
+    .array(
+      z.object({
+        company: z.string().max(160).optional(),
+        title: z.string().max(160).optional(),
+        period: z.string().max(80).optional(),
+        bullets: z.array(z.string().min(1).max(400)).max(8),
+      }),
+    )
+    .max(12),
+  /** ۲–۵ نکته‌ی برجسته/دستاورد که چرا این کاربر برای این نقش مناسب است. */
+  highlights: z.array(z.string().min(1).max(300)).max(6).optional(),
+});
+
+export type ResumeTailorOutput = z.infer<typeof resumeTailorSchema>;

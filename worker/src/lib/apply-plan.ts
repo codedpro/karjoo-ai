@@ -36,10 +36,16 @@ export interface ApplyPlan {
 /** The values the runner can inject into fill/select/upload steps. */
 export type ApplyValues = Partial<Record<ApplyValueKey, string>>;
 
-/** Resolve the standard value map for a job (cover letter for now). */
-export function applyValuesFor(job: Pick<FleetJob, "coverLetter">): ApplyValues {
+/** Resolve the standard value map for a job (cover letter + per-job résumé file path). */
+export function applyValuesFor(
+  job: Pick<FleetJob, "coverLetter">,
+  resumeFilePath?: string,
+): ApplyValues {
   const values: ApplyValues = {};
   if (job.coverLetter?.trim()) values.coverLetter = job.coverLetter.trim();
+  // resumeFile is a LOCAL FILE PATH (the rendered PDF) — set by the processor after it
+  // renders job.resumeHtml. Its presence activates the "upload résumé" apply path.
+  if (resumeFilePath) values.resumeFile = resumeFilePath;
   return values;
 }
 
@@ -56,6 +62,9 @@ export function buildApplyPlan(
 
   const steps: ResolvedApplyStep[] = [];
   for (const step of spec.steps) {
+    // گامِ مشروط: اگر مقدارِ لازم نبود، کلاً رد شو (مثلِ مسیرِ آپلودِ رزومه‌ی سفارشی که فقط
+    // وقتی resumeFile هست فعال می‌شود).
+    if (step.requiresValueKey && values[step.requiresValueKey] === undefined) continue;
     if (step.kind === "fill" || step.kind === "select" || step.kind === "upload") {
       const value = step.valueKey ? values[step.valueKey] : undefined;
       if (value === undefined && step.optional) continue; // optional + no value → drop

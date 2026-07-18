@@ -48,6 +48,12 @@ export interface ApplyStep {
   note?: string;
   /** آیا نبودِ این سلکتور «خطا»ست یا گامِ اختیاری است (مثلاً انگیزه‌نامه که همه‌جا نیست)؟ */
   optional?: boolean;
+  /**
+   * گامِ مشروط: فقط وقتی اجرا شود که این مقدار در داده‌ی executor موجود باشد. برای مسیرِ
+   * «رزومه‌ی سفارشیِ هر شغل»: رادیوی آپلود و خودِ آپلود تنها وقتی resumeFile هست اجرا شوند؛
+   * وگرنه مسیرِ پیش‌فرض (رزومه‌ی پروفایلِ جابینجا) دنبال می‌شود.
+   */
+  requiresValueKey?: ApplyValueKey;
 }
 
 /** مشخصاتِ کاملِ اپلایِ یک سایت — قراردادِ مشترکِ افزونه/ورکر. */
@@ -113,7 +119,22 @@ const JOBINJA_SPEC: BoardApplySpec = {
       kind: "click",
       selector: "#apply_choice_jobinja_profile",
       optional: true,
-      note: "انتخابِ «ارسال با رزومه‌ی جابینجا».",
+      note: "پیش‌فرض: ارسال با رزومه‌ی جابینجا.",
+    },
+    {
+      // مسیرِ رزومه‌ی سفارشی: اگر resumeFile داشتیم، به «آپلودِ رزومه» سوییچ کن (رویِ رادیوی
+      // پیش‌فرضِ بالا را می‌گیرد چون بعد از آن کلیک می‌شود) و فایلِ PDFِ هدف‌گیری‌شده را بگذار.
+      kind: "click",
+      selector: "#apply_choice_uploaded_cv",
+      requiresValueKey: "resumeFile",
+      note: "انتخابِ «آپلودِ رزومه» (فقط وقتی رزومه‌ی سفارشی داریم).",
+    },
+    {
+      kind: "upload",
+      selector: "#apply-form input[type='file']",
+      valueKey: "resumeFile",
+      optional: true,
+      note: "آپلودِ رزومه‌ی سفارشیِ هدف‌گیری‌شده‌ی این آگهی (PDF).",
     },
     {
       kind: "fill",

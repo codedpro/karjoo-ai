@@ -12,6 +12,7 @@ import { ChevronDown } from "lucide-react";
 import type { DashboardMatch } from "./data";
 import { IconMapPin, IconWallet } from "./icons";
 import { boardLabel, MATCH_STATUS } from "./labels";
+import { TailorResumeButton } from "./tailor-resume-button";
 import { Badge, Card, ScoreRing } from "./ui";
 
 /** بریدنِ متن برای پیش‌نمایش (بدونِ شکستنِ وسطِ کلمه، تقریبی). */
@@ -104,6 +105,8 @@ export function MatchCard({ match }: { match: DashboardMatch }) {
           </p>
         </details>
       ) : null}
+      {/* رزومه‌ی سفارشیِ هر شغل — جایگزینِ انگیزه‌نامه (به‌ویژه برای جابینجا). */}
+      <TailorResumeButton listingId={match.listingId} />
     </Card>
   );
 }

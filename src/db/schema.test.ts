@@ -124,7 +124,12 @@ describe("schema داربست کارجو", () => {
       "maxplus",
     ]);
     expect(ledgerKindEnum.enumValues).toEqual(["topup", "charge", "refund", "grant"]);
-    expect(usageKindEnum.enumValues).toEqual(["match", "cover_letter", "resume_parse"]);
+    expect(usageKindEnum.enumValues).toEqual([
+      "match",
+      "cover_letter",
+      "resume_parse",
+      "resume_tailor",
+    ]);
     // users.plan افزوده شده (پیش‌فرض free در WF3).
     expect(users.plan).toBeDefined();
   });

@@ -65,6 +65,24 @@ describe("buildApplyPlan", () => {
     expect(plan.submitSelector).toContain("#apply-form");
     expect(plan.confirmSelector).toContain("flashMessage");
   });
+
+  it("per-job custom résumé: with a resumeFile, the plan uploads it via the upload radio", () => {
+    const plan = buildApplyPlan(job(), { resumeFile: "/tmp/karjoo-resume.pdf" })!;
+    const upload = plan.steps.find((s) => s.kind === "upload");
+    expect(upload?.value).toBe("/tmp/karjoo-resume.pdf");
+    // it switches to the "upload CV" choice.
+    expect(
+      plan.steps.some((s) => s.kind === "click" && s.selector.includes("apply_choice_uploaded_cv")),
+    ).toBe(true);
+  });
+
+  it("no resumeFile: the whole upload branch is dropped (profile résumé path)", () => {
+    const plan = buildApplyPlan(job())!; // applyValuesFor → no resumeFile
+    expect(plan.steps.some((s) => s.kind === "upload")).toBe(false);
+    expect(
+      plan.steps.some((s) => s.kind === "click" && s.selector.includes("apply_choice_uploaded_cv")),
+    ).toBe(false);
+  });
 });
 
 describe("worker apply-spec stays in sync with the control plane", () => {

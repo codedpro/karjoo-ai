@@ -1,60 +1,44 @@
 /**
- * نمای «اپلای‌ها» (Server component) — پیگیریِ تلاش‌های اپلای کاربر.
+ * صفحه‌ی «اپلای‌ها» (Server component) — قیفِ تحلیلیِ درخواست‌های اپلایِ کاربر در جابینجا.
  *
- * الگوی Next 16: پوسته/هدر در `dashboard/layout.tsx` فوری است؛ این صفحه فقط محتوا
- * می‌دهد و هدرِ استاتیکِ خودش بی‌درنگ رندر می‌شود. حضورِ نشست پیش‌تر در `proxy.ts`
- * چک شده؛ این‌جا فقط `userId` می‌گیریم. در فازِ فعلی معمولاً خالی است، پس حالتِ خالیِ
- * روشن نشان می‌دهد. خواندنِ DB داخلِ `<Suspense>` با اسکلتِ **هم‌شکلِ جدول** استریم می‌شود.
+ * منبعِ داده: `getApplications(userId, "jobinja")` از storeِ فاز ۲ (فقط-خواندنی، مقید به کاربر).
+ * چیدمانِ Next 16: پوسته/هدر در `dashboard/layout.tsx` فوری است؛ این صفحه فقط محتوا می‌دهد و
+ * هدرِ استاتیکِ خودش (`PageHeader` + دکمه‌ی همگام‌سازی) را بی‌درنگ می‌آورد. بخشِ وابسته به DB
+ * داخلِ `<Suspense>` با اسکلتِ هم‌شکلِ محتوا استریم می‌شود. مقید به نشست (قاعده‌ی ۴). فارسی/RTL.
  */
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
-import { getApplicationsForUser } from "@/components/dashboard/data";
-import { IconSend } from "@/components/dashboard/icons";
-import {
-  APPLICATION_STATUS,
-  boardLabel,
-  CHANNEL_LABELS,
-} from "@/components/dashboard/labels";
 import { getDashboardUser } from "@/components/dashboard/session";
+import { JobinjaSyncButton } from "@/components/dashboard/jobinja-sync-button";
+import { IconSend } from "@/components/dashboard/icons";
 import {
   Badge,
   ButtonLink,
   Card,
   EmptyState,
   PageHeader,
-  SkeletonTable,
+  Skeleton,
+  SkeletonList,
+  cn,
   toFaDigits,
 } from "@/components/dashboard/ui";
+import {
+  getApplications,
+  type ApplicationFunnel,
+} from "@/lib/apply/boards/jobinja-read";
+import type { BoardApplication } from "@/db/schema";
 
-// راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node.
+import { buildFunnelSegments, CATEGORY_META, type FunnelCategory } from "./funnel";
+
+// راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (استریم با Suspense؛ بدونِ force-dynamic).
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
   title: "اپلای‌ها",
   robots: { index: false, follow: false },
 };
-
-/** قالبِ تاریخِ کوتاهِ فارسی (تقویمِ شمسی نمایش). */
-function faDate(d: Date | null): string {
-  if (!d) return "—";
-  try {
-    return new Intl.DateTimeFormat("fa-IR", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    }).format(d);
-  } catch {
-    return "—";
-  }
-}
-
-/** برچسبِ کانالِ اجرا (افزونه/نودِ ایرانی) با tone یکدست. */
-function channelLabel(channel: string | null): string {
-  if (!channel) return "—";
-  return CHANNEL_LABELS[channel] ?? channel;
-}
 
 export default async function ApplicationsPage() {
   const user = await getDashboardUser();
@@ -63,145 +47,226 @@ export default async function ApplicationsPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="پیگیری اپلای‌ها"
-        subtitle="وضعیتِ هر اپلایی که با تأییدِ تو ثبت می‌شود را این‌جا دنبال کن."
-        actions={
-          <ButtonLink href="/dashboard/matches" variant="secondary" size="sm">
-            دیدنِ تطبیق‌ها
-          </ButtonLink>
-        }
+        title="اپلای‌های شما"
+        subtitle="قیفِ درخواست‌هایت در جابینجا — از ارسال تا مصاحبه. با «به‌روزرسانی از جابینجا» تازه‌ترین وضعیتِ هر درخواست از حسابت خوانده می‌شود."
+        actions={<JobinjaSyncButton label="به‌روزرسانی از جابینجا" />}
       />
 
-      <Suspense fallback={<SkeletonTable rows={5} cols={5} />}>
-        <ApplicationsList userId={user.userId} />
+      <Suspense fallback={<ApplicationsSkeleton />}>
+        <ApplicationsSection userId={user.userId} />
       </Suspense>
     </div>
   );
 }
 
-/* ───────────────────────── بخش async (Suspense) ───────────────────────── */
+/* ───────────────────────── بخشِ async (Suspense) ───────────────────────── */
 
-async function ApplicationsList({ userId }: { userId: string }) {
-  const apps = await getApplicationsForUser(userId, 100);
+async function ApplicationsSection({ userId }: { userId: string }) {
+  const { funnel, items } = await getApplications(userId, "jobinja");
 
-  if (apps.length === 0) {
+  if (funnel.total === 0) {
     return (
       <EmptyState
         icon={<IconSend />}
         title="هنوز اپلایی ثبت نشده"
-        body="وقتی یک تطبیق را برای اپلای تأیید کنی، نتیجه و وضعیتِ آن (ارسال‌شده، در انتظار، …) همین‌جا نمایش داده می‌شود."
+        body="وقتی جابینجا را از افزونه وصل کنی و اپلای خودکار کار کند، درخواست‌هایت این‌جا فهرست می‌شوند و در یک قیف — در انتظار، بررسی، مصاحبه، رد — دیده می‌شوند."
         action={
-          <ButtonLink href="/dashboard/matches" size="sm">
-            رفتن به تطبیق‌ها
+          <ButtonLink href="/dashboard/matches" variant="secondary" size="sm">
+            اتصالِ جابینجا و مشاهده‌ی تطبیق‌ها
           </ButtonLink>
         }
       />
     );
   }
 
-  const submitted = apps.filter((a) => a.status === "submitted").length;
+  return (
+    <div className="space-y-8">
+      <FunnelSummary funnel={funnel} />
+      <ApplicationsList items={items} />
+    </div>
+  );
+}
+
+/* ─────────────────────────────  قیفِ خلاصه  ─────────────────────────────── */
+
+/** کارت‌های آمارِ بالای صفحه: کل + چهار دسته‌ی اصلی، هرکدام با رنگِ لحنِ خودش. */
+const SUMMARY_CATEGORIES: FunnelCategory[] = ["pending", "review", "interview", "rejected"];
+
+function FunnelSummary({ funnel }: { funnel: ApplicationFunnel }) {
+  const segments = buildFunnelSegments(funnel);
+  const barSegments = segments.filter((s) => s.count > 0);
 
   return (
-    <div className="space-y-4">
-      {/* خلاصه‌ی شمارش — چیپ‌های موجز، بدونِ شکستنِ خط */}
-      <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
-        <Badge tone="muted">
-          <span className="ltr-nums tabular-nums">{toFaDigits(apps.length)}</span>
-          &nbsp;اپلای
-        </Badge>
-        {submitted > 0 ? (
-          <Badge tone="green">
-            <span className="ltr-nums tabular-nums">{toFaDigits(submitted)}</span>
-            &nbsp;ارسال‌شده
-          </Badge>
-        ) : null}
+    <section aria-label="قیفِ اپلای" className="space-y-5">
+      {/* کارت‌های شمارش */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <StatCell value={funnel.total} label="کلِ اپلای‌ها" textClass="text-brand" />
+        {SUMMARY_CATEGORIES.map((key) => (
+          <StatCell
+            key={key}
+            value={funnel[key]}
+            label={CATEGORY_META[key].label}
+            textClass={CATEGORY_META[key].textClass}
+          />
+        ))}
       </div>
 
-      <Card className="overflow-hidden">
-        {/* جدولِ دسکتاپ */}
-        <div className="hidden md:block">
-          <table className="w-full text-start text-sm">
-            <thead>
-              <tr className="border-b border-border bg-surface/60 text-xs font-medium text-muted">
-                <th scope="col" className="px-5 py-3.5 text-start">موقعیتِ شغلی</th>
-                <th scope="col" className="px-5 py-3.5 text-start">سایت</th>
-                <th scope="col" className="px-5 py-3.5 text-start">کانال</th>
-                <th scope="col" className="px-5 py-3.5 text-start whitespace-nowrap">تاریخ</th>
-                <th scope="col" className="px-5 py-3.5 text-start">وضعیت</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {apps.map((app) => {
-                const status =
-                  APPLICATION_STATUS[app.status] ?? APPLICATION_STATUS.draft;
-                return (
-                  <tr key={app.id} className="transition-colors hover:bg-foreground/[1.5%]">
-                    <td className="max-w-[22rem] px-5 py-3.5">
-                      <a
-                        href={app.listing.url}
-                        target="_blank"
-                        rel="nofollow noopener noreferrer"
-                        className="focus-ring block truncate rounded-sm font-medium transition-colors hover:text-brand"
-                        title={app.listing.title}
-                      >
-                        {app.listing.title}
-                      </a>
-                      <div className="truncate text-xs text-muted" title={app.listing.company ?? undefined}>
-                        {app.listing.company ?? "—"}
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap text-muted">
-                      {boardLabel(app.listing.board)}
-                    </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap text-muted">
-                      {channelLabel(app.channel)}
-                    </td>
-                    <td className="ltr-nums px-5 py-3.5 whitespace-nowrap tabular-nums text-muted">
-                      {faDate(app.submittedAt ?? app.createdAt)}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <Badge tone={status.tone}>{status.label}</Badge>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* کارت‌های موبایل — هر ردیف یک کارتِ فشرده و خوانا */}
-        <ul className="divide-y divide-border md:hidden">
-          {apps.map((app) => {
-            const status = APPLICATION_STATUS[app.status] ?? APPLICATION_STATUS.draft;
-            return (
-              <li key={app.id} className="p-4">
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="min-w-0">
-                    <a
-                      href={app.listing.url}
-                      target="_blank"
-                      rel="nofollow noopener noreferrer"
-                      className="focus-ring block truncate rounded-sm font-medium transition-colors hover:text-brand"
-                      title={app.listing.title}
-                    >
-                      {app.listing.title}
-                    </a>
-                    <div className="truncate text-xs text-muted">
-                      {boardLabel(app.listing.board)}
-                      {app.listing.company ? ` · ${app.listing.company}` : ""}
-                    </div>
-                  </div>
-                  <Badge tone={status.tone}>{status.label}</Badge>
-                </div>
-                <div className="ltr-nums mt-2 flex flex-wrap items-center gap-x-2 text-xs tabular-nums text-muted">
-                  <span>{faDate(app.submittedAt ?? app.createdAt)}</span>
-                  {app.channel ? <span>· {channelLabel(app.channel)}</span> : null}
-                </div>
+      {/* نوارِ نسبتیِ قیف + راهنما */}
+      {barSegments.length > 0 ? (
+        <div className="space-y-3">
+          <div
+            className="flex h-3 w-full overflow-hidden rounded-full bg-foreground/5"
+            role="img"
+            aria-label="نمودارِ نسبتِ وضعیت‌های اپلای"
+          >
+            {barSegments.map((s) => (
+              <div
+                key={s.key}
+                className={cn("h-full", s.barClass)}
+                style={{ width: `${s.pct}%` }}
+                title={`${s.label}: ${toFaDigits(s.count)}`}
+              />
+            ))}
+          </div>
+          <ul className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
+            {barSegments.map((s) => (
+              <li key={s.key} className="flex items-center gap-1.5 text-muted">
+                <span className={cn("h-2.5 w-2.5 rounded-full", s.barClass)} aria-hidden />
+                <span>{s.label}</span>
+                <span className="ltr-nums font-semibold text-foreground">
+                  {toFaDigits(s.count)}
+                </span>
               </li>
-            );
-          })}
-        </ul>
-      </Card>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** یک کارتِ شمارشِ ساده — عددِ بزرگِ رنگی + برچسبِ خنثی. */
+function StatCell({
+  value,
+  label,
+  textClass,
+}: {
+  value: number;
+  label: string;
+  textClass: string;
+}) {
+  return (
+    <Card padded>
+      <div className={cn("ltr-nums text-3xl font-extrabold leading-none", textClass)}>
+        {toFaDigits(value)}
+      </div>
+      <div className="mt-2 text-pretty text-xs text-muted">{label}</div>
+    </Card>
+  );
+}
+
+/* ───────────────────────────  فهرستِ درخواست‌ها  ─────────────────────────── */
+
+function ApplicationsList({ items }: { items: BoardApplication[] }) {
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center gap-2 text-sm text-muted">
+        <Badge tone="brand">
+          <span className="ltr-nums tabular-nums">{toFaDigits(items.length)}</span>
+          &nbsp;درخواست
+        </Badge>
+        <span className="text-pretty">تازه‌ترین اول</span>
+      </div>
+      <ol className="space-y-3">
+        {items.map((item) => (
+          <li key={item.id}>
+            <ApplicationRow item={item} />
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+/** یک ردیفِ درخواست — عنوان/شرکت/تاریخ + نشانِ وضعیتِ رنگی؛ کلِ کارت لینک به آگهیِ جابینجا. */
+function ApplicationRow({ item }: { item: BoardApplication }) {
+  const meta = CATEGORY_META[item.statusCategory] ?? CATEGORY_META.other;
+  const when = formatFaDate(item.appliedAt ?? item.lastSeenAt);
+
+  const body = (
+    <Card padded interactive={Boolean(item.url)} className="h-full">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-bold">
+            {item.title ?? "آگهیِ بدونِ عنوان"}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+            {item.company ? <span className="truncate">{item.company}</span> : null}
+            {when ? (
+              <>
+                {item.company ? <span aria-hidden>·</span> : null}
+                <span className="ltr-nums">{when}</span>
+              </>
+            ) : null}
+          </div>
+        </div>
+        <Badge tone={meta.tone} title={item.statusRaw ?? undefined}>
+          {meta.label}
+        </Badge>
+      </div>
+    </Card>
+  );
+
+  return item.url ? (
+    <a
+      href={item.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="focus-ring block rounded-2xl"
+    >
+      {body}
+    </a>
+  ) : (
+    body
+  );
+}
+
+/** تاریخِ شمسیِ خوانا (یا null اگر تاریخی نبود). */
+const FA_DATE_FMT = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+function formatFaDate(d: Date | null): string | null {
+  if (!d) return null;
+  try {
+    return FA_DATE_FMT.format(d);
+  } catch {
+    return null;
+  }
+}
+
+/* ─────────────────────── اسکلتِ هم‌شکلِ محتوا ─────────────────────── */
+
+function ApplicationsSkeleton() {
+  return (
+    <div className="space-y-8" aria-hidden>
+      {/* کارت‌های شمارش */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div
+            key={i}
+            className="rounded-2xl border border-border bg-card p-5 shadow-xs sm:p-6"
+          >
+            <Skeleton className="h-8 w-12" />
+            <Skeleton className="mt-2 h-3 w-16" />
+          </div>
+        ))}
+      </div>
+      {/* نوارِ قیف */}
+      <Skeleton className="h-3 w-full rounded-full" />
+      {/* فهرست */}
+      <SkeletonList rows={4} />
     </div>
   );
 }

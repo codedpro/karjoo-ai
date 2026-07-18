@@ -137,6 +137,9 @@ export function buildApplyPlan(item: ApplyQueueItem, values: ApplyValues): Apply
 
   const steps: ResolvedApplyStep[] = [];
   for (const step of spec.steps) {
+    // Conditional step: skip entirely unless the required value is present (per-job
+    // custom résumé upload path only runs when a resumeFile exists).
+    if (step.requiresValueKey && values[step.requiresValueKey] === undefined) continue;
     if (step.kind === "fill" || step.kind === "select" || step.kind === "upload") {
       const value = step.valueKey ? values[step.valueKey] : undefined;
       // Optional step with no value → skip it entirely (e.g. no cover letter field).

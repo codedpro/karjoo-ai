@@ -42,6 +42,8 @@ export interface ApplyStep {
   note?: string;
   /** Whether a missing selector is an error or an optional step. */
   optional?: boolean;
+  /** Conditional step: run only when this value is present (per-job custom résumé upload path). */
+  requiresValueKey?: ApplyValueKey;
 }
 
 /** The full apply spec for one board — the shared executor contract. */
@@ -100,7 +102,22 @@ const JOBINJA_SPEC: BoardApplySpec = {
       kind: "click",
       selector: "#apply_choice_jobinja_profile",
       optional: true,
-      note: "Choose 'apply with Jobinja résumé'.",
+      note: "Default: apply with the Jobinja résumé.",
+    },
+    {
+      // Per-job custom résumé path: when a resumeFile is present, switch to "upload CV"
+      // (clicked AFTER the default radio so it wins) and attach the tailored PDF.
+      kind: "click",
+      selector: "#apply_choice_uploaded_cv",
+      requiresValueKey: "resumeFile",
+      note: "Choose 'upload résumé' (only when a per-job custom résumé exists).",
+    },
+    {
+      kind: "upload",
+      selector: "#apply-form input[type='file']",
+      valueKey: "resumeFile",
+      optional: true,
+      note: "Attach the job-targeted custom résumé (PDF).",
     },
     {
       kind: "fill",

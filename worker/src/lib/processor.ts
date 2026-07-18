@@ -22,8 +22,12 @@
  * The browser is injected (BrowserLauncher) so this is fully unit-tested with a
  * fake browser — no real Chromium, no network.
  */
+import { writeFile, unlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import type { Browser, BrowserContext, BrowserLauncher, BrowserPage } from "./browser.js";
-import { buildApplyPlan, type ApplyPlan } from "./apply-plan.js";
+import { applyValuesFor, buildApplyPlan, type ApplyPlan } from "./apply-plan.js";
 import { prepareSession } from "./session-inject.js";
 import { parseSessionBundle } from "./session-inject.js";
 import type { FleetJob, FleetResultReport } from "./types.js";
@@ -94,6 +98,7 @@ export async function processJob(
 
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;
+  let resumePdfPath: string | null = null;
   try {
     browser = await opts.launchBrowser({
       headless: opts.headless,
@@ -113,7 +118,23 @@ export async function processJob(
     const page = await context.newPage();
     await page.goto(job.listingUrl, { timeout: opts.stepTimeoutMs, waitUntil: "domcontentloaded" });
 
-    const outcome = await runPlan(page, plan, opts.stepTimeoutMs);
+    // Per-job custom résumé: render the tailored HTML → PDF and attach it via the upload
+    // path (jobinja's cover-letter replacement). Best-effort — falls back to the profile résumé.
+    if (job.resumeHtml?.trim()) {
+      try {
+        resumePdfPath = await renderResumePdf(context, job.resumeHtml, job.taskId);
+      } catch (err) {
+        log.warn("résumé PDF render failed; using profile résumé", {
+          taskId: job.taskId,
+          error: errMessage(err),
+        });
+      }
+    }
+    const runnablePlan = resumePdfPath
+      ? buildApplyPlan(job, applyValuesFor(job, resumePdfPath)) ?? plan
+      : plan;
+
+    const outcome = await runPlan(page, runnablePlan, opts.stepTimeoutMs);
 
     const proof: Record<string, unknown> = {
       finalUrl: page.url(),
@@ -161,6 +182,43 @@ export async function processJob(
     }
     try {
       if (browser) await browser.close();
+    } catch {
+      /* ignore */
+    }
+    // Discard the rendered résumé PDF from disk (never persisted).
+    if (resumePdfPath) {
+      try {
+        await unlink(resumePdfPath);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+/**
+ * رزومه‌ی سفارشیِ HTML را در یک صفحه‌ی جدا به PDF رندر و در فایلِ موقت می‌نویسد (برای گامِ
+ * آپلود). فقط Chromiumِ headless؛ اگر adapter از pdf/setContent پشتیبانی نکند، throw می‌کند
+ * و فراخواننده به رزومه‌ی پروفایل برمی‌گردد.
+ */
+async function renderResumePdf(
+  context: BrowserContext,
+  html: string,
+  tag: string,
+): Promise<string> {
+  const page = await context.newPage();
+  try {
+    if (typeof page.setContent !== "function" || typeof page.pdf !== "function") {
+      throw new Error("browser page lacks setContent/pdf (non-headless-chromium?)");
+    }
+    await page.setContent(html, { waitUntil: "networkidle" });
+    const buf = await page.pdf({ format: "A4", printBackground: true });
+    const path = join(tmpdir(), `karjoo-resume-${tag.replace(/[^A-Za-z0-9_-]/g, "")}-${Date.now()}.pdf`);
+    await writeFile(path, buf as Uint8Array);
+    return path;
+  } finally {
+    try {
+      await (page as unknown as { close?: () => Promise<void> }).close?.();
     } catch {
       /* ignore */
     }

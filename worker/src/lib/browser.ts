@@ -35,6 +35,10 @@ export interface BrowserPage {
   url(): string;
   locator(selector: string): BrowserLocator;
   screenshot(opts?: { type?: "png" | "jpeg" }): Promise<Buffer | Uint8Array>;
+  /** Set page HTML (used to render a per-job résumé to PDF). Real Playwright has it. */
+  setContent?(html: string, opts?: { waitUntil?: string; timeout?: number }): Promise<void>;
+  /** Render the current page to a PDF (headless Chromium only). Real Playwright has it. */
+  pdf?(opts?: { format?: string; printBackground?: boolean }): Promise<Buffer | Uint8Array>;
 }
 
 /** A browser context = one isolated session (the subset we use). */

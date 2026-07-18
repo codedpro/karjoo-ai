@@ -252,6 +252,7 @@ describe("POST /api/fleet/claim", () => {
         board: "jobinja",
         listingUrl: "https://jobinja.ir/j/1",
         coverLetter: "سلام",
+        resumeHtml: null,
         session: "DECRYPTED-SESSION-JSON",
       },
     ]);

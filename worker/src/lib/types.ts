@@ -32,6 +32,12 @@ export interface FleetJob {
   /** The drafted cover letter to pre-fill (when the board has a field). */
   coverLetter: string | null;
   /**
+   * HTML of the per-job custom résumé (when generated). The node renders it to a PDF
+   * with Playwright and uploads it via the form's "upload résumé" path — jobinja's
+   * cover-letter replacement. NEVER logged.
+   */
+  resumeHtml: string | null;
+  /**
    * The user's OWN decrypted session (serialized SessionBundle JSON, or a raw
    * bundle object). The node parses it, injects it, uses it in-memory, and
    * DISCARDS it. NEVER logged, never written to disk.

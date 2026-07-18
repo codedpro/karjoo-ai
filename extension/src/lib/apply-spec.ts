@@ -52,6 +52,8 @@ export interface ApplyStep {
   note?: string;
   /** Whether a missing selector is an error or an optional step (e.g. cover letter). */
   optional?: boolean;
+  /** Conditional step: run only when this value is present (per-job custom résumé upload path). */
+  requiresValueKey?: ApplyValueKey;
 }
 
 /** Full apply spec for one board — the shared contract for extension + worker. */
@@ -109,7 +111,20 @@ const JOBINJA_SPEC: BoardApplySpec = {
       kind: "click",
       selector: "#apply_choice_jobinja_profile",
       optional: true,
-      note: "انتخابِ «ارسال با رزومه‌ی جابینجا».",
+      note: "پیش‌فرض: ارسال با رزومه‌ی جابینجا.",
+    },
+    {
+      kind: "click",
+      selector: "#apply_choice_uploaded_cv",
+      requiresValueKey: "resumeFile",
+      note: "انتخابِ «آپلودِ رزومه» (فقط وقتی رزومه‌ی سفارشی داریم).",
+    },
+    {
+      kind: "upload",
+      selector: "#apply-form input[type='file']",
+      valueKey: "resumeFile",
+      optional: true,
+      note: "آپلودِ رزومه‌ی سفارشیِ هدف‌گیری‌شده‌ی این آگهی (PDF).",
     },
     {
       kind: "fill",

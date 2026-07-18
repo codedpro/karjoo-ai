@@ -21,10 +21,10 @@ import "server-only";
  *
  * همه‌ی وابستگی‌ها تزریق‌پذیرند تا بدونِ DB/شبکه/رمزِ واقعی تست شوند.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
-import { applications, users, type Plan } from "@/db/schema";
+import { applications, resumes, users, type Plan } from "@/db/schema";
 import {
   assertServerAutoApplyAllowed,
   recordAutoApplyAudit,
@@ -60,6 +60,12 @@ export interface FleetJob {
   /** انگیزه‌نامه‌ی درفت‌شده برای پیش‌پُرکردنِ فرم (در صورتِ وجود). */
   coverLetter: string | null;
   /**
+   * HTMLِ رزومه‌ی سفارشیِ *هدف‌گیری‌شده‌ی همین آگهی* (اگر ساخته شده باشد). نود آن را با
+   * Playwright به PDF رندر می‌کند و در مسیرِ آپلودِ فرم (#apply_choice_uploaded_cv) می‌فرستد —
+   * جایگزینِ انگیزه‌نامه در jobinja.
+   */
+  resumeHtml: string | null;
+  /**
    * نشستِ رمزگشایی‌شده‌ی *خودِ همان کاربر* (JSONِ سریال‌شده‌ی کوکی/توکن/UA). فقط به این
    * نودِ تخصیص‌یافته می‌رود. هرگز لاگ/پایدار نشود.
    */
@@ -83,6 +89,8 @@ export interface ClaimFleetDeps {
   ) => Promise<ClaimedApplyItem[]>;
   /** خواننده‌ی نشستِ رمزشده + رمزگشای آن (پیش‌فرض vault). */
   loadSession?: (userId: string, board: Board) => Promise<string | null>;
+  /** خواننده‌ی HTMLِ رزومه‌ی سفارشیِ این آگهی (پیش‌فرض از جدولِ resumes؛ نبود → null). */
+  loadResumeHtml?: (userId: string, listingId: string) => Promise<string | null>;
 }
 
 /** پلنِ کاربر را از جدولِ users می‌خواند (یا null اگر کاربر نباشد). */
@@ -116,6 +124,27 @@ async function defaultLoadSession(
     iv: blob.iv,
     keyVersion: blob.keyVersion,
   });
+}
+
+/** HTMLِ رزومه‌ی سفارشیِ (user × listing × isBase=false) را برمی‌گرداند؛ نبود/خطا → null. */
+async function defaultLoadResumeHtml(
+  userId: string,
+  listingId: string,
+  db: FleetDispatchDb,
+): Promise<string | null> {
+  try {
+    const row = await db.query.resumes.findFirst({
+      where: and(
+        eq(resumes.userId, userId),
+        eq(resumes.listingId, listingId),
+        eq(resumes.isBase, false),
+      ),
+      columns: { content: true },
+    });
+    return row?.content ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -153,6 +182,9 @@ export async function claimFleetJobs(
   const loadSession =
     deps.loadSession ??
     ((userId: string, board: Board) => defaultLoadSession(userId, board, db));
+  const loadResumeHtml =
+    deps.loadResumeHtml ??
+    ((userId: string, listingId: string) => defaultLoadResumeHtml(userId, listingId, db));
 
   const safeLimit = Math.max(0, Math.floor(limit));
   if (safeLimit === 0) return [];
@@ -204,6 +236,7 @@ export async function claimFleetJobs(
         board: item.board,
         listingUrl: item.listing.url,
         coverLetter: item.coverLetter,
+        resumeHtml: await loadResumeHtml(userId, item.listingId),
         session,
       });
     }
