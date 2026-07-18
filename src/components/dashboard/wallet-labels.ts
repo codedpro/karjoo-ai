@@ -55,6 +55,7 @@ export const USAGE_KIND: Record<UsageKind, string> = {
   match: "تطبیقِ شغلی",
   cover_letter: "انگیزه‌نامه",
   resume_parse: "پردازشِ رزومه",
+  resume_tailor: "رزومه‌ی سفارشیِ شغل",
 };
 
 /** نامِ فارسیِ ارائه‌دهنده‌ی مدل. */

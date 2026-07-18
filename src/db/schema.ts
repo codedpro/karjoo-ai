@@ -217,6 +217,7 @@ export const usageKindEnum = pgEnum("usage_kind", [
   "match",
   "cover_letter",
   "resume_parse",
+  "resume_tailor", // رزومه‌ی سفارشیِ هر شغل — بازنویسیِ محتوا مطابقِ شرحِ آگهی.
 ]);
 
 /* ───────────────────────────────  Tables  ──────────────────────────────── */
@@ -1204,6 +1205,68 @@ export const filterCursors = pgTable(
   ],
 );
 
+/** دسته‌بندیِ نرمال‌شده‌ی وضعیتِ یک درخواستِ اپلای روی سایت (برای قیفِ تحلیل). */
+export const boardApplicationStatusEnum = pgEnum("board_application_status", [
+  "pending", // در انتظار / جدید
+  "review", // بررسی / دیده‌شده
+  "interview", // مصاحبه
+  "rejected", // رد / بایگانی
+  "other",
+]);
+
+/**
+ * عکس‌برداریِ درخواست‌های اپلایِ کاربر روی یک سایت (منبعِ قیفِ تحلیلِ کاربر). با هر همگام‌سازی
+ * (extension push یا واکشیِ سرور با نشستِ vault) به‌روز می‌شود. externalId = شناسه‌ی درخواست
+ * در آن سایت (مثلِ /jobs/applied/{shortId} در جابینجا).
+ */
+export const boardApplications = pgTable(
+  "board_applications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    board: text("board").notNull(),
+    /** شناسه‌ی درخواست در خودِ سایت (کلیدِ dedupe). */
+    externalId: text("external_id").notNull(),
+    title: text("title"),
+    company: text("company"),
+    url: text("url"),
+    /** متنِ خامِ وضعیت همان‌طور که سایت نشان می‌دهد (مثلِ «مصاحبه»). */
+    statusRaw: text("status_raw"),
+    /** دسته‌ی نرمال‌شده برای قیف. */
+    statusCategory: boardApplicationStatusEnum("status_category").notNull().default("pending"),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("board_applications_user_board_ext_uq").on(t.userId, t.board, t.externalId),
+    index("board_applications_user_status_idx").on(t.userId, t.statusCategory),
+  ],
+);
+
+/**
+ * عکس‌برداریِ پروفایل/رزومه‌ی کاربر روی یک سایت (برای نمایشِ «پروفایلِ جابینجایِ شما» در
+ * داشبورد). `data` نگاشتِ ساخت‌یافته‌ی پروفایل است (نام، عنوان، درباره، مهارت‌ها، سوابق…).
+ */
+export const boardProfileSnapshots = pgTable(
+  "board_profile_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    board: text("board").notNull(),
+    /** نگاشتِ پروفایل (JSON): fullName, headline, about, skills[], experience[], education[], contact… */
+    data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+    /** نشانیِ پروفایلِ عمومیِ سایت (اگر موجود؛ مثلِ jobinja.ir/profile/{slug}). */
+    publicUrl: text("public_url"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("board_profile_snapshots_user_board_uq").on(t.userId, t.board)],
+);
+
 /* ─────────────────────  Inferred types (برای پایین‌دست)  ────────────────── */
 
 export type User = typeof users.$inferSelect;
@@ -1222,6 +1285,10 @@ export type SessionBlob = typeof sessionBlobs.$inferSelect;
 export type NewSessionBlob = typeof sessionBlobs.$inferInsert;
 export type FilterCursor = typeof filterCursors.$inferSelect;
 export type NewFilterCursor = typeof filterCursors.$inferInsert;
+export type BoardApplication = typeof boardApplications.$inferSelect;
+export type NewBoardApplication = typeof boardApplications.$inferInsert;
+export type BoardProfileSnapshot = typeof boardProfileSnapshots.$inferSelect;
+export type NewBoardProfileSnapshot = typeof boardProfileSnapshots.$inferInsert;
 export type JobListingRow = typeof jobListings.$inferSelect;
 export type NewJobListingRow = typeof jobListings.$inferInsert;
 export type RawListing = typeof rawListings.$inferSelect;

@@ -127,6 +127,13 @@
       "when": 1784043722819,
       "tag": "0017_large_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784380792282,
+      "tag": "0018_magical_earthquake",
+      "breakpoints": true
     }
   ]
 }
