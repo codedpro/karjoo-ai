@@ -4,3 +4,6 @@ dist
 # The locally persisted node credential (issued once at enrollment). NEVER commit it.
 .karjoo-worker/
 karjoo-worker-credential.json
+
+# E2E credentials (never commit)
+e2e/.env.e2e

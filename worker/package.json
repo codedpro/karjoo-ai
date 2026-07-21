@@ -17,7 +17,8 @@
     "start": "node dist/main.js",
     "dev": "tsx src/main.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "./e2e/run.sh"
   },
   "dependencies": {
     "playwright-core": "^1.49.1"

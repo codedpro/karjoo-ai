@@ -44,7 +44,10 @@ export async function PUT(request: Request): Promise<Response> {
           return errorJson("نشستِ جابینجا متصل نیست — از افزونه وصل کنید.", 409);
         }
         if (err.code === "no_cv_id") {
-          return errorJson("شناسه‌ی رزومه‌ی جابینجا پیدا نشد؛ یک‌بار در جابینجا رزومه‌ساز را باز کنید.", 422);
+          return errorJson("شناسه‌ی رزومه‌ی جابینجا پیدا نشد؛ یک‌بار در جابینجا (با افزونه‌ی نصب‌شده) رزومه‌ساز را باز کنید.", 422);
+        }
+        if (err.code === "missing_fields") {
+          return errorJson("عنوانِ شغلی و نامِ کامل هر دو لازم‌اند.", 400);
         }
         return errorJson("به‌روزرسانیِ جابینجا ناموفق بود؛ کمی بعد دوباره تلاش کنید.", 502);
       }

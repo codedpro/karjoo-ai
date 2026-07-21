@@ -31,11 +31,21 @@ export interface JobinjaWriteDeps {
 
 export class JobinjaWriteError extends Error {
   constructor(
-    readonly code: "no_session" | "decrypt_failed" | "no_cookies" | "no_cv_id" | "http_error",
+    readonly code:
+      | "no_session"
+      | "decrypt_failed"
+      | "no_cookies"
+      | "no_cv_id"
+      | "missing_fields"
+      | "http_error",
     message: string,
   ) {
     super(message);
   }
+}
+
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
 }
 
 /** کوکی‌های نشستِ vaultِ کاربر را باز می‌کند → { cookieHeader, xsrf }. */
@@ -77,39 +87,6 @@ export async function discoverCvId(cookieHeader: string): Promise<string | null>
     for (const m of html.matchAll(/cv-builder\/([A-Za-z0-9]{2,8})(?:\/|["'\\])/g)) {
       const id = m[1]!;
       if (!SECTIONS.has(id) && !/^\d+$/.test(id)) return id;
-    }
-    return null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/** مقادیرِ فعلیِ یک بخش را می‌خواند (برای merge پیش از PUTِ کاملِ بخش). نبود → null. */
-export async function getCvSection(
-  cookieHeader: string,
-  cvId: string,
-  section: JobinjaCvSection,
-): Promise<Record<string, unknown> | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${API}/${cvId}/${section}`, {
-      headers: {
-        "User-Agent": KARJOO_USER_AGENT,
-        Accept: "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-        Cookie: cookieHeader,
-      },
-      signal: controller.signal,
-    });
-    if (!res.ok) return null;
-    const j = (await res.json()) as unknown;
-    // پاسخ ممکن است {data:{…}} یا مستقیم {…} باشد.
-    if (j && typeof j === "object") {
-      const obj = j as Record<string, unknown>;
-      return (obj.data as Record<string, unknown>) ?? obj;
     }
     return null;
   } catch {
@@ -191,15 +168,26 @@ export async function updateJobinjaBasicData(
     return { ok: true };
   }
 
-  // basic-data یک PUTِ *کاملِ بخش* است — نه patch. پس اول مقادیرِ فعلی را بخوان و فقط
-  // فیلدهای ویرایش‌شده را جایگزین کن تا سایرِ فیلدها null نشوند.
-  const current = (await getCvSection(cookieHeader, cvId, "basic-data")) ?? {};
-  const payload: Record<string, unknown> = {
-    working_status: edits.workingStatus ?? current.working_status ?? "seeking",
-    job_title: edits.jobTitle ?? current.job_title ?? "",
-    full_name: edits.fullName ?? current.full_name ?? "",
-  };
+  // basic-data یک PUTِ *کاملِ بخشِ* است و GETِ آن ۴۰۵ می‌دهد (PUT-only) — پس نمی‌توان از خودِ
+  // API مقدارِ فعلی را خواند. فرمِ ویرایشِ کارجو هر دو (عنوان + نام) را از پیش پُر و می‌فرستد؛
+  // مقادیرِ نبود از آخرین عکس‌برداریِ پروفایل (که افزونه push می‌کند) پُر می‌شوند تا هیچ فیلدی
+  // null نشود. اگر عنوان یا نام در دسترس نبود، می‌ایستیم (به‌جای PUTِ ناقص که فیلد را پاک می‌کند).
+  const snap = await conn.query.boardProfileSnapshots.findFirst({
+    where: and(eq(boardProfileSnapshots.userId, userId), eq(boardProfileSnapshots.board, "jobinja")),
+    columns: { data: true },
+  });
+  const snapData = (snap?.data as Record<string, unknown> | undefined) ?? {};
+  const jobTitle = str(edits.jobTitle) ?? str(snapData.headline) ?? str(snapData.job_title);
+  const fullName = str(edits.fullName) ?? str(snapData.fullName) ?? str(snapData.full_name);
+  const workingStatus = str(edits.workingStatus) ?? str(snapData.working_status) ?? "seeking";
+  if (!jobTitle || !fullName) {
+    throw new JobinjaWriteError("missing_fields", "job_title and full_name are both required for a basic-data write");
+  }
 
-  await putCvSection(cookieHeader, xsrf, cvId, "basic-data", payload);
+  await putCvSection(cookieHeader, xsrf, cvId, "basic-data", {
+    working_status: workingStatus,
+    job_title: jobTitle,
+    full_name: fullName,
+  });
   return { ok: true };
 }
