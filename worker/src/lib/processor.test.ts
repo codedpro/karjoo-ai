@@ -177,4 +177,35 @@ describe("runPlan — confirm handling", () => {
     expect(outcome.status).toBe("submitted");
     expect(outcome.confirmed).toBe(false);
   });
+
+  it("falls back to the profile résumé (NOT 'failed') when a job has a custom résumé but no upload radio", async () => {
+    // ~a third of Jobinja jobs accept only the profile résumé (no #apply_choice_uploaded_cv).
+    // Verified live 2026-07-21: the upload radio + flash can both be absent on a real, successful apply.
+    const { launcher, record } = makeFakeBrowser({
+      selectors: {
+        "#apply_choice_uploaded_cv": { count: 0 }, // this job offers NO upload option
+        "#apply-form input[type='file']": { count: 0 }, // …and thus no file input
+        ".js-flashMessageMsg, .c-flashMessage__message": { count: 0, waitForThrows: true }, // flash may not render
+      },
+    });
+    const browser = await launcher({ headless: true, executablePath: null });
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    // A plan WITH a per-job résumé file → the upload path IS included in the plan…
+    const plan = buildApplyPlan(jobinjaJob(), { resumeFile: "/tmp/fake-resume.pdf" })!;
+    expect(plan.steps.some((s) => s.selector === "#apply_choice_uploaded_cv")).toBe(true);
+
+    const outcome = await runPlan(page, plan, 5000);
+
+    // …but with the upload radio absent, that step (and the upload) are skipped and we fall
+    // back to the Jobinja-profile résumé + submit, instead of failing the whole apply.
+    expect(outcome.status).toBe("submitted");
+    expect(outcome.confirmed).toBe(false); // flash absent → unconfirmed, not failed
+    const clickedProfile = record.actions.some((a) => a.kind === "click" && a.selector.includes("apply_choice_jobinja_profile"));
+    const uploaded = record.actions.some((a) => a.kind === "upload");
+    const clickedSubmit = record.actions.some((a) => a.kind === "click" && a.selector.includes("input[type='submit']"));
+    expect(clickedProfile).toBe(true);
+    expect(uploaded).toBe(false);
+    expect(clickedSubmit).toBe(true);
+  });
 });

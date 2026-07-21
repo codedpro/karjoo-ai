@@ -95,24 +95,27 @@ describe("buildApplyPlan — APPLY_SPEC-driven fill", () => {
     expect(buildApplyPlan(item({ board: "nope" as ApplyQueueItem["board"] }), {})).toBeNull();
   });
 
-  it("resolves the cover-letter value into the jobinja fill step", () => {
+  it("does NOT inject a cover letter into the jobinja plan (Jobinja has no cover-letter field)", () => {
+    // Product decision: Jobinja's apply form has no motivation-letter field, so the cover
+    // letter is advisory-only and must never become a submitted step value.
     const it = item({ coverLetter: "سلام، من مناسبم." });
     const plan = buildApplyPlan(it, applyValuesFor(it));
     expect(plan).not.toBeNull();
-    const fill = plan!.steps.find((s) => s.kind === "fill");
-    expect(fill?.value).toBe("سلام، من مناسبم.");
     expect(plan!.maturity).toBe("best-effort");
-    // The flow has a click(apply) → waitFor(form) → fill → click(submit) shape.
+    expect(plan!.steps.some((s) => s.value === "سلام، من مناسبم.")).toBe(false);
+    // Flow shape: click(reveal/choose) → waitFor(form) → … → click(submit) → waitFor(flash).
     const kinds = plan!.steps.map((s) => s.kind);
     expect(kinds[0]).toBe("click");
-    expect(kinds).toContain("fill");
+    expect(kinds).toContain("waitFor");
     expect(kinds.filter((k) => k === "click").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("drops the optional cover-letter step when there is no cover letter", () => {
-    const it = item({ coverLetter: "" });
-    const plan = buildApplyPlan(it, applyValuesFor(it));
-    expect(plan!.steps.some((s) => s.kind === "fill")).toBe(false);
+  it("includes the phone fill step only when a phone value is present", () => {
+    // With no phone value the optional phone fill is dropped; with one it resolves.
+    const none = buildApplyPlan(item(), applyValuesFor(item()));
+    expect(none!.steps.some((s) => s.kind === "fill")).toBe(false);
+    const withPhone = buildApplyPlan(item(), { phone: "09120000000" });
+    expect(withPhone!.steps.find((s) => s.kind === "fill")?.value).toBe("09120000000");
   });
 
   it("marks scaffold boards as scaffold", () => {

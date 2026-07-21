@@ -110,7 +110,11 @@ const JOBINJA_SPEC: BoardApplySpec = {
       kind: "click",
       selector: "#apply_choice_uploaded_cv",
       requiresValueKey: "resumeFile",
-      note: "Choose 'upload résumé' (only when a per-job custom résumé exists).",
+      // NOT every Jobinja job exposes an upload radio (~a third don't — many accept only the
+      // Jobinja-profile résumé). Optional → if it's absent, skip this + the upload step and
+      // fall back to #apply_choice_jobinja_profile (clicked above), rather than fail the apply.
+      optional: true,
+      note: "Choose 'upload résumé' (only when a per-job custom résumé exists AND this job has the upload radio).",
     },
     {
       kind: "upload",
@@ -132,9 +136,13 @@ const JOBINJA_SPEC: BoardApplySpec = {
       note: "Final submit ('ارسال رزومه').",
     },
     {
+      // The flash doesn't reliably render post-submit (verified live 2026-07-21) — a real
+      // submission can leave no flash. Optional so a missing flash yields submitted/unconfirmed
+      // (confirmed=false via confirmSelector) instead of a false 'failed' that could retry → double-apply.
       kind: "waitFor",
       selector: ".js-flashMessageMsg, .c-flashMessage__message",
-      note: "Confirm via the flash message.",
+      optional: true,
+      note: "Confirm via the flash message (best-effort; its absence is not a failure).",
     },
   ],
   notes: [

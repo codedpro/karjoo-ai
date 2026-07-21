@@ -117,7 +117,11 @@ const JOBINJA_SPEC: BoardApplySpec = {
       kind: "click",
       selector: "#apply_choice_uploaded_cv",
       requiresValueKey: "resumeFile",
-      note: "انتخابِ «آپلودِ رزومه» (فقط وقتی رزومه‌ی سفارشی داریم).",
+      // NOT every Jobinja job exposes an upload radio (~a third don't — many accept only the
+      // Jobinja-profile résumé). Optional → if it's absent, skip this + the upload step and
+      // fall back to #apply_choice_jobinja_profile (clicked above), rather than fail the apply.
+      optional: true,
+      note: "انتخابِ «آپلودِ رزومه» (فقط وقتی رزومه‌ی سفارشی داریم و رادیوی آپلود روی این آگهی هست).",
     },
     {
       kind: "upload",
@@ -139,9 +143,13 @@ const JOBINJA_SPEC: BoardApplySpec = {
       note: "ثبتِ نهاییِ اپلای («ارسال رزومه»).",
     },
     {
+      // فلشِ تأیید همیشه رندر نمی‌شود (زنده تأیید شد ۱۴۰۵/۰۴/۳۰) — یک ثبتِ واقعی ممکن است بی‌فلش
+      // بماند. optional تا نبودِ فلش «submitted/تأییدنشده» شود (confirmed=false از confirmSelector)
+      // نه «failed»ِ کاذب که می‌تواند retry → اپلایِ تکراری بسازد.
       kind: "waitFor",
       selector: ".js-flashMessageMsg, .c-flashMessage__message",
-      note: "تأییدِ ثبت (پیامِ فلش).",
+      optional: true,
+      note: "تأییدِ ثبت (پیامِ فلش) — best-effort؛ نبودش شکست نیست.",
     },
   ],
   notes: [
