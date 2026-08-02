@@ -24,6 +24,19 @@ import { withSentryConfig } from "@sentry/nextjs";
  */
 const nextConfig: NextConfig = {
   // cacheComponents: true, // ← عمداً خاموش؛ توضیح بالا. UX از راهِ static-shell + Suspense.
+
+  /**
+   * تصویرهای بلاگ از موتورِ محتوای IT Master می‌آیند و روی مخزنِ عمومیِ آن
+   * (files.io9.uk) میزبانی می‌شوند — نه هم‌مبدأ با کارجو. بدونِ این ورودی،
+   * بهینه‌سازِ تصویرِ Next با ۴۰۰ و پیامِ `"url" parameter is not allowed`
+   * پاسخ می‌دهد و هر پستِ بلاگ بدونِ هیچ تصویری رندر می‌شود.
+   */
+  images: {
+    formats: ["image/avif", "image/webp"],
+    remotePatterns: [
+      { protocol: "https", hostname: "files.io9.uk", pathname: "/**" },
+    ],
+  },
 };
 
 /**
