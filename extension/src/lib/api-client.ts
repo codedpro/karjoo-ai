@@ -433,11 +433,21 @@ export class KarjooApi {
   async getPlan(): Promise<PlanTier> {
     try {
       const { ok, status, body } = await this.requestRaw("/api/me/plan", { method: "GET" });
-      if (!ok) return "free";
+      if (!ok) {
+        // Fail CLOSED to 'free' — never push a session off-device on an uncertain plan.
+        // But never do it *silently*: a 401 here means the extension cannot read the
+        // user's plan at all, so a paying Max/Max+ user would be treated as Free forever
+        // and their vault would never fill (this exact silence hid a dead auth path).
+        console.warn(
+          `[karjoo] could not read plan (HTTP ${status}) — treating as free, so no session is pushed to the vault.` +
+            (status === 401 ? " The extension session looks invalid; re-pair from the dashboard." : ""),
+        );
+        return "free";
+      }
       const plan = (body as { plan?: string } | null)?.plan;
       return plan === "pro" || plan === "max" || plan === "maxplus" ? plan : "free";
-      void status;
-    } catch {
+    } catch (err) {
+      console.warn("[karjoo] plan lookup failed — treating as free (no vault push).", err);
       return "free";
     }
   }

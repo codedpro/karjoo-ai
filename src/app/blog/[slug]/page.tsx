@@ -18,7 +18,18 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   let meta = articleMetadata(article, { siteUrl: site.url });
   const config = await itmaster.config();
   if (config) meta = applyMeta(meta, config);
-  return meta as Metadata;
+
+  // موتورِ محتوا `canonical_path` را بدونِ پیشوندِ `/blog` می‌دهد و SDK هم عیناً همان را
+  // می‌گذارد → کنونیکالِ هر مقاله به یک URLِ ۴۰۴ اشاره می‌کرد (مقاله فقط زیرِ /blog/<slug>
+  // سرو می‌شود). این یعنی گوگل عملاً هیچ مقاله‌ای را ایندکس نمی‌کرد. این‌جا کنونیکال را با
+  // مسیرِ واقعی بازنویسی می‌کنیم (منبعِ حقیقت: همان اسلاگی که این صفحه با آن رندر شده).
+  const canonical = `${site.url.replace(/\/$/, "")}/blog/${slug}`;
+  const withCanonical = meta as Metadata;
+  withCanonical.alternates = { ...(withCanonical.alternates ?? {}), canonical };
+  if (withCanonical.openGraph) {
+    (withCanonical.openGraph as { url?: string }).url = canonical;
+  }
+  return withCanonical;
 }
 
 export default async function ArticlePage({ params }: Params) {
@@ -26,7 +37,14 @@ export default async function ArticlePage({ params }: Params) {
   const article = await itmaster.getArticle(slug);
   if (!article) notFound();
 
-  const jsonLd = articleJsonLd(article, { siteUrl: site.url });
+  // همان اصلاحِ کنونیکال برای JSON-LD: mainEntityOfPage/url باید به مسیرِ واقعیِ
+  // `/blog/<slug>` اشاره کند، نه به canonical_pathِ بی‌پیشوندِ موتور (که ۴۰۴ است).
+  const canonical = `${site.url.replace(/\/$/, "")}/blog/${slug}`;
+  const jsonLd = {
+    ...(articleJsonLd(article, { siteUrl: site.url }) as Record<string, unknown>),
+    url: canonical,
+    mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
+  };
 
   return (
     <>

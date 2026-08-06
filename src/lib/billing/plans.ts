@@ -159,3 +159,15 @@ export function applyQuotaFor(plan: Plan | string): number | null {
 export function monthlyCreditFor(plan: Plan | string): number {
   return planFor(plan).monthlyCreditToman;
 }
+
+/**
+ * طولِ یک دوره‌ی پلنِ پولی (روز). قیمت‌ها «ماهانه»اند، پس یک خرید ۳۰ روز اعتبار می‌دهد.
+ * منبعِ یگانه‌ی حقیقت برای هر دو سمت: ست‌کردنِ users.plan_expires_at هنگامِ خرید، و
+ * کارِ روزانه‌ای که پلن‌های گذشته از مهلت را به free برمی‌گرداند.
+ */
+export const PLAN_PERIOD_DAYS = 30;
+
+/** پایانِ دوره برای خریدی که در `from` انجام شده (پیش‌فرض: اکنون). */
+export function planPeriodEnd(from: Date = new Date()): Date {
+  return new Date(from.getTime() + PLAN_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+}

@@ -1,7 +1,7 @@
 /**
  * تست‌های `POST /api/apply/find-jobs` (Track B، فاز ۲).
  *
- * نشستِ وب (getCurrentUser)، هِلپرِ فیلترها (readApplyFilters)، ارکستریتور
+  * نشستِ کاربر (کوکیِ وب یا Bearerِ افزونه — getCurrentUserOrBearer)، هِلپرِ فیلترها (readApplyFilters)، ارکستریتور
  * (runFilterApply)، پلن/سقف و گیتِ AIِ پولی همگی mock می‌شوند — هیچ DB/شبکه‌ی زنده.
  * تمرکزِ بحرانی:
  *   • بدونِ نشست → ۴۰۱ (هیچ اجرا).
@@ -13,14 +13,14 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
+vi.mock("@/lib/auth/http", () => ({ getCurrentUserOrBearer: vi.fn() }));
 vi.mock("@/lib/apply/filters", () => ({ readApplyFilters: vi.fn() }));
 vi.mock("@/lib/apply/orchestrator", () => ({ runFilterApply: vi.fn() }));
 vi.mock("@/lib/billing/apply-quota-guard", () => ({ readUserPlan: vi.fn() }));
 vi.mock("@/lib/billing/plans", () => ({ applyQuotaFor: vi.fn() }));
 vi.mock("@/lib/billing/entitlement", () => ({ assertCanUsePaidAi: vi.fn() }));
 
-import { getCurrentUser } from "@/lib/auth/http";
+import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { readApplyFilters } from "@/lib/apply/filters";
 import { runFilterApply } from "@/lib/apply/orchestrator";
 import { readUserPlan } from "@/lib/billing/apply-quota-guard";
@@ -31,7 +31,7 @@ import { InsufficientBalanceError } from "@/lib/billing/errors";
 import { POST } from "@/app/api/apply/find-jobs/route";
 import { resetRateLimits } from "@/lib/api/rate-limit";
 
-const getCurrentUserMock = vi.mocked(getCurrentUser);
+const getCurrentUserMock = vi.mocked(getCurrentUserOrBearer);
 const readFiltersMock = vi.mocked(readApplyFilters);
 const runFilterApplyMock = vi.mocked(runFilterApply);
 const readUserPlanMock = vi.mocked(readUserPlan);

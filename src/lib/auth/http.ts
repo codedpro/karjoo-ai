@@ -20,6 +20,7 @@ import { db as defaultDb } from "@/db";
 import { users } from "@/db/schema";
 import type { User } from "@/db/schema";
 import { requireAuthPepper } from "@/lib/env";
+import { extractBearerToken } from "@/lib/api/bearer-auth";
 import { ensureOnexaiLink, type UnifiedDb } from "@/lib/billing/unified";
 import {
   revokeSession,
@@ -116,6 +117,27 @@ export async function getUserFromToken(
 export async function getCurrentUser(opts: AuthHttpDeps = {}): Promise<User | null> {
   const token = await readSessionToken();
   return getUserFromToken(token, opts);
+}
+
+/**
+ * کاربرِ جاری را از **کوکیِ وب یا هدرِ `Authorization: Bearer`** برمی‌گرداند (یا null).
+ *
+ * چرا لازم است: افزونه (MV3) از مبدأِ `chrome-extension://` صدا می‌زند، پس هرگز کوکیِ
+ * هم‌مبدأِ کارجو را نمی‌فرستد؛ فقط توکنِ نشستِ خودش را در هدرِ Bearer می‌گذارد. مسیرهایی
+ * که «هم وب و هم افزونه» صدایشان می‌زنند باید هر دو را بپذیرند، وگرنه افزونه همیشه ۴۰۱
+ * می‌گیرد (باگِ خاموشی که کلِ «اپلای خودکارِ مرورگر» و پُرشدنِ vault را از کار انداخته بود).
+ *
+ * ایمنی: هر دو مسیر از همان `getUserFromToken` می‌گذرند — یعنی همان راستی‌آزماییِ نشست
+ * (هشِ pepper-دار، منقضی/باطل‌نشده) و همان ردِ کاربرِ غیرفعال. هیچ مسیرِ ضعیف‌تری اضافه
+ * نمی‌شود؛ فقط محلِ خواندنِ همان توکن دو حالت دارد.
+ */
+export async function getCurrentUserOrBearer(
+  request: Request,
+  opts: AuthHttpDeps = {},
+): Promise<User | null> {
+  const cookieUser = await getCurrentUser(opts);
+  if (cookieUser) return cookieUser;
+  return getUserFromToken(extractBearerToken(request), opts);
 }
 
 /** فقط فیلدهای غیرحساسِ کاربر برای بدنه‌ی پاسخ (هرگز چیزی فراتر از این لو نده). */

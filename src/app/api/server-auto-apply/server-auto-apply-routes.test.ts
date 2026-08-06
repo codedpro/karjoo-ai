@@ -16,6 +16,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
+vi.mock("@/lib/fleet/assign", () => ({ autoAssignNodeForUser: vi.fn() }));
 vi.mock("@/lib/apply/auto-apply", () => ({
   getServerAutoApplySettings: vi.fn(),
   setServerAutoApplyEnabled: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("@/lib/apply/auto-apply", () => ({
 }));
 
 import { getCurrentUser } from "@/lib/auth/http";
+import { autoAssignNodeForUser } from "@/lib/fleet/assign";
 import {
   getServerAutoApplySettings,
   recordAutoApplyAudit,
@@ -35,6 +37,7 @@ const getCurrentUserMock = vi.mocked(getCurrentUser);
 const getSettingsMock = vi.mocked(getServerAutoApplySettings);
 const setEnabledMock = vi.mocked(setServerAutoApplyEnabled);
 const recordAuditMock = vi.mocked(recordAutoApplyAudit);
+const autoAssignMock = vi.mocked(autoAssignNodeForUser);
 
 /** کاربرِ mock با پلنِ دلخواه (فقط فیلدهایی که route لمس می‌کند). */
 function userWithPlan(plan: string) {
@@ -156,15 +159,26 @@ describe("PUT /api/server-auto-apply — پلن‌گِیت + ممیزی", () => 
     );
   });
 
-  it("Max روشن‌کردن (خاموش→روشن) → تنظیم + server_auto_apply_enabled", async () => {
+  it("Max روشن‌کردن (خاموش→روشن) → تنظیم + server_auto_apply_enabled + تخصیصِ خودکارِ نود", async () => {
     getCurrentUserMock.mockResolvedValue(userWithPlan("max"));
     getSettingsMock.mockResolvedValue({ enabled: false, minScore: 0.7 });
     setEnabledMock.mockResolvedValue({ enabled: true, minScore: 0.7 });
+    autoAssignMock.mockResolvedValue({
+      id: "asg-1",
+      userId: "user-1",
+      nodeId: "node-1",
+      createdAt: new Date("2026-08-06T12:00:00Z"),
+    });
 
     const res = await PUT(putReq({ enabled: true }));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ enabled: true, minScore: 0.7 });
+    expect(body).toEqual({ enabled: true, minScore: 0.7, workerAssigned: true });
+
+    // روشن‌کردنِ تاگل باید نود تخصیص دهد، وگرنه صف هرگز تخلیه نمی‌شود.
+    expect(autoAssignMock).toHaveBeenCalledTimes(1);
+    expect(autoAssignMock.mock.calls[0]?.[0]).toBe("user-1");
+    expect(autoAssignMock.mock.calls[0]?.[1]).toBe("max");
 
     expect(setEnabledMock).toHaveBeenCalledTimes(1);
     expect(setEnabledMock.mock.calls[0][0]).toBe("user-1");
@@ -175,6 +189,47 @@ describe("PUT /api/server-auto-apply — پلن‌گِیت + ممیزی", () => 
     expect(auditArg.userId).toBe("user-1");
     expect(auditArg.eventType).toBe("server_auto_apply_enabled");
     expect(auditArg.metadata).toEqual({ minScore: 0.7, channel: "server" });
+  });
+
+  it("نبودِ ظرفیتِ ناوگان → تاگل باز هم روشن می‌شود (fail-soft) با workerAssigned=false", async () => {
+    getCurrentUserMock.mockResolvedValue(userWithPlan("max"));
+    getSettingsMock.mockResolvedValue({ enabled: false, minScore: 0.7 });
+    setEnabledMock.mockResolvedValue({ enabled: true, minScore: 0.7 });
+    autoAssignMock.mockResolvedValue(null); // هیچ نودِ سالمِ آزادی نیست
+
+    const res = await PUT(putReq({ enabled: true }));
+
+    // روشن‌کردن نباید به‌خاطرِ نبودِ نود شکست بخورد — فقط صادقانه گزارش می‌شود.
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      enabled: true,
+      minScore: 0.7,
+      workerAssigned: false,
+    });
+  });
+
+  it("خطای تخصیص هم تاگل را نمی‌شکند (fail-soft)", async () => {
+    getCurrentUserMock.mockResolvedValue(userWithPlan("max"));
+    getSettingsMock.mockResolvedValue({ enabled: false, minScore: 0.7 });
+    setEnabledMock.mockResolvedValue({ enabled: true, minScore: 0.7 });
+    autoAssignMock.mockRejectedValue(new Error("db down"));
+
+    const res = await PUT(putReq({ enabled: true }));
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).workerAssigned).toBe(false);
+  });
+
+  it("خاموش‌کردن هیچ تخصیصی انجام نمی‌دهد", async () => {
+    getCurrentUserMock.mockResolvedValue(userWithPlan("max"));
+    getSettingsMock.mockResolvedValue({ enabled: true, minScore: 0.7 });
+    setEnabledMock.mockResolvedValue({ enabled: false, minScore: 0.7 });
+
+    const res = await PUT(putReq({ enabled: false }));
+
+    expect(res.status).toBe(200);
+    expect(autoAssignMock).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ enabled: false, minScore: 0.7 });
   });
 
   it("MaxPlus خاموش‌کردن (روشن→خاموش) → server_auto_apply_disabled", async () => {

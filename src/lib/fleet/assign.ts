@@ -19,6 +19,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db as defaultDb } from "@/db";
 import {
   workerAssignments,
+  workerNodes,
   type Plan,
   type WorkerAssignment,
 } from "@/db/schema";
@@ -161,6 +162,68 @@ export async function listAssignments(
     .select()
     .from(workerAssignments)
     .where(eq(workerAssignments.userId, userId));
+}
+
+/**
+ * وقتی کاربر «اپلای خودکار روی سرور» را روشن می‌کند، **خودکار** یک نودِ سالم به او تخصیص
+ * می‌دهد — اگر هنوز هیچ نودی ندارد.
+ *
+ * چرا لازم است: `claimFleetJobs` برای نودی که هیچ کاربرِ تخصیص‌یافته‌ای ندارد بلافاصله
+ * `[]` برمی‌گرداند. پس بدونِ تخصیص، کاربر تاگل را روشن می‌کند، صف پُر می‌شود و **هیچ‌وقت
+ * تخلیه نمی‌شود**؛ تخصیص تا امروز فقط دستی/ادمین بود. این تابع آن حلقه را می‌بندد.
+ *
+ * انتخابِ نود: سالم‌ترین و کم‌بارترین — فقط `health='online'`، و بینِ آن‌ها نودی که
+ * کمترین کاربرِ تخصیص‌یافته را دارد و هنوز به `capacity` خودش نرسیده.
+ *
+ * fail-soft: اگر هیچ نودِ آزادی نبود `null` برمی‌گرداند (تاگل باز هم روشن می‌شود و کاربر
+ * در صف می‌مانَد) — روشن‌کردنِ تاگل نباید به‌خاطرِ نبودِ ظرفیتِ ناوگان شکست بخورد. سقفِ
+ * IPِ پلن همچنان توسطِ `assignNodeToUser` اعمال می‌شود (پلنِ بی‌ورکر → null).
+ */
+export async function autoAssignNodeForUser(
+  userId: string,
+  plan: Plan,
+  conn: FleetAssignDb = defaultDb,
+): Promise<WorkerAssignment | null> {
+  // پلنِ بی‌ورکر (Free/Pro) → اصلاً تلاش نکن.
+  if (workerIpLimitFor(plan) <= 0) return null;
+
+  // از قبل نود دارد → کارِ تازه‌ای لازم نیست (idempotent).
+  const existing = await listAssignments(userId, conn);
+  if (existing.length > 0) return existing[0]!;
+
+  // نودهای online که هنوز ظرفیتِ خالی دارند، کم‌بارترین اول.
+  const load = conn
+    .select({
+      nodeId: workerAssignments.nodeId,
+      n: sql<number>`count(*)::int`.as("n"),
+    })
+    .from(workerAssignments)
+    .groupBy(workerAssignments.nodeId)
+    .as("load");
+
+  const candidates = await conn
+    .select({ id: workerNodes.id })
+    .from(workerNodes)
+    .leftJoin(load, eq(load.nodeId, workerNodes.id))
+    .where(
+      and(
+        eq(workerNodes.health, "online"),
+        sql`coalesce(${load.n}, 0) < ${workerNodes.capacity}`,
+      ),
+    )
+    .orderBy(sql`coalesce(${load.n}, 0) asc`)
+    .limit(1);
+
+  const node = candidates[0];
+  if (!node) return null;
+
+  try {
+    return await assignNodeToUser(userId, node.id, plan, conn);
+  } catch (err) {
+    // سقفِ پلن یا رقابتِ هم‌زمان → تاگل را نمی‌شکنیم؛ فقط تخصیص نداده‌ایم.
+    if (err instanceof WorkerIpLimitError) return null;
+    throw err;
+  }
 }
 
 /** فهرستِ کاربرانِ تخصیص‌یافته به یک نود (برای dispatch — کدام کاربرها روی این نودند). */

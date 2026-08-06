@@ -31,6 +31,7 @@ import {
   setServerAutoApplyEnabled,
 } from "@/lib/apply/auto-apply";
 import { planFor, workerIpLimitFor } from "@/lib/billing/plans";
+import { autoAssignNodeForUser } from "@/lib/fleet/assign";
 
 // به DB و node API (cookies) دست می‌زند → اجرای Node و رندرِ پویا (وابسته به کوکی).
 export const runtime = "nodejs";
@@ -114,6 +115,23 @@ export async function PUT(request: Request): Promise<Response> {
       });
     }
 
-    return json({ enabled: updated.enabled, minScore: updated.minScore });
+    // روشن‌کردنِ تاگل باید *واقعاً* کار را راه بیندازد: بدونِ نودِ تخصیص‌یافته،
+    // claimFleetJobs برای هر نود [] برمی‌گرداند، یعنی صف پُر می‌شود و هرگز تخلیه
+    // نمی‌شود. پس همین‌جا یک نودِ سالم تخصیص می‌دهیم (idempotent، با سقفِ IPِ پلن).
+    // fail-soft: نبودِ ظرفیتِ ناوگان نباید روشن‌کردنِ تاگل را بشکند — فقط گزارش می‌شود.
+    let workerAssigned: boolean | undefined;
+    if (updated.enabled) {
+      try {
+        workerAssigned = (await autoAssignNodeForUser(user.id, user.plan)) !== null;
+      } catch {
+        workerAssigned = false;
+      }
+    }
+
+    return json({
+      enabled: updated.enabled,
+      minScore: updated.minScore,
+      ...(workerAssigned === undefined ? {} : { workerAssigned }),
+    });
   });
 }

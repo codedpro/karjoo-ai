@@ -45,6 +45,21 @@ export interface ReplaceInterestsResult {
 }
 
 /**
+ * کاربر دسته‌هایی خواست ولی **هیچ‌کدام** در تاکسونومی پیدا نشد.
+ *
+ * تقریباً همیشه یعنی جدولِ `job_categories` seed نشده (نه این‌که کاربر ۱۰ تا slugِ
+ * بی‌معنی فرستاده). پیش‌تر این حالت بی‌صدا رد می‌شد و — چون جایگزینی «کامل» است —
+ * علاقه‌مندی‌های قبلیِ کاربر و titles/categoriesِ پروفایلش را **پاک می‌کرد** و count=0
+ * برمی‌گرداند. حالا fail-closed است: هیچ چیزی حذف نمی‌شود و مسیر ۵۰۳ می‌دهد.
+ */
+export class EmptyTaxonomyError extends Error {
+  constructor(readonly requestedCount: number) {
+    super("job taxonomy is unavailable — refusing to replace interests");
+    this.name = "EmptyTaxonomyError";
+  }
+}
+
+/**
  * مجموعه‌ی علاقه‌مندیِ کاربر را با slugهای داده‌شده **جایگزینِ کامل** می‌کند، سپس
  * مشتقاتِ آن (titles/categories) را در preferencesِ پروفایلِ کاربر همگام می‌کند.
  *
@@ -74,6 +89,14 @@ export async function replaceInterests(
             .where(inArray(jobCategories.slug, uniqueRequested));
 
     const appliedSlugs = categoryRows.map((c) => c.slug);
+
+    // ۱.۵) گاردِ fail-closed: کاربر چیزی خواست ولی هیچ‌کدام resolve نشد → تاکسونومی
+    //      در دسترس نیست (معمولاً seed نشده). چون گامِ بعدی «حذفِ کامل» است، ادامه دادن
+    //      یعنی پاک‌کردنِ خاموشِ انتخاب‌های قبلیِ کاربر. پس تراکنش را می‌شکنیم (rollback).
+    //      حالتِ «پاک‌کردنِ عمدیِ همه» (ورودیِ خالی) همچنان مجاز است.
+    if (uniqueRequested.length > 0 && categoryRows.length === 0) {
+      throw new EmptyTaxonomyError(uniqueRequested.length);
+    }
 
     // ۲) جایگزینیِ کامل: حذفِ علاقه‌مندی‌های قبلی، سپس درجِ تازه‌ها.
     await tx.delete(userInterests).where(eq(userInterests.userId, userId));

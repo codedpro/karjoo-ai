@@ -10,8 +10,11 @@ import "server-only";
  *   • PUT  /api/auto-apply — ست‌کردنِ تاگلِ افزونه و/یا آستانه (بدنه: { enabled?, minScore? }).
  *
  * برخلافِ سطحِ سرور، این تاگل برای *همه‌ی* پلن‌ها در دسترس است (اجرا در مرورگرِ خودِ کاربر،
- * بدونِ ورکرِ سرور). امنیت/رضایت (قاعده‌ی ۴ + §۱۰ گاردِ ۱): کاربرِ هدف همیشه از کوکیِ نشست
- * گرفته می‌شود (getCurrentUser)، نه از بدنه/کوئری؛ بدنه عمداً userId نمی‌پذیرد. تاگل پیش‌فرض
+ * بدونِ ورکرِ سرور). امنیت/رضایت (قاعده‌ی ۴ + §۱۰ گاردِ ۱): کاربرِ هدف همیشه از **نشستِ
+ * احرازشده** گرفته می‌شود (کوکیِ وب یا Bearerِ افزونه — `getCurrentUserOrBearer`)، نه از
+ * بدنه/کوئری؛ بدنه عمداً userId نمی‌پذیرد. پذیرشِ Bearer لازم است چون خودِ افزونه (که این
+ * تاگل را نشان می‌دهد و تیکِ ۱۵-دقیقه‌ای را می‌زند) از `chrome-extension://` صدا می‌زند و
+ * هرگز کوکیِ هم‌مبدأ نمی‌فرستد؛ بدونِ آن همیشه ۴۰۱ می‌گرفت و تاگل عملاً مرده بود. تاگل پیش‌فرض
  * خاموش است و فقط با یک PUTِ صریحِ خودِ کاربر روشن می‌شود (رضایت). هر گذارِ روشن/خاموش یک
  * ردیفِ audit_events می‌نویسد (auto_apply_enabled/disabled) تا ردِ ممیزیِ *سطحِ افزونه* کامل بماند.
  *
@@ -20,7 +23,7 @@ import "server-only";
  */
 import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
 import { updateAutoApplyBodySchema } from "@/lib/api/auto-apply-schemas";
-import { getCurrentUser } from "@/lib/auth/http";
+import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { EVENTS, track } from "@/lib/analytics";
 import {
   getAutoApplySettings,
@@ -34,9 +37,9 @@ export const dynamic = "force-dynamic";
 
 /* ───────────────────────────  GET /api/auto-apply  ─────────────────────────── */
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
-    const user = await getCurrentUser();
+    const user = await getCurrentUserOrBearer(request);
     if (!user) return errorJson("احراز هویت لازم است", 401);
 
     // تنظیماتِ مؤثر — نبودِ ردیف → پیش‌فرضِ محتاطانه { enabled:false, minScore:0.7 }.
@@ -49,7 +52,7 @@ export async function GET(): Promise<Response> {
 
 export async function PUT(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
-    const user = await getCurrentUser();
+    const user = await getCurrentUserOrBearer(request);
     if (!user) return errorJson("احراز هویت لازم است", 401);
 
     // اعتبارسنجیِ بدنه — { enabled?, minScore? }، دستِ‌کم یکی حاضر (۴۰۰ در غیرِ این صورت).

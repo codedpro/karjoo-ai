@@ -22,7 +22,7 @@ const h = vi.hoisted(() => {
   return { selectResults, updateState };
 });
 
-vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
+vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn(), getCurrentUserOrBearer: vi.fn() }));
 vi.mock("@/components/dashboard/plan-data", () => ({
   getUserPlanStatus: vi.fn(),
 }));
@@ -88,7 +88,7 @@ vi.mock("@/db", () => ({
 }));
 
 import { db } from "@/db";
-import { getCurrentUser } from "@/lib/auth/http";
+import { getCurrentUser, getCurrentUserOrBearer } from "@/lib/auth/http";
 import { getUserPlanStatus } from "@/components/dashboard/plan-data";
 import { OnexaiLinkError } from "@/lib/billing/unified";
 import {
@@ -102,7 +102,16 @@ import { InsufficientBalanceError } from "@/lib/billing/errors";
 import { GET as plansGET } from "@/app/api/plans/route";
 import { GET as mePlanGET, POST as mePlanPOST } from "@/app/api/me/plan/route";
 
-const getCurrentUserMock = vi.mocked(getCurrentUser);
+/**
+ * کاربرِ احرازشده را برای **هر دو** مسیرِ احراز هویت ست می‌کند: `getCurrentUser`
+ * (POST — خریدِ پلن، عمداً فقط-کوکی) و `getCurrentUserOrBearer` (GET — وب یا افزونه).
+ */
+const getCurrentUserMock = {
+  mockResolvedValue(value: unknown) {
+    vi.mocked(getCurrentUser).mockResolvedValue(value as never);
+    vi.mocked(getCurrentUserOrBearer).mockResolvedValue(value as never);
+  },
+};
 const getUserPlanStatusMock = vi.mocked(getUserPlanStatus);
 const purchasePlanMock = vi.mocked(purchasePlan);
 const settleOpenPurchaseMock = vi.mocked(settleOpenPurchase);
@@ -165,7 +174,7 @@ describe("GET /api/plans", () => {
 describe("GET /api/me/plan", () => {
   it("بدونِ نشست → ۴۰۱", async () => {
     getCurrentUserMock.mockResolvedValue(null);
-    const res = await mePlanGET();
+    const res = await mePlanGET(new Request("https://karjoo.1xai.ir/api/me/plan"));
     expect(res.status).toBe(401);
     expect(getUserPlanStatusMock).not.toHaveBeenCalled();
   });
@@ -182,7 +191,7 @@ describe("GET /api/me/plan", () => {
       }) as never,
     );
 
-    const res = await mePlanGET();
+    const res = await mePlanGET(new Request("https://karjoo.1xai.ir/api/me/plan"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.plan).toBe("pro");

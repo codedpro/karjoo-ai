@@ -25,7 +25,7 @@ import "server-only";
 import { errorJson, HttpError, json, withErrorHandling } from "@/lib/api/http";
 import { checkRateLimit } from "@/lib/api/rate-limit";
 import { findJobsBodySchema } from "@/lib/api/find-jobs-schemas";
-import { getCurrentUser } from "@/lib/auth/http";
+import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { readApplyFilters } from "@/lib/apply/filters";
 import { runFilterApply } from "@/lib/apply/orchestrator";
 import { readUserPlan } from "@/lib/billing/apply-quota-guard";
@@ -40,7 +40,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
     // ۱) احراز هویت — فقط نشستِ وب. کاربرِ هدف همیشه از نشست (نه از بدنه).
-    const user = await getCurrentUser();
+    const user = await getCurrentUserOrBearer(request);
     if (!user) return errorJson("احراز هویت لازم است", 401);
 
     // ۱.۵) گاردِ نرخ (ضدِبن، §۴): find-jobs یک اسکرَیپِ همزمانِ سمتِ سرور می‌زند؛ کلیک‌های

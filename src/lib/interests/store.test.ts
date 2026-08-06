@@ -61,7 +61,7 @@ vi.mock("@/db", () => ({
   },
 }));
 
-import { getSelectedSlugs, replaceInterests } from "@/lib/interests/store";
+import { EmptyTaxonomyError, getSelectedSlugs, replaceInterests } from "@/lib/interests/store";
 
 beforeEach(() => {
   h.selectQueue.length = 0;
@@ -135,6 +135,20 @@ describe("replaceInterests", () => {
     expect(result.count).toBe(0);
     expect(h.deleteCalls).toHaveLength(1);
     expect(h.insertValues).toHaveLength(0);
+  });
+
+  it("تاکسونومیِ خالی (هیچ slugی resolve نشد) → خطا و **هیچ حذفی** (fail-closed)", async () => {
+    // جدولِ job_categories seed نشده → کوئریِ دسته‌ها خالی برمی‌گردد.
+    h.selectQueue.push([]);
+
+    await expect(
+      replaceInterests("u1", ["software-development", "data-ai"]),
+    ).rejects.toBeInstanceOf(EmptyTaxonomyError);
+
+    // مهم‌ترین ادعا: انتخاب‌های قبلیِ کاربر دست‌نخورده ماند (پیش‌تر بی‌صدا پاک می‌شد).
+    expect(h.deleteCalls).toHaveLength(0);
+    expect(h.insertValues).toHaveLength(0);
+    expect(h.updateSets).toHaveLength(0);
   });
 
   it("بدونِ پروفایل → همگام‌سازیِ preferences رخ نمی‌دهد (بدون خطا)", async () => {

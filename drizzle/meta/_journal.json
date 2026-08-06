@@ -134,6 +134,13 @@
       "when": 1784380792282,
       "tag": "0018_magical_earthquake",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786027502701,
+      "tag": "0019_bent_midnight",
+      "breakpoints": true
     }
   ]
 }

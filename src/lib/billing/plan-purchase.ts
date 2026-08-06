@@ -38,6 +38,7 @@ import { and, eq, gte, inArray } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import { planPurchases, users, type Plan, type PlanPurchase } from "@/db/schema";
+import { planPeriodEnd } from "@/lib/billing/plans";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
 import {
   creditUnified,
@@ -175,17 +176,24 @@ export function drizzlePurchaseStore(db: PlanPurchaseDb = defaultDb): PurchaseSt
           .where(and(eq(planPurchases.id, id), eq(planPurchases.status, "debited")))
           .returning({ id: planPurchases.id });
         if (claimed.length === 0) return false;
+        // پلن‌ها ماهانه فروخته می‌شوند → هر خریدِ موفق دوره را از همین لحظه ۳۰ روز
+        // تمدید می‌کند. بدونِ این، یک پرداخت رده را برای همیشه می‌داد.
         await tx
           .update(users)
-          .set({ plan, updatedAt: new Date() })
+          .set({ plan, planExpiresAt: planPeriodEnd(), updatedAt: new Date() })
           .where(eq(users.id, userId));
         return true;
       });
     },
     async setUserPlan(userId, plan) {
+      // free بی‌انقضاست (null)؛ ردهٔ پولی دوره‌ی تازه می‌گیرد.
       await db
         .update(users)
-        .set({ plan, updatedAt: new Date() })
+        .set({
+          plan,
+          planExpiresAt: plan === "free" ? null : planPeriodEnd(),
+          updatedAt: new Date(),
+        })
         .where(eq(users.id, userId));
     },
   };

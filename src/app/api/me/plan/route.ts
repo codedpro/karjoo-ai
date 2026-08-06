@@ -19,7 +19,7 @@ import { db } from "@/db";
 import { users } from "@/db/schema";
 import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
 import { changePlanBodySchema } from "@/lib/api/plan-schemas";
-import { getCurrentUser } from "@/lib/auth/http";
+import { getCurrentUser, getCurrentUserOrBearer } from "@/lib/auth/http";
 import { getUserPlanStatus } from "@/components/dashboard/plan-data";
 import { planFor, type PlanKey } from "@/lib/billing/plans";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
@@ -40,10 +40,14 @@ const ONEXAI_TOPUP_URL = "https://1xai.ir/topup";
 
 /* ─────────────────────────────  GET /api/me/plan  ───────────────────────────── */
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
-    // ۱) احراز هویتِ وب — userId از کوکیِ نشست (نه از کوئری).
-    const user = await getCurrentUser();
+    // ۱) احراز هویت — userId از نشستِ احرازشده: کوکیِ وب **یا** Bearerِ افزونه (نه از کوئری).
+    //    افزونه باید پلن را بخواند تا بداند آیا نشستِ بوردها را به vault بفرستد (Max/Max+)؛
+    //    چون از chrome-extension:// صدا می‌زند کوکی ندارد و پیش‌تر همیشه ۴۰۱ می‌گرفت →
+    //    getPlan() بی‌صدا "free" برمی‌گرداند → vault هرگز پُر نمی‌شد. فقط خواندن Bearer را
+    //    می‌پذیرد؛ POST (خریدِ پلن = جابه‌جاییِ پول) عمداً فقط-کوکی می‌ماند.
+    const user = await getCurrentUserOrBearer(request);
     if (!user) {
       return errorJson("احراز هویت لازم است", 401);
     }

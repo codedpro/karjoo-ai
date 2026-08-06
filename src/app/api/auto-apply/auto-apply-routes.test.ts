@@ -12,14 +12,14 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
+vi.mock("@/lib/auth/http", () => ({ getCurrentUserOrBearer: vi.fn() }));
 vi.mock("@/lib/apply/auto-apply", () => ({
   getAutoApplySettings: vi.fn(),
   setAutoApplyEnabled: vi.fn(),
   recordAutoApplyAudit: vi.fn(),
 }));
 
-import { getCurrentUser } from "@/lib/auth/http";
+import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import {
   getAutoApplySettings,
   recordAutoApplyAudit,
@@ -28,7 +28,7 @@ import {
 
 import { GET, PUT } from "@/app/api/auto-apply/route";
 
-const getCurrentUserMock = vi.mocked(getCurrentUser);
+const getCurrentUserMock = vi.mocked(getCurrentUserOrBearer);
 const getSettingsMock = vi.mocked(getAutoApplySettings);
 const setEnabledMock = vi.mocked(setAutoApplyEnabled);
 const recordAuditMock = vi.mocked(recordAutoApplyAudit);
@@ -52,7 +52,7 @@ beforeEach(() => {
 describe("GET /api/auto-apply", () => {
   it("بدونِ نشست → ۴۰۱ و هیچ خواندنی", async () => {
     getCurrentUserMock.mockResolvedValue(null);
-    const res = await GET();
+    const res = await GET(new Request("https://karjoo.1xai.ir/api/auto-apply"));
     expect(res.status).toBe(401);
     expect(getSettingsMock).not.toHaveBeenCalled();
   });
@@ -61,7 +61,7 @@ describe("GET /api/auto-apply", () => {
     getCurrentUserMock.mockResolvedValue(USER);
     getSettingsMock.mockResolvedValue({ enabled: true, minScore: 0.85 });
 
-    const res = await GET();
+    const res = await GET(new Request("https://karjoo.1xai.ir/api/auto-apply"));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ enabled: true, minScore: 0.85 });
