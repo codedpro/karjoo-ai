@@ -74,7 +74,25 @@ Nothing is broken here — these are unset preconditions. But **no user has ever
 
 ---
 
-## 4. Critical findings (all 7 ✅ verified by me)
+## 4. Critical findings (all 7 ✅ verified by me — **all 7 now FIXED**, see §4.0)
+
+### 4.0 Status update (2026-08-06)
+
+All seven criticals below were fixed in `fa315f4` and verified live. Summary:
+
+| # | Finding | Status |
+|---|---|---|
+| C1 | Empty taxonomy → destructive interests write | ✅ seeded live (26 categories) + write is now fail-closed |
+| C2 | Auto-apply chain has never produced an application | ✅ blockers removed (C1/C3/C4) — loop is now runnable end to end |
+| C3 | Fleet dormant, zero assignments | ✅ auto-assigns a healthy node when the server toggle is enabled |
+| C4 | Cookie/Bearer mismatch killing 3 extension features | ✅ `getCurrentUserOrBearer` on the 3 routes; `getPlan()` no longer silent |
+| C5 | Blog canonical 404 + sitemap on the wrong host | ✅ every sitemap URL now returns 200 (all were 404) |
+| C6 | Plans never expire (revenue leak) | ✅ `plan_expires_at` (migration 0019) + daily downgrade job, 48h grace |
+| C7 | No database backups | ✅ nightly encrypted dump + weekly restore-verify (35 tables proven restorable) |
+
+Tests went 970 → **984**; worker 75, extension suite, tsc, build and the live E2E (7/7) all green.
+
+
 
 ### C1 — `job_categories` is empty → the interests feature is silently destructive
 `/api/categories` returns `{"count":0,...}`; DB `job_categories = 0`, `user_interests = 0`. Worse than dead: `PUT /api/interests` accepts a selection, filters every slug against the empty table, **deletes the user's existing interests**, returns 0, and wipes `titles`/`categories` in `candidate_profiles.preferences`. The seeder (`src/lib/taxonomy/seed.ts`) is only called from `src/db/seed-catalog.ts` — never run on this DB. *(BACKLOG #9 marks this "fixed" — it is not, on this database.)*
