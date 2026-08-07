@@ -489,3 +489,71 @@ export const jobinja: JobBoardConnector & {
     throw new Error("jobinja.apply: not implemented yet");
   },
 };
+
+/* ------------------------------------------------------------------ */
+/* شرحِ کاملِ آگهی (JD) — از صفحه‌ی خودِ آگهی                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * شرحِ کاملِ یک آگهی را از صفحه‌ی خودش می‌گیرد.
+ *
+ * چرا لازم است: کارتِ نتایجِ جست‌وجو **شرحِ شغل را ندارد** — فقط عنوان/شرکت/شهر. تا امروز
+ * هیچ‌جا JD ذخیره نمی‌شد (زنده تأیید شد: ۱۳۸ آگهی، صفر توضیحات)، یعنی «رزومه‌ی سفارشیِ هر
+ * آگهی» عملاً فقط از روی *عنوان* ساخته می‌شد و نمی‌توانست واقعاً منطبق بر نیازِ آگهی باشد.
+ * همین متن، مودالِ «شرحِ شغل» در بایگانی را هم پُر می‌کند.
+ *
+ * ادب: همان UA و همان بررسیِ robots مثلِ بقیه‌ی مسیرهای این کانکتور؛ خطا → null (هرگز throw).
+ */
+export async function fetchJobDescription(
+  url: string,
+  opts: { fetchImpl?: typeof fetch; isAllowed?: (u: string) => Promise<boolean> } = {},
+): Promise<string | null> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const allowed = opts.isAllowed ?? ((u: string) => robotsIsAllowed(u, BROWSER_USER_AGENT));
+  try {
+    if (!(await allowed(url))) return null;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let html: string;
+    try {
+      const res = await fetchImpl(url, {
+        headers: { "User-Agent": BROWSER_USER_AGENT, "Accept-Language": "fa-IR" },
+        signal: controller.signal,
+        redirect: "follow",
+      });
+      if (!res.ok) return null;
+      html = await res.text();
+    } finally {
+      clearTimeout(timer);
+    }
+
+    return extractJobDescription(html);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * متنِ شرحِ آگهی را از HTMLِ صفحه بیرون می‌کشد. جابینجا بخشِ اصلی را زیرِ تیترِ
+ * «شرح موقعیت شغلی» می‌گذارد؛ اگر آن الگو عوض شد، به بلاکِ محتوای آگهی برمی‌گردیم.
+ * خروجی متنِ ساده (بدون تگ) و کوتاه‌شده تا حدِ منطقی برای پرامپت/نمایش.
+ */
+export function extractJobDescription(html: string): string | null {
+  const MAX = 6000;
+
+  // ۱) از تیترِ «شرح موقعیت شغلی» تا تیترِ بعدی.
+  const bySection =
+    /شرح\s*موقعیت\s*شغلی[\s\S]{0,200}?<\/h[1-6]>([\s\S]*?)(?:<h[1-6]|<footer|معرفی\s*شرکت|مهارت‌های\s*مورد\s*نیاز)/i.exec(
+      html,
+    );
+  const raw =
+    bySection?.[1] ??
+    /<div[^>]*\bc-jobView__content\b[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i.exec(html)?.[1] ??
+    null;
+  if (!raw) return null;
+
+  const text = stripTags(raw).replace(/\n{3,}/g, "\n\n").trim();
+  if (text.length < 30) return null;
+  return text.length > MAX ? `${text.slice(0, MAX)}…` : text;
+}

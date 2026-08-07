@@ -42,6 +42,34 @@ function nonEmpty(a: (string | null | undefined)[]): string {
 }
 
 /** خلاصه‌ی کاملِ رزومه‌ی پایه برای AI (همه‌ی واقعیت‌های کاربر — تا فقط بازچینش شوند). */
+
+/**
+ * مهارت‌های خروجیِ AI را به مهارت‌های **واقعیِ** پروفایل محدود می‌کند.
+ *
+ * چرا در کد و نه فقط در پرامپت: پرامپت صریحاً می‌گوید مهارتِ نداشته اضافه نکن، ولی مدل
+ * گاهی باز هم اضافه می‌کند — زنده دیده شد که برای یک آگهیِ Flutter، «Flutter» به‌عنوانِ
+ * مهارتِ اولِ کاربری آمد که اصلاً Flutter در پروفایلش نبود. رزومه‌ای که به کارفرما می‌رود
+ * جای «امیدواریم مدل درست رفتار کند» نیست: §۱۰ می‌گوید هرگز چیزِ جعلی نساز، پس این را
+ * قطعی و کدمحور اعمال می‌کنیم.
+ *
+ * تطبیق سهل‌گیرانه است تا بازنویسیِ بی‌ضرر رد نشود: بی‌توجه به بزرگی/کوچکی حروف، فاصله،
+ * نقطه و خط‌تیره («Next.js» ≡ «nextjs» ≡ «Next JS»). هر چیزی که به مهارتِ واقعی نگاشت
+ * نشود حذف می‌شود. اگر همه حذف شدند، به مهارت‌های خودِ پروفایل برمی‌گردیم.
+ */
+function keepOnlyRealSkills(aiSkills: string[], profileSkills: string[]): string[] {
+  const norm = (v: string) => v.toLowerCase().replace(/[\s._-]+/g, "");
+  const real = new Map(profileSkills.map((s) => [norm(s), s]));
+  const kept: string[] = [];
+  const seen = new Set<string>();
+  for (const s of aiSkills) {
+    const key = norm(s);
+    if (!real.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    kept.push(s); // ترتیب/نگارشِ هدف‌گیری‌شده‌ی AI حفظ می‌شود، فقط جعل حذف می‌شود
+  }
+  return kept.length > 0 ? kept : profileSkills;
+}
+
 function buildProfileText(
   p: typeof candidateProfiles.$inferSelect,
   email: string | null | undefined,
@@ -96,8 +124,27 @@ export async function generateTailoredResume(
     where: eq(candidateProfiles.userId, userId),
   });
   if (!profile) throw new HttpError(404, "profile not found");
-  const job = await conn.query.jobListings.findFirst({ where: eq(jobListings.id, listingId) });
+  let job = await conn.query.jobListings.findFirst({ where: eq(jobListings.id, listingId) });
   if (!job) throw new HttpError(404, "listing not found");
+
+  // بدونِ شرحِ آگهی، «هدف‌گیری» فقط از روی عنوان انجام می‌شود و عملاً بی‌معناست. کارتِ
+  // نتایجِ جست‌وجو شرح ندارد، پس همین‌جا یک‌بار از صفحه‌ی خودِ آگهی می‌گیریم و ذخیره می‌کنیم
+  // (هم برای این پرامپت، هم برای مودالِ «شرحِ شغل» در بایگانی). خطا → با همان عنوان ادامه.
+  if (!job.description && job.board === "jobinja" && job.url) {
+    try {
+      const { fetchJobDescription } = await import("@/lib/apply/boards/jobinja");
+      const description = await fetchJobDescription(job.url);
+      if (description) {
+        await conn
+          .update(jobListings)
+          .set({ description, updatedAt: new Date() })
+          .where(eq(jobListings.id, listingId));
+        job = { ...job, description };
+      }
+    } catch {
+      /* بهترین‌تلاش — نبودِ شرح نباید ساختِ رزومه را بشکند */
+    }
+  }
   const userRow = await conn.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { email: true },
@@ -118,7 +165,8 @@ export async function generateTailoredResume(
     city: profile.city ?? null,
     links: ((profile.links as ProfileLink[] | null) ?? []).map((l) => ({ label: l.label ?? null, url: l.url })),
     summary: tailored.summary,
-    skills: tailored.skills,
+    // گاردِ ضدِجعل: فقط مهارت‌هایی که واقعاً در پروفایل هست.
+    skills: keepOnlyRealSkills(tailored.skills, (profile.skills as string[] | null) ?? []),
     experience: tailored.experience.map((e) => ({
       company: e.company ?? null,
       title: e.title ?? null,
@@ -170,3 +218,6 @@ export async function getTailoredResumeHtml(
   });
   return row ? { html: row.content, title: row.title } : null;
 }
+
+/** فقط برای تست — توابعِ داخلیِ خالص. */
+export const __testables = { keepOnlyRealSkills };
