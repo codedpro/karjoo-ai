@@ -20,6 +20,7 @@ import {
   applications,
   jobListings,
   matches,
+  resumes,
   tasks,
   type ApplicationRow,
 } from "@/db/schema";
@@ -225,6 +226,21 @@ export async function recordResult(
 
   if (!found) return null;
 
+  // رزومه‌ی سفارشیِ همین آگهی (اگر ساخته شده بود) — تا **بدانیم دقیقاً چه رزومه‌ای برای
+  // این کارفرما رفته**. بدونِ این پیوند، بایگانی می‌گوید «اپلای شد» ولی نمی‌تواند نشان دهد
+  // چه چیزی فرستاده شده؛ و وقتی کارفرما تماس می‌گیرد کاربر باید بتواند همان نسخه را ببیند.
+  const [tailored] = await conn
+    .select({ id: resumes.id })
+    .from(resumes)
+    .where(
+      and(
+        eq(resumes.userId, input.userId),
+        eq(resumes.listingId, found.listingId),
+        eq(resumes.isBase, false),
+      ),
+    )
+    .limit(1);
+
   const now = new Date();
   const submitted = input.status === "submitted";
   const appStatus = input.status; // submitted | skipped | failed — هم‌راستا با applicationStatusEnum
@@ -236,6 +252,8 @@ export async function recordResult(
       userId: input.userId,
       matchId: found.matchId,
       listingId: found.listingId,
+      // رزومه‌ی واقعاً ارسال‌شده (سفارشیِ همین آگهی) — ستونِ بایگانی.
+      ...(tailored ? { resumeId: tailored.id } : {}),
       status: appStatus,
       channel: "extension",
       matchScore: found.matchScore,

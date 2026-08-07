@@ -131,6 +131,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/interests", label: "علاقه‌مندی‌ها", icon: IconStar },
   { href: "/dashboard/apply-filters", label: "فیلترهای اپلای", icon: IconFilters },
   { href: "/dashboard/applications", label: "اپلای‌ها", icon: IconSend },
+  { href: "/dashboard/archive", label: "بایگانیِ اپلای", icon: IconDoc },
   { href: "/dashboard/jobinja-profile", label: "پروفایلِ جابینجا", icon: IconTarget },
   { href: "/dashboard/auto-apply", label: "اپلای خودکار", icon: IconBolt },
   { href: "/dashboard/extension", label: "افزونه", icon: IconPuzzle },
