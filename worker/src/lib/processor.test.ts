@@ -117,15 +117,14 @@ describe("processJob — skip / fail branches", () => {
   });
 
   it("fails (and closes the browser) when a required selector is missing", async () => {
-    // Make the apply button absent → the first click step fails.
+    // A required NON-submit control is absent → genuine failure. (A missing *submit*
+    // control is deliberately 'skipped' instead — see the on-site-apply test below.)
     const { launcher, record } = makeFakeBrowser({
-      selectors: {
-        "#apply-form input[type='submit'], #apply-form button[type='submit']": { count: 0 },
-      },
+      selectors: { "#apply-form": { waitForThrows: true } },
     });
     const report = await processJob(jobinjaJob(), baseOpts(launcher));
     expect(report.status).toBe("failed");
-    expect(report.reason).toContain("selector not found");
+    expect(report.reason).toContain("waitFor missing");
     // Even on failure the session is discarded.
     expect(record.contextClosed).toBe(1);
     expect(record.browserClosed).toBe(1);
@@ -176,6 +175,26 @@ describe("runPlan — confirm handling", () => {
     const outcome = await runPlan(page, plan, 5000);
     expect(outcome.status).toBe("submitted");
     expect(outcome.confirmed).toBe(false);
+  });
+
+  it("reports 'skipped' (not 'failed') when the listing has no on-site submit control", async () => {
+    // Jobinja serves plenty of "email the employer" ads that still render an #apply-form
+    // shell but no submit button (verified live 2026-08-07). Nothing is broken there, so a
+    // 'failed' would pollute metrics and invite endless retries of an unsubmittable job.
+    const { launcher } = makeFakeBrowser({
+      selectors: {
+        "#apply-form input[type='submit'], #apply-form button[type='submit']": { count: 0 },
+      },
+    });
+    const browser = await launcher({ headless: true, executablePath: null });
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const plan = buildApplyPlan(jobinjaJob())!;
+
+    const outcome = await runPlan(page, plan, 5000);
+
+    expect(outcome.status).toBe("skipped");
+    expect(outcome.reason).toMatch(/no on-site apply form/i);
   });
 
   it("falls back to the profile résumé (NOT 'failed') when a job has a custom résumé but no upload radio", async () => {

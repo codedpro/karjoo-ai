@@ -153,6 +153,9 @@ export async function processJob(
 
     if (outcome.status === "submitted") {
       log.info("job submitted", { taskId: job.taskId, board: job.board });
+    } else if (outcome.status === "skipped") {
+      // Nothing broke — this listing simply cannot be applied to on-site.
+      log.info("job skipped", { taskId: job.taskId, board: job.board, reason: outcome.reason });
     } else {
       log.warn("job not submitted", { taskId: job.taskId, board: job.board, reason: outcome.reason });
     }
@@ -227,7 +230,7 @@ async function renderResumePdf(
 
 /** The result of executing a plan against a page. */
 interface PlanOutcome {
-  status: "submitted" | "failed";
+  status: "submitted" | "skipped" | "failed";
   confirmed: boolean;
   reason?: string;
 }
@@ -259,6 +262,19 @@ export async function runPlan(
     const count = await locator.count();
     if (count === 0) {
       if (step.optional) continue;
+      // The SUBMIT control being absent is not a failure — it means this listing has no
+      // on-site apply at all (Jobinja serves plenty of "email the employer" ads that still
+      // render an #apply-form shell but no submit button). Verified live 2026-08-07 on two
+      // such listings. Reporting 'failed' there pollutes failure metrics, invites endless
+      // retries of a job that can never be submitted, and tells the user something broke
+      // when nothing did. Record it as SKIPPED with an honest reason instead.
+      if (step.selector === plan.submitSelector) {
+        return {
+          status: "skipped",
+          confirmed: false,
+          reason: "this listing has no on-site apply form (external/email apply)",
+        };
+      }
       return { status: "failed", confirmed: false, reason: `selector not found: ${step.selector}` };
     }
 
