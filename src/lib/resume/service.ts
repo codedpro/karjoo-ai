@@ -116,6 +116,13 @@ export async function persistParsedFields(
   resumeFileId: string,
   parsed: ParsedResume,
   deps: ResumeServiceDeps = {},
+  /**
+   * متنِ خامِ رزومه‌ی آپلودشده. **ذخیره می‌شود** تا ساختِ «رزومه‌ی سفارشیِ هر آگهی» بتواند
+   * به خودِ سندِ اصلیِ کاربر رجوع کند، نه فقط به فیلدهای ساخت‌یافته‌ی استخراج‌شده.
+   * پیش‌تر این متن فقط برای استخراج استفاده و بعد دور ریخته می‌شد، پس هوش مصنوعی هرگز
+   * رزومه‌ی واقعیِ کاربر را نمی‌دید و ناچار بود از روی چند فیلدِ خلاصه بنویسد.
+   */
+  rawResumeText?: string,
 ): Promise<PersistParsedResult> {
   const db = deps.db ?? defaultDb;
   const now = deps.now ?? Date.now;
@@ -139,6 +146,9 @@ export async function persistParsedFields(
     .limit(1);
 
   const merged = mergeProfileFields(existing ?? null, parsed);
+  // متنِ خام را نگه دار (تازه‌ترین آپلود برنده است) — منبعِ مرجعِ ساختِ رزومه‌ی سفارشی.
+  const text = rawResumeText?.trim();
+  if (text) merged.resumeText = text.slice(0, 20000);
 
   let profile: typeof candidateProfiles.$inferSelect;
   if (existing) {

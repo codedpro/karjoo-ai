@@ -76,7 +76,15 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     // ۶) ذخیره‌ی فیلدها + upsertِ پروفایل (به نشست مقید).
-    const { profile } = await persistParsedFields(user.id, record.id, parsed);
+    // متنِ خامِ همان فایل را هم نگه می‌داریم تا «رزومه‌ی سفارشیِ هر آگهی» به سندِ اصلیِ
+    // کاربر دسترسی داشته باشد (نه فقط فیلدهای خلاصه‌ی استخراج‌شده).
+    const { profile } = await persistParsedFields(
+      user.id,
+      record.id,
+      parsed,
+      {},
+      record.extractedText,
+    );
 
     // آنالیتیکس: parseِ موفقِ رزومه با هوش مصنوعی (best-effort، بدونِ محتوای رزومه —
     // فقط شمارشِ مهارت به‌عنوانِ سیگنالِ کیفیتِ استخراج). track هرگز throw نمی‌کند.

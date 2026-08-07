@@ -44,7 +44,7 @@ function nonEmpty(a: (string | null | undefined)[]): string {
 /** خلاصه‌ی کاملِ رزومه‌ی پایه برای AI (همه‌ی واقعیت‌های کاربر — تا فقط بازچینش شوند). */
 
 /**
- * مهارت‌های خروجیِ AI را به مهارت‌های **واقعیِ** پروفایل محدود می‌کند.
+ * مهارت‌های خروجیِ AI را به آن‌هایی محدود می‌کند که **جایی در دادهٔ واقعیِ کاربر شاهد دارند**.
  *
  * چرا در کد و نه فقط در پرامپت: پرامپت صریحاً می‌گوید مهارتِ نداشته اضافه نکن، ولی مدل
  * گاهی باز هم اضافه می‌کند — زنده دیده شد که برای یک آگهیِ Flutter، «Flutter» به‌عنوانِ
@@ -52,22 +52,27 @@ function nonEmpty(a: (string | null | undefined)[]): string {
  * جای «امیدواریم مدل درست رفتار کند» نیست: §۱۰ می‌گوید هرگز چیزِ جعلی نساز، پس این را
  * قطعی و کدمحور اعمال می‌کنیم.
  *
- * تطبیق سهل‌گیرانه است تا بازنویسیِ بی‌ضرر رد نشود: بی‌توجه به بزرگی/کوچکی حروف، فاصله،
- * نقطه و خط‌تیره («Next.js» ≡ «nextjs» ≡ «Next JS»). هر چیزی که به مهارتِ واقعی نگاشت
- * نشود حذف می‌شود. اگر همه حذف شدند، به مهارت‌های خودِ پروفایل برمی‌گردیم.
+ * «شاهد» عمداً وسیع است — نه فقط آرایه‌ی skills، بلکه کلِ پروفایل: عنوان، خلاصه، شرحِ
+ * سوابقِ شغلی، تحصیلات و **متنِ رزومه‌ی آپلودشده‌ی خودِ کاربر**. پس اگر کسی Docker را فقط
+ * داخلِ یکی از bulletهای رزومه‌اش نوشته باشد، AI آزاد است آن را جلو بیاورد. چیزی که در
+ * هیچ‌کجای دادهٔ کاربر نیست (مثلِ Flutter برای کسی که هرگز موبایل کار نکرده) حذف می‌شود.
+ *
+ * تطبیق سهل‌گیرانه است: بی‌توجه به بزرگی/کوچکی حروف، فاصله، نقطه و خط‌تیره
+ * («Next.js» ≡ «nextjs» ≡ «Next JS»).
  */
-function keepOnlyRealSkills(aiSkills: string[], profileSkills: string[]): string[] {
+function keepOnlyRealSkills(aiSkills: string[], evidence: string): string[] {
   const norm = (v: string) => v.toLowerCase().replace(/[\s._-]+/g, "");
-  const real = new Map(profileSkills.map((s) => [norm(s), s]));
+  const hay = norm(evidence);
   const kept: string[] = [];
   const seen = new Set<string>();
   for (const s of aiSkills) {
     const key = norm(s);
-    if (!real.has(key) || seen.has(key)) continue;
+    if (!key || seen.has(key)) continue;
+    if (!hay.includes(key)) continue; // جایی در دادهٔ واقعیِ کاربر شاهدی ندارد → حذف
     seen.add(key);
-    kept.push(s); // ترتیب/نگارشِ هدف‌گیری‌شده‌ی AI حفظ می‌شود، فقط جعل حذف می‌شود
+    kept.push(s); // ترتیب/نگارشِ هدف‌گیری‌شده‌ی AI حفظ می‌شود
   }
-  return kept.length > 0 ? kept : profileSkills;
+  return kept;
 }
 
 function buildProfileText(
@@ -100,11 +105,19 @@ function buildProfileText(
   return lines.join("\n");
 }
 
-function buildJobText(j: typeof jobListings.$inferSelect): string {
+/**
+ * متنِ آگهی که به AI داده می‌شود، به‌علاوه‌ی «تأکیدِ خودِ کاربر» (اختیاری): جمله‌ای آزاد که
+ * کاربر می‌نویسد تا بگوید چه چیزی دربارهٔ خودش پررنگ شود — مثلاً کدام کارفرماها/پروژه‌ها
+ * جلو بیایند یا روی کدام توانایی تمرکز شود. کنترل دستِ کاربر است، بدونِ نیاز به هیچ گیت.
+ */
+function buildJobText(j: typeof jobListings.$inferSelect, userEmphasis?: string): string {
   return nonEmpty([
     j.title ? `عنوان: ${j.title}` : null,
     j.company ? `شرکت: ${j.company}` : null,
     j.description ? `\nشرح: ${j.description.slice(0, 6000)}` : null,
+    userEmphasis?.trim()
+      ? `\nتأکیدِ خودِ کاربر (این را در هدف‌گیری رعایت کن): ${userEmphasis.trim().slice(0, 1000)}`
+      : null,
   ]);
 }
 
@@ -150,10 +163,23 @@ export async function generateTailoredResume(
     columns: { email: true },
   });
 
+  // شاهدِ مهارت = کلِ دادهٔ واقعیِ کاربر: پروفایل، متنِ رزومه‌ی آپلودشده، و مهارت‌هایی که
+  // **خودِ کاربر صریحاً اعلام کرده**. اعلامِ کاربر معتبر است — او دربارهٔ توانایی‌های خودش
+  // مرجع است؛ کاری که ما نمی‌کنیم ساختنِ ادعا از هوا بدونِ هیچ اعلامی است.
+  const prefs = (profile.preferences as Record<string, unknown> | null) ?? {};
+  const declaredSkills = Array.isArray(prefs.declaredSkills)
+    ? (prefs.declaredSkills as unknown[]).filter((v): v is string => typeof v === "string")
+    : [];
+  const evidenceText = [
+    buildProfileText(profile, userRow?.email),
+    profile.resumeText ?? "",
+    declaredSkills.join("، "),
+  ].join("\n");
+
   const tailored = await tailorFn(
     userId,
     buildProfileText(profile, userRow?.email),
-    buildJobText(job),
+    buildJobText(job, typeof prefs.resumeEmphasis === "string" ? prefs.resumeEmphasis : undefined),
     deps.metering ?? {},
   );
 
@@ -166,7 +192,7 @@ export async function generateTailoredResume(
     links: ((profile.links as ProfileLink[] | null) ?? []).map((l) => ({ label: l.label ?? null, url: l.url })),
     summary: tailored.summary,
     // گاردِ ضدِجعل: فقط مهارت‌هایی که واقعاً در پروفایل هست.
-    skills: keepOnlyRealSkills(tailored.skills, (profile.skills as string[] | null) ?? []),
+    skills: keepOnlyRealSkills(tailored.skills, evidenceText),
     experience: tailored.experience.map((e) => ({
       company: e.company ?? null,
       title: e.title ?? null,
