@@ -126,7 +126,21 @@ async function defaultLoadSession(
   });
 }
 
-/** HTMLِ رزومه‌ی سفارشیِ (user × listing × isBase=false) را برمی‌گرداند؛ نبود/خطا → null. */
+/**
+ * HTMLِ رزومه‌ی سفارشیِ (user × listing × isBase=false) را برمی‌گرداند — و اگر نبود،
+ * **همان‌جا می‌سازدش**.
+ *
+ * چرا ساختنِ درجا: وعده‌ی محصول «رزومه‌ی سفارشی برای هر آگهی» است، ولی این تابع فقط
+ * رزومه‌ی *از پیش‌ساخته* را می‌خواند؛ و رزومه فقط وقتی ساخته می‌شد که کاربر دستی روی
+ * دکمه‌اش بزند. یعنی در «اپلای در خواب» عملاً هیچ‌وقت رزومه‌ی سفارشی نمی‌رفت و همیشه
+ * رزومه‌ی پروفایلِ خودِ بورد ارسال می‌شد (زنده تأیید شد ۱۴۰۵/۰۵/۱۶: ۹ اپلای، صفر رزومه‌ی
+ * سفارشی). حالا ورکر همان چیزی را می‌فرستد که محصول قول داده، و بایگانی هم دقیقاً همان
+ * نسخه را نگه می‌دارد.
+ *
+ * هزینه/ایمنی: ساخت، AIِ مترشده است و به کیف‌پولِ خودِ کاربر خرج می‌خورد (kind=resume_tailor).
+ * کاملاً fail-soft — هر خطایی (موجودیِ ناکافی، گیت‌وی، پروفایلِ ناقص) `null` می‌دهد و اپلای
+ * با رزومه‌ی پروفایل ادامه پیدا می‌کند؛ نبودِ رزومه‌ی سفارشی هرگز نباید اپلای را بشکند.
+ */
 async function defaultLoadResumeHtml(
   userId: string,
   listingId: string,
@@ -141,7 +155,16 @@ async function defaultLoadResumeHtml(
       ),
       columns: { content: true },
     });
-    return row?.content ?? null;
+    if (row?.content) return row.content;
+  } catch {
+    return null;
+  }
+
+  // هنوز ساخته نشده → همین حالا بساز (importِ پویا تا چرخه‌ی import پیش نیاید).
+  try {
+    const { generateTailoredResume } = await import("@/lib/resume/custom-resume-service");
+    const built = await generateTailoredResume(userId, listingId, { db: db as never });
+    return built?.html ?? null;
   } catch {
     return null;
   }
