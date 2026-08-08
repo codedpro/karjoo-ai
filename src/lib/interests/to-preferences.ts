@@ -20,14 +20,17 @@ import {
 /**
  * زیرمجموعه‌ی JobPreferences که از علاقه‌مندی‌ها مشتق می‌شود.
  *
- * `categories` در نوعِ پایه‌ی JobPreferences (types.ts) نیست؛ اینجا به‌عنوان فیلدِ افزوده‌ی
- * ذخیره‌شده در jsonbِ preferences نگه‌داری می‌شود تا تطبیقِ سمتِ ما بتواند به دسته (نه فقط
- * عنوان) تکیه کند. orchestrator فعلاً `titles` را می‌خواند؛ `categories` برای فیلترِ آینده.
+ * دسته‌ها به `categorySlugs` در jsonbِ preferences می‌نشینند — همان کلیدی که
+ * `parseApplyFilters`/`buildSearchUrl` می‌خوانند و به `filters[job_categories][]` تبدیل می‌کنند.
  */
 export interface InterestPreferences {
-  /** کلیدواژه‌های جست‌وجو — برچسبِ فارسی و انگلیسیِ هر دسته (مصرفِ scrapePublic). */
-  titles: string[];
-  /** slugِ پایدارِ دسته‌های انتخابی (مرجعِ داخلیِ فیلتر/تطبیق). */
+  /**
+   * slugِ پایدارِ دسته‌های انتخابی — همان چیزی که به `filters[job_categories][]` می‌رود.
+   *
+   * عمداً دیگر `titles` تولید نمی‌شود: برچسبِ نمایشیِ دسته به‌عنوانِ کلیدواژه‌ی جست‌وجو
+   * بی‌معناست و در جابینجا صفر نتیجه می‌دهد. هدف‌گیری با «دسته» انجام می‌شود، نه با
+   * تبدیلِ نامِ دسته به کلیدواژه.
+   */
   categories: string[];
 }
 
@@ -52,14 +55,7 @@ export function selectedCategoriesToPreferences(
 
   const categories = ordered.map((c) => c.slug);
 
-  // عنوان‌ها: برچسبِ فارسی و انگلیسیِ هر دسته، یکتا (با حفظِ ترتیبِ تاکسونومی).
-  const titlesSet = new Set<string>();
-  for (const c of ordered) {
-    titlesSet.add(c.labelFa);
-    titlesSet.add(c.labelEn);
-  }
-
-  return { titles: [...titlesSet], categories };
+  return { categories };
 }
 
 /**
@@ -74,6 +70,15 @@ export function mergeInterestPreferences(
 ): Record<string, unknown> {
   const base: Record<string, unknown> =
     existing && typeof existing === "object" ? { ...existing } : {};
-  const { titles, categories } = selectedCategoriesToPreferences(selectedSlugs);
-  return { ...base, titles, categories };
+  const { categories } = selectedCategoriesToPreferences(selectedSlugs);
+  // `categorySlugs` همان کلیدی است که خواننده‌ی فیلترها و buildSearchUrl واقعاً می‌خوانند
+  // (`filters[job_categories][]`). پیش‌تر این‌جا `categories` نوشته می‌شد که هیچ‌کس نمی‌خواند،
+  // پس انتخابِ علاقه‌مندی عملاً هیچ فیلتری اعمال نمی‌کرد.
+  //
+  // و مهم‌تر: `titles` دیگر بازنویسی **نمی‌شود**. پیش‌تر برچسبِ نمایشیِ دسته‌ها
+  // («برنامه‌نویسی و توسعهٔ نرم‌افزار») به‌عنوانِ عنوان ذخیره می‌شد و buildSearchUrl همان را
+  // به‌عنوانِ `filters[keywords][0]` می‌فرستاد — عبارتی که در جابینجا **هیچ نتیجه‌ای ندارد**.
+  // یعنی به‌محضِ انتخابِ علاقه‌مندی، کشفِ شغل بی‌صدا صفر می‌شد (زنده: ingested=0).
+  // کلیدواژه‌های جست‌وجو مالِ خودِ کاربر است و دست‌نخورده می‌ماند.
+  return { ...base, categorySlugs: categories, categories };
 }

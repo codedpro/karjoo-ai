@@ -39,7 +39,8 @@ describe("فراخوانیِ مترشده سقف را واقعاً می‌فرس
     await meteredParseResumeText("u1", "یک متنِ رزومه‌ی نمونه برای تست.").catch(() => {});
 
     expect(meteredChatJson).toHaveBeenCalled();
-    const req = meteredChatJson.mock.calls[0]?.[2] as { maxTokens?: number } | undefined;
+    const call = meteredChatJson.mock.calls[0] as unknown as unknown[];
+    const req = call?.[2] as { maxTokens?: number } | undefined;
     expect(req?.maxTokens).toBe(RESUME_PARSE_MAX_TOKENS);
     vi.doUnmock("@/lib/billing/metering");
   });

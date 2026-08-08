@@ -8,6 +8,7 @@ import type {
   JobPreferences,
 } from "@/lib/apply/types";
 import { KARJOO_USER_AGENT, isAllowed as robotsIsAllowed } from "@/lib/apply/robots";
+import { toJobinjaCategorySlug } from "@/lib/apply/boards/jobinja-categories";
 
 /**
  * کانکتور جابینجا (jobinja.ir) — فاز ۱: ingestion عمومی و فقط‌خواندنی.
@@ -38,7 +39,15 @@ const JOBINJA_JOBS_URL = `${JOBINJA_ORIGIN}/jobs`;
 const BROWSER_USER_AGENT = KARJOO_USER_AGENT;
 
 /** ادب در برداشت: سقف تعداد صفحه، مکث بین صفحه‌ها و مهلت هر درخواست. */
-const DEFAULT_MAX_PAGES = 3;
+/**
+ * صفحه‌های جست‌وجو در هر اجرا. ۳ تا کم بود: هر صفحه ~۲۰ آگهی، یعنی هر دورِ کشف فقط ~۶۰
+ * آگهی می‌دید و «تطبیق‌ها» بسیار کم می‌ماند. با مکثِ ادبِ ۱٫۲ ثانیه‌ای، ۸ صفحه ~۱۰ ثانیه
+ * طول می‌کشد — پوششِ خیلی بهتر با همان رفتارِ مؤدبانه.
+ */
+const DEFAULT_MAX_PAGES = 8;
+
+/** بیشینه‌ی کلیدواژه‌هایی که در یک اجرا جست‌وجو می‌شوند (هر کدام تا DEFAULT_MAX_PAGES صفحه). */
+const MAX_KEYWORDS_PER_RUN = 4;
 const DELAY_BETWEEN_PAGES_MS = 1_200;
 const REQUEST_TIMEOUT_MS = 25_000;
 
@@ -312,11 +321,17 @@ export function parseSearchHtml(html: string): JobListing[] {
  *   • صفحه‌بندی با `page`
  * نام دقیق فیلترها مطابق فرم جست‌وجوی جابینجا است (بخش CONTEXT اسکفولد).
  */
-export function buildSearchUrl(prefs: JobPreferences, page: number): string {
+export function buildSearchUrl(
+  prefs: JobPreferences,
+  page: number,
+  /** کلیدواژه‌ی صریح (برای پیمایشِ چند کلیدواژه). نبود ⇒ اولین عنوانِ ترجیحات. */
+  keywordOverride?: string,
+): string {
   const url = new URL(JOBINJA_JOBS_URL);
   const params = url.searchParams;
 
-  const keyword = prefs.titles?.find((t) => t && t.trim().length > 0)?.trim();
+  const keyword =
+    keywordOverride?.trim() || prefs.titles?.find((t) => t && t.trim().length > 0)?.trim();
   if (keyword) {
     params.append("filters[keywords][0]", keyword);
   }
@@ -328,9 +343,15 @@ export function buildSearchUrl(prefs: JobPreferences, page: number): string {
   // CATEGORY-based targeting (the primary, non-AI flow): each chosen category slug
   // becomes a Jobinja `filters[job_categories][]`, so the search returns every job
   // in those categories to apply to.
+  // دسته‌ها باید **slugِ واقعیِ جابینجا** باشند. slugِ داخلیِ ما («software-development»)
+  // برای جابینجا ناشناخته است و نتیجه را به صفر می‌رساند — پس ترجمه می‌کنیم و هرچه
+  // ناشناخته ماند حذف می‌شود (بدترین حالت: جست‌وجوی کلیدواژه‌ای، نه صفرِ خاموش).
+  const seenCats = new Set<string>();
   for (const cat of prefs.categorySlugs ?? []) {
-    if (cat && cat.trim().length > 0) {
-      params.append("filters[job_categories][]", cat.trim());
+    const mapped = cat ? toJobinjaCategorySlug(cat) : null;
+    if (mapped && !seenCats.has(mapped)) {
+      seenCats.add(mapped);
+      params.append("filters[job_categories][]", mapped);
     }
   }
   for (const jt of prefs.jobTypes ?? []) {
@@ -409,12 +430,24 @@ export const jobinja: JobBoardConnector & {
     let pagesFetched = 0;
     let reachedEnd = false;
 
+    // چند کلیدواژه، نه فقط اولی. جابینجا چند `filters[keywords][i]` را **و**-گونه ترکیب
+    // می‌کند (نتیجه را باریک‌تر می‌کند)، پس برای پوششِ بیشتر باید هر کلیدواژه را جداگانه
+    // جست‌وجو کرد. پیش‌تر فقط titles[0] استفاده می‌شد — یعنی کاربری با ۸ کلیدواژه، ۷ تای
+    // آن‌ها را هرگز نمی‌دید.
+    const keywords = (prefs.titles ?? [])
+      .map((t) => (t ?? "").trim())
+      .filter((t) => t.length > 0)
+      .slice(0, MAX_KEYWORDS_PER_RUN);
+    const keywordList = keywords.length > 0 ? keywords : [undefined];
+
+    for (let ki = 0; ki < keywordList.length; ki += 1) {
+      const keyword = keywordList[ki];
     for (let page = startPage; page <= endPage; page += 1) {
       if (page > startPage) {
         await sleep(delayMs); // ادب: مکث بین صفحه‌ها (نه قبل از اولین درخواست).
       }
 
-      const target = buildSearchUrl(prefs, page);
+      const target = buildSearchUrl(prefs, page, keyword);
 
       // ادب: پیش از واکشی، robots.txt را احترام بگذار. اگر این مسیر disallow باشد،
       // مودبانه رد می‌شویم و آن را «انتها» می‌شماریم (مکان‌نما به ۱ بازنشانی می‌شود).
@@ -470,6 +503,12 @@ export const jobinja: JobBoardConnector & {
       }
       // به سهمیه‌ی این اجرا رسیدیم → بایست (انتها نیست؛ مکان‌نما پس از این صفحات ادامه می‌یابد).
       if (collected.length >= targetCount) break;
+    }
+      // سهمیه پر شد → سراغِ کلیدواژه‌ی بعدی هم نرو.
+      if (collected.length >= targetCount) break;
+      // هر کلیدواژه فهرستِ خودش را دارد؛ «انتهای» یکی به معنیِ انتهای همه نیست — مگر
+      // این‌که آخرینش باشد (آن‌وقت واقعاً تمام شده و مکان‌نما باید به ۱ برگردد).
+      if (ki < keywordList.length - 1) reachedEnd = false;
     }
 
     return { listings: collected, pagesFetched, reachedEnd };

@@ -17,6 +17,12 @@ import { sessionBundleSchema } from "@/lib/api/session-schemas";
 import { KARJOO_USER_AGENT } from "@/lib/apply/robots";
 
 const ORIGIN = "https://jobinja.ir";
+
+/**
+ * بیشینه‌ی صفحه‌های «درخواست‌های من» که در هر همگام‌سازی خوانده می‌شود (۲۵ ردیف در هر
+ * صفحه ⇒ تا ۵۰۰ درخواست). سقف است تا یک صفحه‌بندیِ خراب، همگام‌سازی را بی‌انتها نکند.
+ */
+const MAX_APPLIED_PAGES = 20;
 const REQUEST_TIMEOUT_MS = 20_000;
 
 /** دسته‌ی نرمال‌شده‌ی وضعیت. */
@@ -108,6 +114,29 @@ export function parseAppliedJobs(html: string): ParsedApplication[] {
   const fromState = parseAppliedFromInitState(html);
   if (fromState.length > 0) return fromState;
   return parseAppliedFromMarkup(html);
+}
+
+/** صفحه‌بندیِ درخواست‌ها در `init-state.applications`. */
+export interface AppliedPageInfo {
+  currentPage: number;
+  lastPage: number;
+}
+
+/** صفحه‌بندیِ صفحه‌ی «درخواست‌های من» را می‌خواند (برای پیمایشِ همه‌ی صفحه‌ها). */
+export function parseAppliedPageInfo(html: string): AppliedPageInfo | null {
+  const raw = /init-state="([^"]+)"/.exec(html)?.[1];
+  if (!raw) return null;
+  try {
+    const st = JSON.parse(decodeAttr(raw)) as {
+      applications?: { current_page?: number; last_page?: number };
+    };
+    const cur = Number(st.applications?.current_page ?? 0);
+    const last = Number(st.applications?.last_page ?? 0);
+    if (!Number.isFinite(cur) || !Number.isFinite(last) || last < 1) return null;
+    return { currentPage: cur || 1, lastPage: last };
+  } catch {
+    return null;
+  }
 }
 
 /** شکلِ کمینه‌ی هر ردیفِ درخواست در `init-state.applications.data[]`. */
@@ -359,10 +388,25 @@ export async function syncJobinjaFromVault(
     fetchWithCookies("/app/cv-builder", cookieHeader),
   ]);
 
+  // پیمایشِ **همه‌ی صفحه‌ها**: جابینجا ۲۵ درخواست در هر صفحه می‌دهد، پس خواندنِ صفحه‌ی
+  // اول یعنی سقفِ ۲۵ تا — کاربری با ۵۰ درخواست فقط نیمی از وضعیت‌ها را می‌دید. تا
+  // MAX_APPLIED_PAGES صفحه جلو می‌رویم (سقفِ ایمنی در برابرِ صفحه‌بندیِ بی‌انتها).
   let applications = 0;
   if (appliedHtml) {
-    const apps = parseAppliedJobs(appliedHtml);
-    applications = await upsertApplications(userId, "jobinja", apps, { db: conn });
+    const all = [...parseAppliedJobs(appliedHtml)];
+    const page1 = parseAppliedPageInfo(appliedHtml);
+    const lastPage = Math.min(page1?.lastPage ?? 1, MAX_APPLIED_PAGES);
+    for (let page = 2; page <= lastPage; page += 1) {
+      const html = await fetchWithCookies(`/jobs/applied?page=${page}`, cookieHeader);
+      if (!html) break;
+      const rows = parseAppliedJobs(html);
+      if (rows.length === 0) break; // صفحه‌ی خالی → پایان
+      all.push(...rows);
+    }
+    // یکتاسازی روی externalId (صفحه‌ها ممکن است هم‌پوشانی داشته باشند).
+    const seen = new Set<string>();
+    const unique = all.filter((a) => (seen.has(a.externalId) ? false : (seen.add(a.externalId), true)));
+    applications = await upsertApplications(userId, "jobinja", unique, { db: conn });
   }
   let profile = false;
   if (cvHtml) {

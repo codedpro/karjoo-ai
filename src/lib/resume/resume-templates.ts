@@ -14,10 +14,10 @@ import "server-only";
  */
 
 export type ResumeLang = "fa" | "en";
-export type ResumeTemplateId = "classic" | "modern" | "compact";
+export type ResumeTemplateId = "classic" | "modern" | "compact" | "signature";
 
 /** شناسه‌های قابلِ انتخاب + «تصادفی». */
-export const RESUME_TEMPLATE_IDS: ResumeTemplateId[] = ["classic", "modern", "compact"];
+export const RESUME_TEMPLATE_IDS: ResumeTemplateId[] = ["classic", "modern", "compact", "signature"];
 
 export interface ResumeTemplateMeta {
   id: ResumeTemplateId;
@@ -40,6 +40,12 @@ export const RESUME_TEMPLATES: ResumeTemplateMeta[] = [
     descriptionFa: "دو‌ستونه با نوارِ کناریِ مهارت‌ها و تماس — خواناتر برای نقش‌های فنی.",
   },
   {
+    id: "signature",
+    labelFa: "امضا",
+    labelEn: "Signature",
+    descriptionFa: "طرحِ شخصیِ کاربر: نامِ دو‌رنگ، نوارِ آمار، تیترهای آبیِ خط‌دار و جدولِ مهارت‌ها.",
+  },
+  {
     id: "compact",
     labelFa: "فشرده",
     labelEn: "Compact",
@@ -56,6 +62,7 @@ const L: Record<ResumeLang, Record<string, string>> = {
     skills: "مهارت‌ها",
     education: "تحصیلات",
     contact: "اطلاعات تماس",
+    languages: "زبان‌ها",
   },
   en: {
     summary: "Summary",
@@ -64,6 +71,7 @@ const L: Record<ResumeLang, Record<string, string>> = {
     skills: "Skills",
     education: "Education",
     contact: "Contact",
+    languages: "Languages",
   },
 };
 
@@ -80,6 +88,14 @@ export interface ResumeTemplateData {
   education?: { school?: string | null; degree?: string | null; period?: string | null }[];
   highlights?: string[];
   lang?: ResumeLang;
+  /** «۸+ سال تجربه · ۲۰۰+ پروژه …» — نوارِ آمارِ بالای رزومه (قالبِ signature). */
+  stats?: { label: string; value: string }[];
+  /** خطِ در‌دسترس‌بودن («دورکار · قراردادِ بین‌المللی …»). */
+  availability?: string[];
+  /** زبان‌ها (نام + سطح). */
+  languages?: { name: string; level?: string | null }[];
+  /** مهارت‌های دسته‌بندی‌شده — «Frontend: React, Next.js …» مثلِ رزومه‌ی خودِ کاربر. */
+  skillGroups?: { label: string; items: string[] }[];
 }
 
 function esc(s: unknown): string {
@@ -90,12 +106,29 @@ function esc(s: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
+/** پروفایل‌ها اغلب لینک را بدونِ اسکیم ذخیره می‌کنند («github.com/x») — بدونِ اصلاح، در
+ *  PDF کلیک‌ناپذیر یا نسبی می‌شود. */
+export function absoluteUrl(url: string): string {
+  const u = url.trim();
+  if (!u) return u;
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(u) || u.startsWith("mailto:") ? u : `https://${u}`;
+}
+
+/** متنِ نمایشیِ لینک: بدونِ اسکیم و بدونِ www و اسلشِ پایانی (مثلِ رزومه‌ی خودِ کاربر). */
+function linkText(l: { label?: string | null; url: string }): string {
+  const bare = l.url.replace(/^[a-z]+:\/\//i, "").replace(/^www\./i, "").replace(/\/$/, "");
+  return l.label ? `${l.label} ${bare}` : bare;
+}
+
 function contactBits(d: ResumeTemplateData): string[] {
   const bits: string[] = [];
-  if (d.email) bits.push(esc(d.email));
+  if (d.email) bits.push(`<a class="lk" href="mailto:${esc(d.email)}">${esc(d.email)}</a>`);
   if (d.phone) bits.push(`<span dir="ltr">${esc(d.phone)}</span>`);
   if (d.city) bits.push(esc(d.city));
-  for (const l of d.links ?? []) if (l?.url) bits.push(`<a href="${esc(l.url)}">${esc(l.label || l.url)}</a>`);
+  for (const l of d.links ?? []) {
+    if (!l?.url) continue;
+    bits.push(`<a class="lk" href="${esc(absoluteUrl(l.url))}">${esc(linkText(l))}</a>`);
+  }
   return bits;
 }
 
@@ -262,6 +295,112 @@ function renderCompact(d: ResumeTemplateData, lang: ResumeLang): string {
 </div></body></html>`;
 }
 
+
+/**
+ * قالبِ «امضا» — بازسازیِ طرحِ رزومه‌ی خودِ کاربر: نامِ دو‌رنگ (نامِ خانوادگی با رنگِ تأکید)،
+ * نوارِ آمار، خطِ در‌دسترس‌بودن، تماسِ کلیک‌پذیر، تیترهای آبیِ حروف‌فاصله‌دار با خطِ زیر،
+ * جدولِ برچسب/مقدارِ مهارت‌ها، تاریخ‌های راست‌چین در سوابق، و تحصیلات/زبان‌ها کنارِ هم.
+ */
+function renderSignature(d: ResumeTemplateData, lang: ResumeLang): string {
+  const t = L[lang];
+  const A = "#2563eb"; // آبیِ تأکید، همان طرحِ کاربر
+  const css = `${BASE_CSS}
+  body { font-size:11px; line-height:1.62; color:#0f172a; }
+  .wrap { max-width:840px; margin:0 auto; }
+  h1 { font-size:29px; font-weight:800; letter-spacing:-.6px; margin:0 0 2px; }
+  h1 .last { color:${A}; }
+  .role { font-weight:700; font-size:13.5px; margin-bottom:3px; }
+  .pitch { color:#475569; margin-bottom:7px; }
+  .stats, .avail, .contact { font-size:10.5px; margin-bottom:4px; }
+  .stats b { color:#0f172a; }
+  .stats span, .avail span, .contact span { color:#64748b; }
+  .dot { color:#cbd5e1; padding:0 6px; }
+  .avail { color:${A}; font-weight:600; }
+  .lk { color:${A}; font-weight:600; }
+  h2 { color:${A}; font-size:10.5px; font-weight:800; letter-spacing:1.1px;
+       border-bottom:1px solid #e2e8f0; padding-bottom:3px; margin:14px 0 8px; }
+  .sk { display:grid; grid-template-columns:112px 1fr; gap:2px 12px; }
+  .sk dt { color:#64748b; }
+  .sk dd { margin:0; }
+  .item-period { color:#64748b; font-weight:600; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+  .lang b { display:inline-block; min-width:70px; }`;
+
+  const parts = (d.fullName || "").trim().split(/\s+/);
+  const last = parts.length > 1 ? parts.pop()! : "";
+  const first = parts.join(" ");
+
+  const stats = (d.stats ?? []).filter((x) => x?.value);
+  const avail = (d.availability ?? []).filter(Boolean);
+  const groups = (d.skillGroups ?? []).filter((g) => g?.items?.length);
+  const exp = (d.experience ?? []).filter((e) => e && (e.bullets?.length || e.title || e.company));
+  const edu = (d.education ?? []).filter((e) => e && (e.school || e.degree));
+  const langs = (d.languages ?? []).filter((l) => l?.name);
+  const hi = (d.highlights ?? []).filter(Boolean);
+  const sk = (d.skills ?? []).filter(Boolean);
+  const join = (xs: string[]) => xs.join('<span class="dot">·</span>');
+
+  return `${head(d, lang, css)}<body><div class="wrap">
+  <h1 dir="auto">${esc(first)}${last ? ` <span class="last">${esc(last)}</span>` : ""}</h1>
+  ${d.headline ? `<div class="role" dir="auto">${esc(d.headline)}</div>` : ""}
+  ${stats.length ? `<div class="stats">${join(stats.map((x) => `<b>${esc(x.value)}</b> <span>${esc(x.label)}</span>`))}</div>` : ""}
+  ${avail.length ? `<div class="avail">${join(avail.map((a) => esc(a)))}</div>` : ""}
+  <div class="contact">${join(contactBits(d))}</div>
+
+  ${d.summary ? `<section><h2>${t.summary}</h2><p dir="auto">${esc(d.summary)}</p></section>` : ""}
+
+  ${
+    groups.length
+      ? `<section><h2>${t.skills}</h2><dl class="sk">${groups
+          .map((g) => `<dt dir="auto">${esc(g.label)}</dt><dd dir="auto">${esc(g.items.join(", "))}</dd>`)
+          .join("")}</dl></section>`
+      : sk.length
+        ? `<section><h2>${t.skills}</h2><div class="chips">${sk.map((x) => `<span class="chip" dir="auto">${esc(x)}</span>`).join("")}</div></section>`
+        : ""
+  }
+
+  ${hi.length ? `<section><h2>${t.highlights}</h2><ul>${hi.map((h) => `<li dir="auto">${esc(h)}</li>`).join("")}</ul></section>` : ""}
+
+  ${
+    exp.length
+      ? `<section><h2>${t.experience}</h2>${exp
+          .map(
+            (e) => `<div class="item"><div class="item-head">
+        <span class="item-title" dir="auto">${esc(e.title || "")}</span>
+        ${e.company ? `<span class="item-sub" style="color:${A};font-weight:700" dir="auto">${esc(e.company)}</span>` : ""}
+        ${e.period ? `<span class="item-period" dir="auto">${esc(e.period)}</span>` : ""}
+      </div>${e.bullets?.length ? `<ul>${e.bullets.map((b) => `<li dir="auto">${esc(b)}</li>`).join("")}</ul>` : ""}</div>`,
+          )
+          .join("")}</section>`
+      : ""
+  }
+
+  ${
+    edu.length || langs.length
+      ? `<div class="two">
+      <div>${
+        edu.length
+          ? `<h2>${t.education}</h2>${edu
+              .map(
+                (e) => `<div class="item"><div class="item-title" dir="auto">${esc(e.degree || "")}</div>
+            <div class="item-sub" dir="auto">${esc(e.school || "")}${e.period ? ` <span class="item-period">${esc(e.period)}</span>` : ""}</div></div>`,
+              )
+              .join("")}`
+          : ""
+      }</div>
+      <div>${
+        langs.length
+          ? `<h2>${t.languages}</h2>${langs
+              .map((l) => `<div class="lang" dir="auto"><b>${esc(l.name)}</b>${l.level ? ` <span style="color:#64748b">(${esc(l.level)})</span>` : ""}</div>`)
+              .join("")}`
+          : ""
+      }</div>
+    </div>`
+      : ""
+  }
+</div></body></html>`;
+}
+
 /** رندرِ رزومه با قالب و زبانِ انتخابی. */
 export function renderResumeTemplate(
   data: ResumeTemplateData,
@@ -273,6 +412,8 @@ export function renderResumeTemplate(
       return renderModern(data, lang);
     case "compact":
       return renderCompact(data, lang);
+    case "signature":
+      return renderSignature(data, lang);
     default:
       return renderClassic(data, lang);
   }

@@ -196,3 +196,56 @@ export async function getJobinjaCategories(
     return { categories: FALLBACK_CATEGORIES, source: "fallback", ageMs: 0 };
   }
 }
+
+
+/**
+ * نگاشتِ تاکسونومیِ داخلیِ کارجو → دسته‌های واقعیِ جابینجا.
+ *
+ * چرا حیاتی است: slugهای ما انگلیسیِ kebab («software-development») و slugهای جابینجا
+ * فارسی‌اند («وب،‌-برنامه‌نویسی-و-نرم‌افزار»). فرستادنِ slugِ ما در
+ * `filters[job_categories][]` باعث می‌شود جابینجا **صفر آگهی** برگرداند — یعنی به‌محضِ
+ * این‌که کاربر «علاقه‌مندی» انتخاب کند، کشفِ شغل کاملاً می‌میرد (زنده تأیید شد: با فیلترِ
+ * دسته ۰ آگهی، بدونِ آن ۲۰ آگهی).
+ *
+ * چند دسته‌ی ما به یک دسته‌ی جابینجا می‌رسند (جابینجا ریزدانه‌تر نیست) — که درست است.
+ */
+const INTERNAL_TO_JOBINJA: Record<string, string> = {
+  "software-development": "وب،‌-برنامه‌نویسی-و-نرم‌افزار",
+  "it-network": "iT--DevOps--Server",
+  "devops-cloud": "iT--DevOps--Server",
+  "cybersecurity": "iT--DevOps--Server",
+  "data-ai": "وب،‌-برنامه‌نویسی-و-نرم‌افزار",
+  "product-management": "مدیر-محصول",
+  "graphic-ui-design": "طراحی",
+  "marketing-sales": "فروش-و-بازاریابی",
+  "digital-marketing": "دیجیتال-مارکتینگ",
+  "content-translation": "تولید-و-مدیریت-محتوا",
+  "finance-accounting": "مالی-و-حسابداری",
+  "banking-insurance": "مالی-و-حسابداری",
+  "hr-recruitment": "منابع-انسانی-و-کارگزینی",
+  "customer-support": "پشتیبانی-و-امور-مشتریان",
+  "office-admin": "مسئول-دفتر،-اجرائی-و-اداری",
+  "supply-chain": "خرید-و-بازرگانی",
+  "industrial-engineering": "مهندسی-صنایع-و-مدیریت-صنعتی",
+  "mechanical-engineering": "مهندسی-مکانیک-و-هوافضا",
+  "civil-architecture": "مهندسی-عمران-و-معماری",
+  "electrical-engineering": "مهندسی-برق-و-الکترونیک",
+  "medical-health": "پزشکی،‌-پرستاری-و-دارویی",
+  "education-teaching": "آموزش",
+  "translation": "ترجمه",
+  "transport-logistics": "حمل-و-نقل",
+};
+
+const KNOWN_JOBINJA_SLUGS = new Set(FALLBACK_CATEGORIES.map((c) => c.slug));
+
+/**
+ * یک slugِ دسته را به slugِ معتبرِ جابینجا تبدیل می‌کند.
+ * ورودیِ از قبل معتبر دست‌نخورده برمی‌گردد؛ ناشناخته → `null` (باید حذف شود، نه فرستاده،
+ * وگرنه کلِ جست‌وجو صفر می‌شود).
+ */
+export function toJobinjaCategorySlug(slug: string): string | null {
+  const s = slug.trim();
+  if (!s) return null;
+  if (KNOWN_JOBINJA_SLUGS.has(s)) return s;
+  return INTERNAL_TO_JOBINJA[s] ?? null;
+}

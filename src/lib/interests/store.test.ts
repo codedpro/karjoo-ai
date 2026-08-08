@@ -114,9 +114,11 @@ describe("replaceInterests", () => {
 
     // preferences همگام شد: titles/categories بازنویسی، cities نگه داشته.
     const set = h.updateSets[0] as { preferences: Record<string, unknown> };
-    expect(set.preferences.categories).toEqual(["software-development", "data-ai"]);
+    // دسته‌ها در کلیدی می‌نشینند که فیلترها واقعاً می‌خوانند.
+    expect(set.preferences.categorySlugs).toEqual(["software-development", "data-ai"]);
     expect(set.preferences.cities).toEqual(["تهران"]);
-    expect(Array.isArray(set.preferences.titles)).toBe(true);
+    // کلیدواژه‌های جست‌وجو با نامِ دسته‌ها بازنویسی نمی‌شوند.
+    expect(set.preferences.titles).toBeUndefined();
   });
 
   it("slugِ ناشناخته در نتیجه‌ی DB نیست → اعمال نمی‌شود", async () => {

@@ -207,8 +207,12 @@ export async function generateTailoredResume(
     headline: tailored.headline || profile.headline || null,
     email: userRow?.email ?? null,
     phone: phoneOverride ?? profile.phone ?? null,
-    city: profile.city ?? null,
+    // «مکان را نشان نده» — ترجیحِ کاربر (مثلاً وقتی دورکار است و شهر بی‌ربط/محدودکننده است).
+    city: prefs.hideLocation === true ? null : (profile.city ?? null),
     links: ((profile.links as ProfileLink[] | null) ?? []).map((l) => ({ label: l.label ?? null, url: l.url })),
+    languages: ((profile.languages as { name?: string; level?: string }[] | null) ?? [])
+      .filter((l) => l?.name)
+      .map((l) => ({ name: l.name!, level: l.level ?? null })),
     summary: tailored.summary,
     // گاردِ ضدِجعل: فقط مهارت‌هایی که واقعاً در پروفایل هست.
     skills: keepOnlyRealSkills(tailored.skills, evidenceText),
