@@ -5,7 +5,7 @@ import Script from "next/script";
 import { headTagsFromConfig, type HeadTags } from "@itmaster/sdk/next";
 
 import { AnalyticsProvider } from "@/components/providers/analytics-provider";
-import { itmaster } from "@/lib/itmaster";
+import { itmaster, toKarjooHost } from "@/lib/itmaster";
 import { site } from "@/lib/site";
 import "./globals.css";
 
@@ -46,7 +46,9 @@ export default async function RootLayout({
   if (itmaster.configured) {
     try {
       const config = await itmaster.config();
-      if (config) head = headTagsFromConfig(config);
+      // تگ‌های موتور هم هاستِ خودش را دارند (canonical/og:url/verification) — به دامنه‌ی
+        // خودمان بازنویسی می‌شوند تا کلِ سایت زیرِ karjoo.1xai.ir یکدست بماند.
+        if (config) head = JSON.parse(toKarjooHost(JSON.stringify(headTagsFromConfig(config)))) as HeadTags;
     } catch {
       // اگر موتور در دسترس نبود، صفحه باید همچنان رندر شود.
     }

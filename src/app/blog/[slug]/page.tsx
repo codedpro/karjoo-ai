@@ -5,7 +5,7 @@ import { articleJsonLd, articleMetadata, applyMeta } from "@itmaster/sdk/next";
 
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { itmaster } from "@/lib/itmaster";
+import { itmaster, toKarjooHost } from "@/lib/itmaster";
 import { site } from "@/lib/site";
 
 type Params = { params: Promise<{ slug: string }> };
@@ -77,7 +77,7 @@ export default async function ArticlePage({ params }: Params) {
       {/* داده‌ی ساختاریافته (JSON-LD) برای سئو و موتورهای هوش مصنوعی */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: toKarjooHost(JSON.stringify(jsonLd)) }}
       />
     </>
   );
