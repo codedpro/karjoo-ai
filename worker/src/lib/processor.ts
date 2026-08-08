@@ -122,7 +122,7 @@ export async function processJob(
     // path (jobinja's cover-letter replacement). Best-effort — falls back to the profile résumé.
     if (job.resumeHtml?.trim()) {
       try {
-        resumePdfPath = await renderResumePdf(context, job.resumeHtml, job.taskId);
+        resumePdfPath = await renderResumePdf(context, job.resumeHtml, job.taskId, job.resumeFileName);
       } catch (err) {
         log.warn("résumé PDF render failed; using profile résumé", {
           taskId: job.taskId,
@@ -208,6 +208,7 @@ async function renderResumePdf(
   context: BrowserContext,
   html: string,
   tag: string,
+  fileName?: string | null,
 ): Promise<string> {
   const page = await context.newPage();
   try {
@@ -216,7 +217,12 @@ async function renderResumePdf(
     }
     await page.setContent(html, { waitUntil: "networkidle" });
     const buf = await page.pdf({ format: "A4", printBackground: true });
-    const path = join(tmpdir(), `karjoo-resume-${tag.replace(/[^A-Za-z0-9_-]/g, "")}-${Date.now()}.pdf`);
+    // The employer sees this filename on the job board, so it must look like a résumé the
+    // candidate wrote — never like tooling output. The control plane supplies
+    // "Full Name_Company.pdf"; the tag fallback only applies when it didn't.
+    const safe = (fileName ?? "").replace(/[\\/:*?"<>|]+/g, "").trim();
+    const base = safe.length > 4 ? safe.replace(/\.pdf$/i, "") : `resume-${tag.replace(/[^A-Za-z0-9_-]/g, "")}`;
+    const path = join(tmpdir(), `${base}-${Date.now()}.pdf`);
     await writeFile(path, buf as Uint8Array);
     return path;
   } finally {

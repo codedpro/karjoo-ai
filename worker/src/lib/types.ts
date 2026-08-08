@@ -37,6 +37,8 @@ export interface FleetJob {
    * cover-letter replacement. NEVER logged.
    */
   resumeHtml: string | null;
+  /** Upload filename the employer sees — "Full Name_Company.pdf". Never the tool's name. */
+  resumeFileName?: string | null;
   /**
    * The user's OWN decrypted session (serialized SessionBundle JSON, or a raw
    * bundle object). The node parses it, injects it, uses it in-memory, and

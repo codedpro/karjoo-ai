@@ -24,7 +24,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
-import { applications, resumes, users, type Plan } from "@/db/schema";
+import { applications, candidateProfiles, resumes, users, type Plan } from "@/db/schema";
 import {
   assertServerAutoApplyAllowed,
   recordAutoApplyAudit,
@@ -65,6 +65,11 @@ export interface FleetJob {
    * جایگزینِ انگیزه‌نامه در jobinja.
    */
   resumeHtml: string | null;
+  /**
+   * نامِ فایلِ رزومه هنگامِ آپلود — «نام کامل _ نامِ شرکت». کارفرما همین نام را می‌بیند،
+   * پس نباید ردی از ابزار داشته باشد (پیش‌تر `karjoo-resume-<tag>-<ts>.pdf` می‌رفت).
+   */
+  resumeFileName?: string | null;
   /**
    * نشستِ رمزگشایی‌شده‌ی *خودِ همان کاربر* (JSONِ سریال‌شده‌ی کوکی/توکن/UA). فقط به این
    * نودِ تخصیص‌یافته می‌رود. هرگز لاگ/پایدار نشود.
@@ -260,6 +265,7 @@ export async function claimFleetJobs(
         listingUrl: item.listing.url,
         coverLetter: item.coverLetter,
         resumeHtml: await loadResumeHtml(userId, item.listingId),
+        resumeFileName: await buildResumeFileName(userId, item.listing.company, db),
         session,
       });
     }
@@ -354,4 +360,26 @@ export async function recordFleetResult(
   );
 
   return { ...result, application: { ...result.application, channel: "worker" } };
+}
+
+/**
+ * نامِ فایلِ رزومه برای آپلود: «نام کامل _ نامِ شرکت». همین نام در سایتِ کارفرما دیده
+ * می‌شود، پس نباید ردی از ابزار داشته باشد (پیش‌تر `karjoo-resume-<tag>-<ts>.pdf` بود).
+ */
+async function buildResumeFileName(
+  userId: string,
+  company: string | null | undefined,
+  db: FleetDispatchDb,
+): Promise<string | null> {
+  try {
+    const { resumeFileName } = await import("@/lib/resume/resume-templates");
+    const prof = await db.query.candidateProfiles.findFirst({
+      where: eq(candidateProfiles.userId, userId),
+      columns: { fullName: true },
+    });
+    if (!prof?.fullName) return null;
+    return resumeFileName(prof.fullName, company ?? null);
+  } catch {
+    return null;
+  }
 }

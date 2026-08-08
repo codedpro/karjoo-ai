@@ -22,6 +22,13 @@ import { HttpError } from "@/lib/api/http";
 import type { MeteringOptions } from "@/lib/billing/metering";
 import { meteredTailorResume } from "@/lib/resume/tailor";
 import { renderResumeHtml, type ResumeRenderData } from "@/lib/resume/resume-template";
+import {
+  pickTemplate,
+  renderResumeTemplate,
+  resumeFileName,
+  type ResumeLang,
+  type ResumeTemplateData,
+} from "@/lib/resume/resume-templates";
 
 export interface GenerateDeps {
   db?: Database;
@@ -167,6 +174,10 @@ export async function generateTailoredResume(
   // **خودِ کاربر صریحاً اعلام کرده**. اعلامِ کاربر معتبر است — او دربارهٔ توانایی‌های خودش
   // مرجع است؛ کاری که ما نمی‌کنیم ساختنِ ادعا از هوا بدونِ هیچ اعلامی است.
   const prefs = (profile.preferences as Record<string, unknown> | null) ?? {};
+  // تماس/زبانِ قابلِ تنظیم: کاربر می‌تواند شماره‌ی دلخواه و زبانِ رزومه را در ترجیحات بگذارد.
+  const phoneOverride =
+    typeof prefs.resumePhone === "string" && prefs.resumePhone.trim() ? prefs.resumePhone.trim() : null;
+  const resumeLang: ResumeLang = prefs.resumeLang === "en" ? "en" : "fa";
   const declaredSkills = Array.isArray(prefs.declaredSkills)
     ? (prefs.declaredSkills as unknown[]).filter((v): v is string => typeof v === "string")
     : [];
@@ -179,15 +190,23 @@ export async function generateTailoredResume(
   const tailored = await tailorFn(
     userId,
     buildProfileText(profile, userRow?.email),
-    buildJobText(job, typeof prefs.resumeEmphasis === "string" ? prefs.resumeEmphasis : undefined),
+    buildJobText(
+      job,
+      [
+        resumeLang === "en" ? "زبانِ رزومه: انگلیسی (English)" : "زبانِ رزومه: فارسی",
+        typeof prefs.resumeEmphasis === "string" ? prefs.resumeEmphasis : "",
+      ]
+        .filter(Boolean)
+        .join(" | "),
+    ),
     deps.metering ?? {},
   );
 
-  const data: ResumeRenderData = {
+  const data: ResumeTemplateData = {
     fullName: profile.fullName,
     headline: tailored.headline || profile.headline || null,
     email: userRow?.email ?? null,
-    phone: profile.phone ?? null,
+    phone: phoneOverride ?? profile.phone ?? null,
     city: profile.city ?? null,
     links: ((profile.links as ProfileLink[] | null) ?? []).map((l) => ({ label: l.label ?? null, url: l.url })),
     summary: tailored.summary,
@@ -205,9 +224,16 @@ export async function generateTailoredResume(
       period: nonEmpty([e.startYear, e.endYear ? `– ${e.endYear}` : null]) || null,
     })),
     highlights: tailored.highlights ?? [],
-    targetLabel: job.title ?? null,
+    // عمداً هیچ برچسبِ «هدف‌گیری‌شده برای …» — کارفرما باید یک رزومه‌ی حرفه‌ایِ معمولی
+    // ببیند، نه خروجیِ آشکارِ یک ابزار.
+    lang: resumeLang,
   };
-  const html = renderResumeHtml(data);
+  // قالب: انتخابِ کاربر یا «تصادفیِ قطعی» بر اساسِ آگهی (رندرِ دوباره همان طرح را می‌دهد).
+  const template = pickTemplate(
+    typeof prefs.resumeTemplate === "string" ? prefs.resumeTemplate : null,
+    listingId,
+  );
+  const html = renderResumeTemplate(data, template);
   const title = `رزومه‌ی هدف‌گیری‌شده: ${job.title ?? "آگهی"}`;
 
   const existing = await conn.query.resumes.findFirst({
