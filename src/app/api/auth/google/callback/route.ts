@@ -1,10 +1,10 @@
 import "server-only";
 
 /**
- * GET /api/auth/callback/google  — «بازگشت از Google» (OAuth2 Authorization-Code).
+ * GET /api/auth/google/callback  — «بازگشت از Google» (OAuth2 Authorization-Code).
  *
  * این آدرس باید *دقیقاً* همان redirect URIِ مجاز روی کلاینتِ Google باشد
- * (https://karjooai.itmaster.uk/api/auth/callback/google). Google پس از رضایتِ کاربر او را
+ * (https://karjooai.itmaster.uk/api/auth/google/callback). Google پس از رضایتِ کاربر او را
  * با `?code=...&state=...` به این‌جا برمی‌گرداند.
  *
  * گام‌ها:

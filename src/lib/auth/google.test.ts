@@ -18,7 +18,7 @@ import {
   type FetchLike,
 } from "@/lib/auth/google";
 
-const REDIRECT = "https://karjooai.itmaster.uk/api/auth/callback/google";
+const REDIRECT = "https://karjooai.itmaster.uk/api/auth/google/callback";
 const CLIENT_ID = "test-client-id.apps.googleusercontent.com";
 const CLIENT_SECRET = "test-client-secret";
 

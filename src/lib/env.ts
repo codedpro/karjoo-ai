@@ -64,8 +64,8 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: optionalNonEmpty(z.string().min(1)),
   GOOGLE_CLIENT_SECRET: optionalNonEmpty(z.string().min(1)),
   // override اختیاریِ redirect_uri. اگر تنظیم نشود، از NEXT_PUBLIC_SITE_URL مشتق می‌شود:
-  // <NEXT_PUBLIC_SITE_URL>/api/auth/callback/google. باید *دقیقاً* با redirect URIِ مجاز
-  // روی کلاینتِ Google یکی باشد (https://karjooai.itmaster.uk/api/auth/callback/google).
+  // <NEXT_PUBLIC_SITE_URL>/api/auth/google/callback. باید *دقیقاً* با redirect URIِ مجاز
+  // روی کلاینتِ Google یکی باشد (https://karjoo.1xai.ir/api/auth/google/callback).
   GOOGLE_REDIRECT_URI: optionalNonEmpty(z.string().url()),
 
   // ── ارائه‌دهنده‌ی پیامک (SMS — میراثِ OTP، بلااستفاده پس از مهاجرت به Google) ─
@@ -276,7 +276,7 @@ export function requireAuthPepper(): string {
 /* ─────────────  حل‌کننده‌های ورود با Google (OAuth2)  ─────────────────────── */
 
 /** مسیرِ callbackِ Google — باید *دقیقاً* با redirect URIِ مجازِ کلاینتِ Google یکی باشد. */
-export const GOOGLE_CALLBACK_PATH = "/api/auth/callback/google";
+export const GOOGLE_CALLBACK_PATH = "/api/auth/google/callback";
 
 /** آدرسِ پیش‌فرضِ عمومیِ سایت (برای مشتق‌کردنِ redirect_uri) — هم‌راستا با src/lib/site.ts. */
 const DEFAULT_SITE_URL = "https://karjoo.ai";

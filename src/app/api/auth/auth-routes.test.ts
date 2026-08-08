@@ -73,7 +73,7 @@ vi.mock("@/lib/env", async () => {
     requireGoogleOAuth: vi.fn(() => ({
       clientId: "client-id",
       clientSecret: "client-secret",
-      redirectUri: "https://karjooai.itmaster.uk/api/auth/callback/google",
+      redirectUri: "https://karjooai.itmaster.uk/api/auth/google/callback",
     })),
   };
 });
@@ -95,7 +95,7 @@ import {
   GET as googleStartGET,
   OAUTH_STATE_COOKIE,
 } from "@/app/api/auth/google/route";
-import { GET as googleCallbackGET } from "@/app/api/auth/callback/google/route";
+import { GET as googleCallbackGET } from "@/app/api/auth/google/callback/route";
 
 const getCurrentUserMock = vi.mocked(authHttp.getCurrentUser);
 const setSessionCookieMock = vi.mocked(authHttp.setSessionCookie);
@@ -187,15 +187,15 @@ describe("GET /api/auth/google (شروعِ جریانِ OAuth)", () => {
   });
 });
 
-/* ─────────────────────  GET /api/auth/callback/google  ───────────────────── */
+/* ─────────────────────  GET /api/auth/google/callback  ───────────────────── */
 
-describe("GET /api/auth/callback/google (بازگشت از Google)", () => {
+describe("GET /api/auth/google/callback (بازگشت از Google)", () => {
   it("state معتبر → نشست صادر و کوکی نشانده می‌شود، 302 /dashboard", async () => {
     cookieStore.get.mockReturnValue({ value: "state-abc" });
     findOrCreateUserByGoogleMock.mockResolvedValueOnce(USER);
 
     const res = await googleCallbackGET(
-      getRequest("http://x/api/auth/callback/google?code=the-code&state=state-abc"),
+      getRequest("http://x/api/auth/google/callback?code=the-code&state=state-abc"),
     );
 
     expect(res.status).toBe(302);
@@ -228,7 +228,7 @@ describe("GET /api/auth/callback/google (بازگشت از Google)", () => {
     cookieStore.get.mockReturnValue({ value: "state-abc" });
 
     const res = await googleCallbackGET(
-      getRequest("http://x/api/auth/callback/google?code=the-code&state=WRONG"),
+      getRequest("http://x/api/auth/google/callback?code=the-code&state=WRONG"),
     );
 
     expect(res.status).toBe(302);
@@ -245,7 +245,7 @@ describe("GET /api/auth/callback/google (بازگشت از Google)", () => {
     cookieStore.get.mockReturnValue(undefined);
 
     const res = await googleCallbackGET(
-      getRequest("http://x/api/auth/callback/google?code=the-code&state=state-abc"),
+      getRequest("http://x/api/auth/google/callback?code=the-code&state=state-abc"),
     );
 
     expect(res.status).toBe(302);
@@ -257,7 +257,7 @@ describe("GET /api/auth/callback/google (بازگشت از Google)", () => {
     isGoogleOAuthConfiguredMock.mockReturnValue(false);
 
     const res = await googleCallbackGET(
-      getRequest("http://x/api/auth/callback/google?code=c&state=s"),
+      getRequest("http://x/api/auth/google/callback?code=c&state=s"),
     );
 
     expect(res.status).toBe(302);
@@ -271,7 +271,7 @@ describe("GET /api/auth/callback/google (بازگشت از Google)", () => {
     );
 
     const res = await googleCallbackGET(
-      getRequest("http://x/api/auth/callback/google?code=the-code&state=state-abc"),
+      getRequest("http://x/api/auth/google/callback?code=the-code&state=state-abc"),
     );
 
     expect(res.status).toBe(302);
@@ -284,7 +284,7 @@ describe("GET /api/auth/callback/google (بازگشت از Google)", () => {
     cookieStore.get.mockReturnValue({ value: "state-abc" });
 
     const res = await googleCallbackGET(
-      getRequest("http://x/api/auth/callback/google?state=state-abc&error=access_denied"),
+      getRequest("http://x/api/auth/google/callback?state=state-abc&error=access_denied"),
     );
 
     expect(res.status).toBe(302);

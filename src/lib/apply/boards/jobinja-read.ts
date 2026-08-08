@@ -73,13 +73,89 @@ function decode(s: string): string {
     .trim();
 }
 
+/**
+ * مقدارِ یک صفتِ HTML را برای **JSON** باز می‌کند.
+ *
+ * جدا از `decode` است چون آن یکی متن‌گراست: تگ‌ها را حذف و فاصله‌ها را جمع می‌کند و
+ * `&quot;` را هم نمی‌شناسد — یعنی روی JSON هم بی‌اثر است و هم مخرب. این‌جا فقط موجودیت‌های
+ * XMLِ لازم باز می‌شوند و بقیه‌ی نویسه‌ها دست‌نخورده می‌مانند تا JSON.parse موفق شود.
+ */
+function decodeAttr(s: string): string {
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&"); // آخر: تا &amp;quot; دوباره‌رمزگشایی نشود
+}
+
 /* ────────────────────────  /jobs/applied  (analytics)  ─────────────────── */
 
 /**
- * صفحه‌ی «درخواست‌های من» (SSR) را پارس می‌کند: هر آیتم با لینکِ /jobs/applied/{shortId} و یک
- * برچسبِ وضعیت. تحمل‌گرا؛ اگر ساختار عوض شود، بدترین حالت آرایه‌ی خالی است.
+ * درخواست‌های کاربر را از صفحه‌ی «درخواست‌های من» بیرون می‌کشد.
+ *
+ * **مسیرِ اصلی: JSONِ جاسازی‌شده.** این صفحه دیگر لیست را در HTML رندر نمی‌کند — یک اپِ
+ * Vue است که فقط قالب (`{{ application.job.title }}`) را می‌فرستد و داده را در صفتِ
+ * `init-state` (JSONِ HTML-escape‌شده) می‌گذارد. پس اسکرپِ مارک‌آپ همیشه صفر برمی‌گرداند
+ * (زنده تأیید شد ۱۴۰۵/۰۵/۱۷: ۰ درخواست با وجودِ ورودِ موفق). خواندنِ همان JSON هم دقیق‌تر
+ * است و هم شامل `machine_status` و تاریخ.
+ *
+ * اگر `init-state` نبود، به اسکرپِ قدیمی برمی‌گردیم (برای طرح‌بندی‌های قدیمی/تستِ فیکسچر).
  */
 export function parseAppliedJobs(html: string): ParsedApplication[] {
+  const fromState = parseAppliedFromInitState(html);
+  if (fromState.length > 0) return fromState;
+  return parseAppliedFromMarkup(html);
+}
+
+/** شکلِ کمینه‌ی هر ردیفِ درخواست در `init-state.applications.data[]`. */
+interface InitStateApplication {
+  short_id?: string;
+  status?: string;
+  machine_status?: string;
+  created_at?: string;
+  job_link?: string;
+  details_link?: string;
+  job?: { title?: string; company?: { name?: string } | null };
+}
+
+/** JSONِ `init-state` را می‌خواند و به ParsedApplication نگاشت می‌کند. */
+export function parseAppliedFromInitState(html: string): ParsedApplication[] {
+  const raw = /init-state="([^"]+)"/.exec(html)?.[1];
+  if (!raw) return [];
+  let state: { applications?: { data?: InitStateApplication[] } };
+  try {
+    state = JSON.parse(decodeAttr(raw)) as typeof state;
+  } catch {
+    return [];
+  }
+  const rows = state.applications?.data;
+  if (!Array.isArray(rows)) return [];
+
+  const out: ParsedApplication[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const id = typeof r?.short_id === "string" ? r.short_id.trim() : "";
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    // machine_status ماشین‌خوان است و بر متنِ فارسی اولویت دارد؛ متن fallback می‌ماند.
+    const statusRaw = r.status?.trim() || r.machine_status?.trim() || null;
+    out.push({
+      externalId: id,
+      title: r.job?.title?.trim() || null,
+      company: r.job?.company?.name?.trim() || null,
+      url: r.job_link?.trim() || r.details_link?.trim() || `${ORIGIN}/jobs/applied/${id}`,
+      statusRaw,
+      statusCategory: normalizeApplicationStatus(r.machine_status ?? r.status ?? null),
+    });
+  }
+  return out;
+}
+
+/** اسکرپِ قدیمیِ مارک‌آپ — فقط fallback. */
+function parseAppliedFromMarkup(html: string): ParsedApplication[] {
   const out: ParsedApplication[] = [];
   const seen = new Set<string>();
   // هر بلوکِ آیتم را حولِ یک لینکِ /jobs/applied/{id} برش می‌زنیم.
