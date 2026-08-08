@@ -106,6 +106,18 @@ function esc(s: unknown): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * متنِ رزومه با **تأکیدِ کنترل‌شده**.
+ *
+ * یک رزومه‌ی حرفه‌ای با bold هدایت می‌شود: خواننده‌ی عجول در چند ثانیه تکنولوژی‌ها و
+ * دستاوردهای کلیدی را می‌گیرد. ولی نمی‌توان HTMLِ خامِ مدل را رندر کرد (تزریق/خرابیِ
+ * چیدمان). پس **اول escape** می‌کنیم و بعد فقط الگوی `**متن**` را به <strong> تبدیل
+ * می‌کنیم — تنها نشانه‌گذاریِ مجاز.
+ */
+function rich(s: unknown): string {
+  return esc(s).replace(/\*\*([^*]{1,120})\*\*/g, "<strong>$1</strong>");
+}
+
 /** پروفایل‌ها اغلب لینک را بدونِ اسکیم ذخیره می‌کنند («github.com/x») — بدونِ اصلاح، در
  *  PDF کلیک‌ناپذیر یا نسبی می‌شود. */
 export function absoluteUrl(url: string): string {
@@ -202,9 +214,9 @@ function sectionsHtml(d: ResumeTemplateData, t: Record<string, string>, opts: { 
   const sk = (d.skills ?? []).filter(Boolean);
 
   return [
-    d.summary ? `<section><h2>${t.summary}</h2><p dir="auto">${esc(d.summary)}</p></section>` : "",
+    d.summary ? `<section><h2>${t.summary}</h2><p dir="auto">${rich(d.summary)}</p></section>` : "",
     hi.length
-      ? `<section><h2>${t.highlights}</h2><ul>${hi.map((h) => `<li dir="auto">${esc(h)}</li>`).join("")}</ul></section>`
+      ? `<section><h2>${t.highlights}</h2><ul>${hi.map((h) => `<li dir="auto">${rich(h)}</li>`).join("")}</ul></section>`
       : "",
     exp.length
       ? `<section><h2>${t.experience}</h2>${exp
@@ -213,7 +225,7 @@ function sectionsHtml(d: ResumeTemplateData, t: Record<string, string>, opts: { 
         <span class="item-title" dir="auto">${esc(e.title || "")}</span>
         ${e.company ? `<span class="item-sub" dir="auto">${esc(e.company)}</span>` : ""}
         ${e.period ? `<span class="item-period" dir="auto">${esc(e.period)}</span>` : ""}
-      </div>${e.bullets?.length ? `<ul>${e.bullets.map((b) => `<li dir="auto">${esc(b)}</li>`).join("")}</ul>` : ""}</div>`,
+      </div>${e.bullets?.length ? `<ul>${e.bullets.map((b) => `<li dir="auto">${rich(b)}</li>`).join("")}</ul>` : ""}</div>`,
           )
           .join("")}</section>`
       : "",
@@ -347,7 +359,7 @@ function renderSignature(d: ResumeTemplateData, lang: ResumeLang): string {
   ${avail.length ? `<div class="avail">${join(avail.map((a) => esc(a)))}</div>` : ""}
   <div class="contact">${join(contactBits(d))}</div>
 
-  ${d.summary ? `<section><h2>${t.summary}</h2><p dir="auto">${esc(d.summary)}</p></section>` : ""}
+  ${d.summary ? `<section><h2>${t.summary}</h2><p dir="auto">${rich(d.summary)}</p></section>` : ""}
 
   ${
     groups.length
@@ -359,7 +371,7 @@ function renderSignature(d: ResumeTemplateData, lang: ResumeLang): string {
         : ""
   }
 
-  ${hi.length ? `<section><h2>${t.highlights}</h2><ul>${hi.map((h) => `<li dir="auto">${esc(h)}</li>`).join("")}</ul></section>` : ""}
+  ${hi.length ? `<section><h2>${t.highlights}</h2><ul>${hi.map((h) => `<li dir="auto">${rich(h)}</li>`).join("")}</ul></section>` : ""}
 
   ${
     exp.length
@@ -369,7 +381,7 @@ function renderSignature(d: ResumeTemplateData, lang: ResumeLang): string {
         <span class="item-title" dir="auto">${esc(e.title || "")}</span>
         ${e.company ? `<span class="item-sub" style="color:${A};font-weight:700" dir="auto">${esc(e.company)}</span>` : ""}
         ${e.period ? `<span class="item-period" dir="auto">${esc(e.period)}</span>` : ""}
-      </div>${e.bullets?.length ? `<ul>${e.bullets.map((b) => `<li dir="auto">${esc(b)}</li>`).join("")}</ul>` : ""}</div>`,
+      </div>${e.bullets?.length ? `<ul>${e.bullets.map((b) => `<li dir="auto">${rich(b)}</li>`).join("")}</ul>` : ""}</div>`,
           )
           .join("")}</section>`
       : ""

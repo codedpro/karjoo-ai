@@ -26,7 +26,13 @@ const MAX_APPLIED_PAGES = 20;
 const REQUEST_TIMEOUT_MS = 20_000;
 
 /** دسته‌ی نرمال‌شده‌ی وضعیت. */
-export type ApplicationStatusCategory = "pending" | "review" | "interview" | "rejected" | "other";
+export type ApplicationStatusCategory =
+  | "pending"
+  | "review"
+  | "interview"
+  | "hired"
+  | "rejected"
+  | "other";
 
 /** یک ردیفِ درخواستِ اپلایِ پارس‌شده (ورودیِ ingest — از سرور یا افزونه). */
 export interface ParsedApplication {
@@ -55,14 +61,114 @@ export interface ParsedProfile {
 /* ─────────────────────────────  status normalizer  ─────────────────────── */
 
 /** متنِ فارسیِ وضعیت را به دسته‌ی نرمال‌شده می‌نگارد. */
+/**
+ * کلیدهای ماشین‌خوانِ خودِ جابینجا → دسته‌بندیِ قیفِ ما.
+ *
+ * این‌ها از `init-state.statuses` گرفته شده‌اند (منبعِ خودِ سایت)، نه حدس:
+ *   sent(ارسال به کارفرما) · reviewed(بررسی‌شده) · interview_accepted(مصاحبه) ·
+ *   hired(استخدام‌شده) · others(سایر) · pending(در انتظار بررسی کارفرما)
+ *
+ * چرا لازم بود: پیش‌تر `machine_status` (کلیدِ **انگلیسی**) به الگوهای **فارسی** داده
+ * می‌شد، پس هیچ‌کدام تطبیق نمی‌خورد و ۲۹۵ از ۴۶۴ درخواست در «سایر» می‌افتاد — یعنی قیف
+ * عملاً بی‌معنا بود.
+ */
+const JOBINJA_MACHINE_STATUS: Record<string, ApplicationStatusCategory> = {
+  pending: "pending",
+  sent: "pending",
+  new: "pending",
+  reviewed: "review",
+  seen: "review",
+  viewed: "review",
+  interview_accepted: "interview",
+  interview: "interview",
+  hired: "hired",
+  rejected: "rejected",
+  declined: "rejected",
+  archived: "rejected",
+  others: "other",
+};
+
 export function normalizeApplicationStatus(raw: string | null | undefined): ApplicationStatusCategory {
   const s = (raw ?? "").trim();
   if (!s) return "pending";
-  if (/مصاحبه|دعوت/.test(s)) return "interview";
-  if (/رد|بایگان|عدم|منفی|لغو/.test(s)) return "rejected";
-  if (/بررسی|دیده|مشاهده|بازبین|در حالِ? بررسی/.test(s)) return "review";
-  if (/انتظار|جدید|ارسال|ثبت|new|pending/i.test(s)) return "pending";
+
+  // ۱) کلیدِ ماشین‌خوانِ جابینجا (دقیق‌ترین منبع).
+  const machine = JOBINJA_MACHINE_STATUS[s.toLowerCase()];
+  if (machine) return machine;
+
+  // ۲) متنِ فارسی (نمایشی) — نیم‌فاصله را حذف می‌کنیم تا «بررسی‌شده»/«رد‌شده» هم بگیرند.
+  const fa = s.replace(/\u200c/g, "");
+  if (/استخدام\s*شده/.test(fa)) return "hired";
+  if (/مصاحبه|دعوت/.test(fa)) return "interview";
+  if (/رد|بایگان|عدم|منفی|لغو/.test(fa)) return "rejected";
+  if (/بررسی|دیده|مشاهده|بازبین/.test(fa)) return "review";
+  if (/انتظار|جدید|ارسال|ثبت|new|pending/i.test(fa)) return "pending";
   return "other";
+}
+
+/* ─────────────────────  تاریخِ شمسیِ جابینجا → Date  ────────────────────── */
+
+const FA_MONTHS: Record<string, number> = {
+  فروردین: 1, اردیبهشت: 2, خرداد: 3, تیر: 4, مرداد: 5, امرداد: 5, شهریور: 6,
+  مهر: 7, آبان: 8, آذر: 9, دی: 10, بهمن: 11, اسفند: 12,
+};
+
+/** ارقامِ فارسی/عربی → لاتین. */
+function faDigits(s: string): string {
+  return s.replace(/[۰-۹٠-٩]/g, (d) => {
+    const fa = "۰۱۲۳۴۵۶۷۸۹".indexOf(d);
+    return String(fa >= 0 ? fa : "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+  });
+}
+
+/** جلالی → میلادی (الگوریتمِ استانداردِ تبدیل). */
+function jalaliToGregorian(jy: number, jm: number, jd: number): Date {
+  let gy = jy > 979 ? 1600 : 621;
+  const y = jy > 979 ? jy - 979 : jy;
+  let days =
+    365 * y + Math.floor(y / 33) * 8 + Math.floor(((y % 33) + 3) / 4) + 78 + jd +
+    (jm < 7 ? (jm - 1) * 31 : (jm - 7) * 30 + 186);
+  gy += 400 * Math.floor(days / 146097);
+  days %= 146097;
+  if (days > 36524) {
+    gy += 100 * Math.floor(--days / 36524);
+    days %= 36524;
+    if (days >= 365) days++;
+  }
+  gy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) {
+    gy += Math.floor((days - 1) / 365);
+    days = (days - 1) % 365;
+  }
+  let gd = days + 1;
+  const leap = (gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0;
+  const md = [0, 31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  let gm = 0;
+  for (gm = 1; gm <= 12 && gd > md[gm]!; gm += 1) gd -= md[gm]!;
+  return new Date(Date.UTC(gy, gm - 1, gd));
+}
+
+/**
+ * تاریخِ نمایشیِ جابینجا («۱۷ امرداد ۱۴۰۵») → Date واقعی.
+ *
+ * جابینجا تاریخ را **رشته‌ی شمسیِ فارسی** می‌دهد، نه ISO. بدونِ تبدیل، مرتب‌سازی و
+ * «چند وقت پیش» در داشبورد بی‌معنا می‌شد (تاریخ‌ها اصلاً پارس نمی‌شدند).
+ */
+export function parseJalaliDate(input: string | null | undefined): Date | null {
+  const s = faDigits((input ?? "").trim());
+  if (!s) return null;
+  const m = /^(\d{1,2})\s+([^\s\d]+)\s+(\d{4})$/.exec(s);
+  if (!m) return null;
+  const day = Number(m[1]);
+  const month = FA_MONTHS[m[2]!.replace(/\u200c/g, "")];
+  const year = Number(m[3]);
+  if (!month || !day || !year) return null;
+  try {
+    return jalaliToGregorian(year, month, day);
+  } catch {
+    return null;
+  }
 }
 
 /* ─────────────────────────────  html helpers  ─────────────────────────── */
@@ -426,6 +532,8 @@ export interface ApplicationFunnel {
   pending: number;
   review: number;
   interview: number;
+  /** استخدام‌شده — نتیجه‌ی نهاییِ مثبت. */
+  hired: number;
   rejected: number;
   other: number;
 }
@@ -442,7 +550,15 @@ export async function getApplications(
     orderBy: (t, { desc }) => [desc(t.lastSeenAt)],
     limit: 500,
   });
-  const funnel: ApplicationFunnel = { total: items.length, pending: 0, review: 0, interview: 0, rejected: 0, other: 0 };
+  const funnel: ApplicationFunnel = {
+    total: items.length,
+    pending: 0,
+    review: 0,
+    interview: 0,
+    hired: 0,
+    rejected: 0,
+    other: 0,
+  };
   for (const it of items) funnel[it.statusCategory] += 1;
   return { funnel, items };
 }

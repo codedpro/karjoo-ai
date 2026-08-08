@@ -11,7 +11,13 @@
 import type { ApplicationFunnel } from "@/lib/apply/boards/jobinja-read";
 
 /** دسته‌های قیف (بدونِ `total` که خودش جمعِ کل است). */
-export type FunnelCategory = "pending" | "review" | "interview" | "rejected" | "other";
+export type FunnelCategory =
+  | "pending"
+  | "review"
+  | "interview"
+  | "hired"
+  | "rejected"
+  | "other";
 
 /** لحنِ سازگار با `ui.Badge` (زیرمجموعه‌ی BadgeTone که این‌جا لازم داریم). */
 export type ApplyTone = "muted" | "amber" | "green" | "rose";
@@ -41,6 +47,12 @@ export const CATEGORY_META: Record<FunnelCategory, CategoryMeta> = {
     barClass: "bg-amber-500",
     textClass: "text-amber-600 dark:text-amber-400",
   },
+  hired: {
+    label: "استخدام",
+    tone: "green",
+    barClass: "bg-emerald-600",
+    textClass: "text-emerald-600 dark:text-emerald-400",
+  },
   interview: {
     label: "مصاحبه",
     tone: "green",
@@ -66,6 +78,7 @@ export const FUNNEL_ORDER: FunnelCategory[] = [
   "pending",
   "review",
   "interview",
+  "hired",
   "rejected",
   "other",
 ];

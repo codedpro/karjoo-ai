@@ -8,11 +8,11 @@ import { buildFunnelSegments, CATEGORY_META, FUNNEL_ORDER } from "./funnel";
 
 /** سازنده‌ی قیفِ آزمایشی — فیلدهای نامشخص صفر. */
 function funnel(p: Partial<ApplicationFunnel>): ApplicationFunnel {
-  return { total: 0, pending: 0, review: 0, interview: 0, rejected: 0, other: 0, ...p };
+  return { total: 0, pending: 0, review: 0, interview: 0, hired: 0, rejected: 0, other: 0, ...p };
 }
 
 describe("buildFunnelSegments", () => {
-  it("قیفِ خالی → پنج قطعه، همه با عرضِ صفر و بدونِ NaN", () => {
+  it("قیفِ خالی → همه‌ی قطعه‌ها، همه با عرضِ صفر و بدونِ NaN", () => {
     const segs = buildFunnelSegments(funnel({}));
     expect(segs).toHaveLength(FUNNEL_ORDER.length);
     for (const s of segs) {

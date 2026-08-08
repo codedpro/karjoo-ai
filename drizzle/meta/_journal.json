@@ -141,6 +141,13 @@
       "when": 1786027502701,
       "tag": "0019_bent_midnight",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786204716399,
+      "tag": "0020_curvy_wither",
+      "breakpoints": true
     }
   ]
 }

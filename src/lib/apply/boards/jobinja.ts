@@ -579,20 +579,39 @@ export async function fetchJobDescription(
  * خروجی متنِ ساده (بدون تگ) و کوتاه‌شده تا حدِ منطقی برای پرامپت/نمایش.
  */
 export function extractJobDescription(html: string): string | null {
-  const MAX = 6000;
+  const MAX = 12000;
 
-  // ۱) از تیترِ «شرح موقعیت شغلی» تا تیترِ بعدی.
-  const bySection =
-    /شرح\s*موقعیت\s*شغلی[\s\S]{0,200}?<\/h[1-6]>([\s\S]*?)(?:<h[1-6]|<footer|معرفی\s*شرکت|مهارت‌های\s*مورد\s*نیاز)/i.exec(
+  // بلاکِ واقعیِ شرحِ آگهی: `<div class="o-box__text s-jobDesc …">`. تا **پایانِ همان بلاک**
+  // برداشته می‌شود، نه تا اولین تیتر.
+  //
+  // باگِ قبلی: الگو روی اولین `<h1..6>` می‌ایستاد، ولی خودِ شرحِ آگهی پُر از تیترِ داخلی است
+  // («مسئولیت‌ها»، «الزامات اصلی»، «توانمندی فنی» …). نتیجه: از ~۶۰۰۰ نویسه فقط ~۶۹۰ تا
+  // ذخیره می‌شد — یعنی هوش مصنوعی نیازمندی‌های واقعی (Supabase، Web3، Flutter، سابقه‌ی
+  // مدیریتی/founder) را **اصلاً نمی‌دید** و رزومه‌ی هدف‌گیری‌شده سطحی درمی‌آمد.
+  const block =
+    /<div[^>]*class="[^"]*\bs-jobDesc\b[^"]*"[^>]*>([\s\S]*?)(?=<h[1-6][^>]*>\s*(?:معرفی\s*شرکت|مهارت‌های\s*مورد\s*نیاز)|<footer|گزارش\s*تخلف|$)/i.exec(
       html,
-    );
-  const raw =
-    bySection?.[1] ??
+    )?.[1] ??
+    // fallbackهای قدیمی‌تر (طرح‌بندی‌های دیگر/فیکسچر).
+    /شرح\s*موقعیت\s*شغلی[\s\S]{0,200}?<\/h[1-6]>([\s\S]*?)(?:معرفی\s*شرکت|مهارت‌های\s*مورد\s*نیاز|<footer)/i.exec(
+      html,
+    )?.[1] ??
     /<div[^>]*\bc-jobView__content\b[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i.exec(html)?.[1] ??
     null;
-  if (!raw) return null;
+  if (!block) return null;
 
-  const text = stripTags(raw).replace(/\n{3,}/g, "\n\n").trim();
+  // ساختار را به متنِ خوانا تبدیل کن: تیترها و آیتم‌های فهرست باید خطِ خودشان را بگیرند،
+  // وگرنه همه‌ی نیازمندی‌ها در یک پاراگرافِ درهم می‌ریزند و مدل نمی‌تواند تفکیکشان کند.
+  const text = stripTags(
+    block
+      .replace(/<\/(?:p|div|li|h[1-6]|tr)>/gi, "\n")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<li[^>]*>/gi, "• "),
+  )
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
   if (text.length < 30) return null;
   return text.length > MAX ? `${text.slice(0, MAX)}…` : text;
 }

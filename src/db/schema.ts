@@ -1220,6 +1220,7 @@ export const boardApplicationStatusEnum = pgEnum("board_application_status", [
   "pending", // در انتظار / جدید
   "review", // بررسی / دیده‌شده
   "interview", // مصاحبه
+  "hired", // استخدام‌شده — نتیجه‌ی نهاییِ مثبت (جابینجا کلیدِ hired دارد)
   "rejected", // رد / بایگانی
   "other",
 ]);

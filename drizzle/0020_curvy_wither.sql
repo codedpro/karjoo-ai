@@ -1,0 +1,1 @@
+ALTER TYPE "public"."board_application_status" ADD VALUE 'hired' BEFORE 'rejected';
