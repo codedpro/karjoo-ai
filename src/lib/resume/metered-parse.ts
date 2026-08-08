@@ -12,7 +12,7 @@ import "server-only";
  */
 import { buildResumeParsePrompt } from "@/lib/resume/prompts";
 import { parsedResumeSchema, type ParsedResume } from "@/lib/resume/schema";
-import { ResumeParseError } from "@/lib/resume/parse";
+import { RESUME_PARSE_MAX_TOKENS, ResumeParseError } from "@/lib/resume/parse";
 import { meteredChatJson, type MeteringOptions } from "@/lib/billing/metering";
 import { logger } from "@/lib/observability/logger";
 
@@ -39,7 +39,15 @@ export async function meteredParseResumeText(
 
   let data: unknown;
   try {
-    const out = await meteredChatJson(userId, "resume_parse", { messages, temperature: 0.2 }, opts);
+    // سقفِ اختصاصی: JSONِ یک رزومه‌ی کامل از سقفِ عمومیِ ۱۲۰۰ توکن رد می‌شود و **وسطِ رشته**
+    // بریده می‌شود؛ کاربر فقط «درخواست ناموفق بود» می‌بیند. (زنده: رزومه‌ی ۶٬۷۴۱ نویسه‌ای →
+    // Unterminated string at position 4715.)
+    const out = await meteredChatJson(
+      userId,
+      "resume_parse",
+      { messages, temperature: 0.2, maxTokens: RESUME_PARSE_MAX_TOKENS },
+      opts,
+    );
     data = out.result.data;
   } catch (cause) {
     if (cause instanceof ResumeParseError) throw cause;

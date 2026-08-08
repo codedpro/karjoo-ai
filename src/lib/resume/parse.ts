@@ -23,6 +23,13 @@ import { buildResumeParsePrompt } from "@/lib/resume/prompts";
 import { parsedResumeSchema, type ParsedResume } from "@/lib/resume/schema";
 
 /** خطای typed این لایه — تا فراخواننده بین «پیکربندی‌نشده»/«خطای مدل»/«متنِ خالی» تمایز بگذارد. */
+/**
+ * سقفِ توکنِ خروجیِ ساخت‌یافته‌سازیِ رزومه. سقفِ عمومیِ گیت‌وی (۱۲۰۰) برای این کار کم است:
+ * JSONِ یک رزومه‌ی واقعی (همه‌ی سوابق + مهارت‌ها + تحصیلات) از آن رد می‌شود و خروجی وسطِ
+ * رشته بریده می‌شود — که به‌صورتِ «خروجی مدل JSON معتبر نبود» به کاربر می‌رسد.
+ */
+export const RESUME_PARSE_MAX_TOKENS = 4000;
+
 export class ResumeParseError extends Error {
   readonly cause?: unknown;
   constructor(message: string, cause?: unknown) {
@@ -50,10 +57,16 @@ export async function parseResumeText(
   }
 
   const messages = buildResumeParsePrompt(resumeText);
+  // یک رزومه‌ی کامل به JSON (همه‌ی سوابق/مهارت‌ها/تحصیلات) به‌راحتی از سقفِ پیش‌فرضِ ۱۲۰۰
+  // توکن رد می‌شود و خروجی **وسطِ رشته** بریده می‌شود → «خروجی مدل JSON معتبر نبود».
+  // زنده دیده شد: رزومه‌ی ۶٬۷۴۱ نویسه‌ای → Unterminated string at position 4715.
 
   let data: unknown;
   try {
-    ({ data } = await chatCompleteJson({ messages, temperature: 0.2 }, opts));
+    ({ data } = await chatCompleteJson(
+      { messages, temperature: 0.2, maxTokens: RESUME_PARSE_MAX_TOKENS },
+      opts,
+    ));
   } catch (cause) {
     throw new ResumeParseError(
       "فراخوانیِ گیت‌وی هوش مصنوعی برای ساخت‌یافته‌سازیِ رزومه ناموفق بود.",
