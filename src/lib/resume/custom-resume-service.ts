@@ -22,6 +22,7 @@ import { HttpError } from "@/lib/api/http";
 import type { MeteringOptions } from "@/lib/billing/metering";
 import { meteredTailorResume } from "@/lib/resume/tailor";
 import { renderResumeHtml, type ResumeRenderData } from "@/lib/resume/resume-template";
+import { labelsForDomains, vocabularyForDomains } from "@/lib/resume/declared-domains";
 import {
   pickTemplate,
   renderResumeTemplate,
@@ -181,10 +182,16 @@ export async function generateTailoredResume(
   const declaredSkills = Array.isArray(prefs.declaredSkills)
     ? (prefs.declaredSkills as unknown[]).filter((v): v is string => typeof v === "string")
     : [];
+  // حوزه‌های اعلامیِ کاربر: به‌جای تایپِ هزار مهارت، چند حوزه اعلام می‌کند و واژگانِ
+  // متعارفِ همان حوزه‌ها مجاز می‌شود. مرجعِ ادعا همچنان خودِ کاربر است.
+  const declaredDomains = Array.isArray(prefs.declaredDomains)
+    ? (prefs.declaredDomains as unknown[]).filter((v): v is string => typeof v === "string")
+    : [];
   const evidenceText = [
     buildProfileText(profile, userRow?.email),
     profile.resumeText ?? "",
     declaredSkills.join("، "),
+    vocabularyForDomains(declaredDomains),
   ].join("\n");
 
   const tailored = await tailorFn(
@@ -194,6 +201,14 @@ export async function generateTailoredResume(
       job,
       [
         resumeLang === "en" ? "زبانِ رزومه: انگلیسی (English)" : "زبانِ رزومه: فارسی",
+        declaredDomains.length
+          ? [
+              `کاربر اعلام کرده در این حوزه‌ها تجربه دارد: ${labelsForDomains(declaredDomains).join("، ")}.`,
+              // واژگانِ مشخص لازم است: مدل از برچسبِ فارسیِ حوزه نمی‌فهمد که مثلاً «Supabase»
+              // مجاز است. فهرستِ صریح می‌دهیم تا بتواند دقیقاً همان چیزی را که آگهی خواسته نام ببرد.
+              `مهارت‌های قابل‌استفاده از این حوزه‌ها (هر کدام را که آگهی می‌خواهد بیاور): ${vocabularyForDomains(declaredDomains).slice(0, 1500)}`,
+            ].join(" ")
+          : "",
         typeof prefs.resumeEmphasis === "string" ? prefs.resumeEmphasis : "",
       ]
         .filter(Boolean)
