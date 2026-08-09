@@ -83,3 +83,23 @@ export const resumeTailorSchema = z.object({
 });
 
 export type ResumeTailorOutput = z.infer<typeof resumeTailorSchema>;
+
+
+/**
+ * نیازمندی‌های ساخت‌یافته‌ی یک آگهی — خروجیِ گامِ «تجزیه‌ی آگهی» (jd-requirements.ts).
+ * عمداً فقط فهرست است: این گام دربارهٔ کاربر چیزی نمی‌داند و قضاوتی نمی‌کند.
+ */
+export const jdRequirementsSchema = z.object({
+  /** تکنولوژی/ابزارهای نام‌برده‌شده (React، PostgreSQL، Docker …). */
+  technologies: z.array(z.string().min(1).max(80)).max(60).default([]),
+  /** مسئولیت‌های اصلیِ نقش. */
+  responsibilities: z.array(z.string().min(1).max(200)).max(30).default([]),
+  /** الزاماتِ غیرِفنی (سابقه‌ی مدیریتی، بنیان‌گذاری، زبان …). */
+  qualifications: z.array(z.string().min(1).max(200)).max(30).default([]),
+  /** سطحِ ارشدیت اگر آگهی گفته باشد. */
+  seniority: z.string().max(60).optional(),
+  /** حوزه‌ی نقش (مثلاً «full-stack»، «sales»، «devops»). */
+  domain: z.string().max(60).optional(),
+});
+
+export type JdRequirements = z.infer<typeof jdRequirementsSchema>;

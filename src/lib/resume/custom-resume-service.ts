@@ -23,6 +23,7 @@ import type { MeteringOptions } from "@/lib/billing/metering";
 import { meteredTailorResume } from "@/lib/resume/tailor";
 import { renderResumeHtml, type ResumeRenderData } from "@/lib/resume/resume-template";
 import { labelsForDomains, vocabularyForDomains } from "@/lib/resume/declared-domains";
+import { assessCoverage, extractJobRequirements } from "@/lib/apply/jd-requirements";
 import {
   pickTemplate,
   renderResumeTemplate,
@@ -118,11 +119,18 @@ function buildProfileText(
  * کاربر می‌نویسد تا بگوید چه چیزی دربارهٔ خودش پررنگ شود — مثلاً کدام کارفرماها/پروژه‌ها
  * جلو بیایند یا روی کدام توانایی تمرکز شود. کنترل دستِ کاربر است، بدونِ نیاز به هیچ گیت.
  */
-function buildJobText(j: typeof jobListings.$inferSelect, userEmphasis?: string): string {
+function buildJobText(
+  j: typeof jobListings.$inferSelect,
+  userEmphasis?: string,
+  requirements?: string,
+): string {
   return nonEmpty([
     j.title ? `عنوان: ${j.title}` : null,
     j.company ? `شرکت: ${j.company}` : null,
     j.description ? `\nشرح: ${j.description.slice(0, 6000)}` : null,
+    // بخشِ جداگانه و برچسب‌دار: اگر این را داخلِ «تأکیدِ کاربر» قاطیِ بقیه کنیم، مدل
+    // در انبوهِ متن گمش می‌کند. فهرستِ کوتاه و صریح خیلی بیشتر رعایت می‌شود.
+    requirements?.trim() ? `\nتحلیلِ ساخت‌یافته‌ی همین آگهی:\n${requirements.trim()}` : null,
     userEmphasis?.trim()
       ? `\nتأکیدِ خودِ کاربر (این را در هدف‌گیری رعایت کن): ${userEmphasis.trim().slice(0, 1000)}`
       : null,
@@ -194,6 +202,39 @@ export async function generateTailoredResume(
     vocabularyForDomains(declaredDomains),
   ].join("\n");
 
+  // گامِ ۱ از تجزیه: نیازمندی‌های آگهی را ساخت‌یافته بیرون بکش، بعد بسنج کدام‌ها شاهد
+  // دارند. سپس **صریح** به مدل بگو روی همان‌ها تکیه کند — به‌جای این‌که خودش از دلِ دو متنِ
+  // بلند حدس بزند چه چیزی مرتبط است. نتیجه: هدف‌گیریِ دقیق‌تر و پوششِ کاملِ آن‌چه واقعاً داریم.
+  let coverageHint = "";
+  /** تکنولوژی‌هایی که هم آگهی خواسته و هم کاربر شاهد دارد — همان تقاطعی که مدل باید نام ببرد. */
+  let matchedTech: string[] = [];
+  if (job.description) {
+    try {
+      const reqs = await extractJobRequirements(userId, `${job.title}\n${job.description}`, deps.metering ?? {});
+      // فقط تکنولوژی‌ها سنجیده می‌شوند: آن‌ها نامِ مشخص‌اند و تطبیقِ رشته‌ای معنا دارد.
+      // الزاماتِ نثری («تجربه‌ی کار در استارتاپِ پرسرعت») هیچ‌وقت زیررشته‌ای تطبیق نمی‌خورند
+      // و فقط سیگنال را خراب می‌کنند؛ آن‌ها را مستقیم به مدل می‌دهیم تا خودش قضاوت کند.
+      const cov = assessCoverage(reqs.technologies, evidenceText);
+      matchedTech = cov.covered;
+      const parts: string[] = [];
+      if (cov.covered.length) {
+        parts.push(
+          `• تکنولوژی‌هایی که این آگهی خواسته و کاربر برایشان شاهد دارد (از رزومه یا از حوزه‌های اعلامیِ خودش). **هر کدام باید جایی در رزومه صریح نام برده شود** — در مهارت‌ها و دستِ‌کم یکی در bulletهای سوابق: ${cov.covered.join("، ")}`,
+        );
+      }
+      if (cov.missing.length) {
+        parts.push(`• آگهی این‌ها را هم خواسته ولی کاربر شاهدی ندارد — **نام نبر**: ${cov.missing.join("، ")}`);
+      }
+      if (reqs.responsibilities.length) {
+        parts.push(`• مسئولیت‌های این نقش (دستاوردهای واقعیِ متناظر را برجسته کن): ${reqs.responsibilities.slice(0, 10).join("؛ ")}`);
+      }
+      if (reqs.seniority) parts.push(`• سطحِ نقش: ${reqs.seniority}`);
+      coverageHint = parts.join("\n");
+    } catch {
+      /* بهترین‌تلاش — نبودِ تجزیه نباید ساختِ رزومه را بشکند */
+    }
+  }
+
   const tailored = await tailorFn(
     userId,
     buildProfileText(profile, userRow?.email),
@@ -204,15 +245,21 @@ export async function generateTailoredResume(
         declaredDomains.length
           ? [
               `کاربر اعلام کرده در این حوزه‌ها تجربه دارد: ${labelsForDomains(declaredDomains).join("، ")}.`,
-              // واژگانِ مشخص لازم است: مدل از برچسبِ فارسیِ حوزه نمی‌فهمد که مثلاً «Supabase»
-              // مجاز است. فهرستِ صریح می‌دهیم تا بتواند دقیقاً همان چیزی را که آگهی خواسته نام ببرد.
-              `مهارت‌های قابل‌استفاده از این حوزه‌ها (هر کدام را که آگهی می‌خواهد بیاور): ${vocabularyForDomains(declaredDomains).slice(0, 1500)}`,
-            ].join(" ")
+              // وقتی تقاطعِ آگهی×اعلامِ کاربر را داریم، همان فهرستِ کوتاه در بخشِ «تحلیلِ
+              // ساخت‌یافته» می‌آید و کافی است. ریختنِ کلِ واژگان فقط وقتی معنا دارد که شرحِ
+              // آگهی نداریم — و آن‌جا هم برش می‌خورد و اولین حوزه‌ها بقیه را کنار می‌زنند.
+              matchedTech.length
+                ? ""
+                : `مهارت‌های قابل‌استفاده از این حوزه‌ها (هر کدام را که آگهی می‌خواهد بیاور): ${vocabularyForDomains(declaredDomains).slice(0, 1500)}`,
+            ]
+              .filter(Boolean)
+              .join(" ")
           : "",
         typeof prefs.resumeEmphasis === "string" ? prefs.resumeEmphasis : "",
       ]
         .filter(Boolean)
         .join(" | "),
+      coverageHint,
     ),
     deps.metering ?? {},
   );
@@ -291,4 +338,4 @@ export async function getTailoredResumeHtml(
 }
 
 /** فقط برای تست — توابعِ داخلیِ خالص. */
-export const __testables = { keepOnlyRealSkills };
+export const __testables = { keepOnlyRealSkills, buildProfileText };

@@ -223,3 +223,28 @@ export function buildResumeTailorPrompt(profileText: string, jobText: string): C
     { role: "user", content: user },
   ];
 }
+
+
+const JD_EXTRACT_SYSTEM = [
+  "تو یک تحلیل‌گرِ آگهیِ شغلی هستی.",
+  "یک شرحِ آگهی می‌گیری و آن را به فهرستِ ساخت‌یافته‌ی نیازمندی‌ها تبدیل می‌کنی.",
+  "قواعد:",
+  "• فقط چیزی را بیرون بکش که **در خودِ آگهی** آمده؛ چیزی اضافه/حدس نزن.",
+  "• technologies: نامِ دقیقِ ابزار/تکنولوژی‌ها همان‌طور که نوشته شده (React، PostgreSQL، Supabase، Docker …).",
+  "• responsibilities: کارهایی که فرد باید انجام دهد، هر کدام یک عبارتِ کوتاه.",
+  "• qualifications: الزاماتِ غیرِفنی (سابقه‌ی مدیریتی/بنیان‌گذاری، سالِ تجربه، زبان، تحصیلات).",
+  "• seniority و domain را اگر آگهی مشخص کرده بنویس، وگرنه رها کن.",
+  "خروجی فقط یک شیء JSONِ معتبر؛ بدونِ متنِ اضافه یا مارک‌داون. ساختار:",
+  '{"technologies":["..."],"responsibilities":["..."],"qualifications":["..."],"seniority":"...","domain":"..."}',
+].join("\n");
+
+/**
+ * پرامپتِ «تجزیه‌ی آگهی به نیازمندی‌ها». عمداً **فقط آگهی** را می‌بیند و هیچ داده‌ای از
+ * کاربر ندارد — این گام صرفاً می‌گوید آگهی چه خواسته است، نه این‌که کسی واجدِ آن هست یا نه.
+ */
+export function buildJdExtractPrompt(jobText: string): ChatMessage[] {
+  return [
+    { role: "system", content: JD_EXTRACT_SYSTEM },
+    { role: "user", content: `شرحِ آگهی:\n${jobText}\n\nنیازمندی‌ها را استخراج کن و فقط JSON بده.` },
+  ];
+}
