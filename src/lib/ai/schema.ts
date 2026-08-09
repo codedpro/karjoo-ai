@@ -96,6 +96,14 @@ export const jdRequirementsSchema = z.object({
   responsibilities: z.array(z.string().min(1).max(200)).max(30).default([]),
   /** الزاماتِ غیرِفنی (سابقه‌ی مدیریتی، بنیان‌گذاری، زبان …). */
   qualifications: z.array(z.string().min(1).max(200)).max(30).default([]),
+  /**
+   * مفاهیم/روش‌های نام‌برده‌شده — Agile، Scrum، Design Patterns، NoSQL، ORM، Microservices…
+   *
+   * چرا جدا از technologies: این‌ها ابزار نیستند ولی **نامِ مشخص** دارند و کارفرما دقیقاً
+   * دنبالِ همان کلمه می‌گردد. پیش‌تر داخلِ جمله‌های بلندِ qualifications گم می‌شدند
+   * («آشنایی با پایگاه‌های داده NoSQL») و هیچ‌وقت در رزومه نمی‌آمدند.
+   */
+  concepts: z.array(z.string().min(1).max(80)).max(40).default([]),
   /** سطحِ ارشدیت اگر آگهی گفته باشد. */
   seniority: z.string().max(60).optional(),
   /** حوزه‌ی نقش (مثلاً «full-stack»، «sales»، «devops»). */

@@ -299,7 +299,7 @@ export async function generateTailoredResume(
       const cov = assessCoverage(reqs.technologies, evidenceText);
       matchedTech = cov.covered;
       // با انتخابِ این آگهی، خواسته‌های خودِ آگهی هم قابلِ نام‌بردن می‌شوند.
-      if (userSelected) admissibleTech = reqs.technologies;
+      if (userSelected) admissibleTech = [...reqs.technologies, ...reqs.concepts];
 
       // نقشه‌ی پخش: هر تکنولوژی به تازه‌ترین سابقه‌ای که از نظرِ **زمانی** جا دارد.
       // بدونِ این، مدل همه را در یک سابقه تلنبار می‌کند یا در همه تکرار می‌کند — و بدتر،
@@ -311,13 +311,15 @@ export async function generateTailoredResume(
         : DEFAULT_PINNED_COMPANIES;
       selectedRoles = selectRolesForJob(
         (profile.workExperience as RoleInput[] | null) ?? [],
-        [...reqs.technologies, ...reqs.responsibilities, reqs.domain ?? ""],
+        [...reqs.technologies, ...reqs.concepts, ...reqs.responsibilities, reqs.domain ?? ""],
         { pinned: pinnedCompanies },
       );
-      const arc = planCareerArc(
-        selectedRoles,
-        userSelected ? reqs.technologies : cov.covered,
-      );
+      // مفاهیم (Agile، NoSQL، Design Patterns…) هم باید جایی در رزومه نام برده شوند —
+      // کارفرما دقیقاً دنبالِ همان کلمه می‌گردد و پیش‌تر داخلِ جمله‌های qualifications گم می‌شدند.
+      const placeable = userSelected
+        ? [...reqs.technologies, ...reqs.concepts]
+        : [...cov.covered, ...assessCoverage(reqs.concepts, evidenceText).covered];
+      const arc = planCareerArc(selectedRoles, placeable);
       const arcText = describeArc(arc);
       for (const r of arc.roles) {
         if (r.company) plannedPeriods.set(normCompany(r.company), r.period);
@@ -367,6 +369,15 @@ export async function generateTailoredResume(
         parts.push(`• مسئولیت‌های این نقش (دستاوردهای واقعیِ متناظر را برجسته کن): ${reqs.responsibilities.slice(0, 10).join("؛ ")}`);
       }
       if (reqs.seniority) parts.push(`• سطحِ نقش: ${reqs.seniority}`);
+      // مشتریان **داخلِ متن** می‌آیند، نه در بخشِ جدا: کارفرما اسمِ تنها را باور نمی‌کند،
+      // «برای X این را ساختم و این نتیجه را داد» را باور می‌کند.
+      if (pickedClients.length) {
+        parts.push(
+          `• مشتریانِ واقعیِ کاربر که به این آگهی می‌خورند — نامشان را **داخلِ bulletهای سوابق** بیاور همراه با کاری که برایشان شد: ${pickedClients
+            .map((c) => (c.work?.trim() ? `${c.name} (${c.work.trim()})` : c.name))
+            .join("؛ ")}`,
+        );
+      }
       coverageHint = parts.join("\n");
     } catch {
       /* بهترین‌تلاش — نبودِ تجزیه نباید ساختِ رزومه را بشکند */
@@ -423,8 +434,7 @@ export async function generateTailoredResume(
     summary: tailored.summary,
     // گاردِ ضدِجعل: فقط مهارت‌هایی که واقعاً در پروفایل هست.
     skills: keepOnlyRealSkills(tailored.skills, evidenceText, admissibleTech),
-    // نام‌ها مستقیم از فهرستِ خودِ کاربر می‌آیند و اصلاً از مدل عبور نمی‌کنند.
-    clients: pickedClients.map((c) => ({ name: c.name, work: c.work ?? null })),
+
     // گاردِ کارفرما — همتای گاردِ مهارت، ولی سخت‌گیرتر: مهارت ادعایی درباره‌ی **خودِ
     // کاربر** است و او مرجعش است؛ نامِ کارفرما ادعایی درباره‌ی **یک شخصِ ثالث** است که
     // چیزی اعلام نکرده و خودش می‌تواند تکذیبش کند. پس هر شرکتی که در سوابقِ واقعیِ

@@ -59,7 +59,6 @@ const L: Record<ResumeLang, Record<string, string>> = {
     summary: "خلاصه",
     highlights: "نکات برجسته",
     experience: "سوابق شغلی",
-    clients: "مشتریان منتخب",
     skills: "مهارت‌ها",
     education: "تحصیلات",
     contact: "اطلاعات تماس",
@@ -69,33 +68,12 @@ const L: Record<ResumeLang, Record<string, string>> = {
     summary: "Summary",
     highlights: "Highlights",
     experience: "Experience",
-    clients: "Selected Clients",
     skills: "Skills",
     education: "Education",
     contact: "Contact",
     languages: "Languages",
   },
 };
-
-/**
- * بخشِ «مشتریانِ منتخب» — نام‌های واقعیِ کارفرمایانِ پروژه‌ای.
- *
- * چرا بخشِ جدا: کسی که استودیو دارد در بخشِ سوابق فقط یک سطر می‌گیرد، در حالی که چیزی
- * که کارفرما می‌شناسد نامِ مشتریانِ اوست نه نامِ استودیو. این بخش همان نام‌ها را —
- * انتخاب‌شده برای همین آگهی — جلو می‌آورد.
- */
-function clientsSection(d: ResumeTemplateData, label: string): string {
-  const cs = (d.clients ?? []).filter((c) => c?.name?.trim());
-  if (cs.length === 0) return "";
-  const items = cs
-    .map((c) =>
-      c.work?.trim()
-        ? `<li dir="auto"><strong>${esc(c.name)}</strong> — ${esc(c.work.trim())}</li>`
-        : `<li dir="auto"><strong>${esc(c.name)}</strong></li>`,
-    )
-    .join("");
-  return `<section><h2>${label}</h2><ul>${items}</ul></section>`;
-}
 
 export interface ResumeTemplateData {
   fullName: string;
@@ -118,11 +96,6 @@ export interface ResumeTemplateData {
   languages?: { name: string; level?: string | null }[];
   /** مهارت‌های دسته‌بندی‌شده — «Frontend: React, Next.js …» مثلِ رزومه‌ی خودِ کاربر. */
   skillGroups?: { label: string; items: string[] }[];
-  /**
-   * «مشتریانِ منتخب» — نام‌های واقعیِ کارفرمایانِ پروژه‌ای، انتخاب‌شده برای همین آگهی.
-   * برای کسی که استودیو دارد، همین نام‌ها را کارفرما می‌شناسد، نه نامِ استودیو را.
-   */
-  clients?: { name: string; work?: string | null }[];
 }
 
 function esc(s: unknown): string {
@@ -256,7 +229,6 @@ function sectionsHtml(d: ResumeTemplateData, t: Record<string, string>, opts: { 
           )
           .join("")}</section>`
       : "",
-    clientsSection(d, t.clients),
     opts.skills && sk.length
       ? `<section><h2>${t.skills}</h2><div class="chips">${sk.map((s) => `<span class="chip" dir="auto">${esc(s)}</span>`).join("")}</div></section>`
       : "",
@@ -414,8 +386,6 @@ function renderSignature(d: ResumeTemplateData, lang: ResumeLang): string {
           .join("")}</section>`
       : ""
   }
-
-  ${clientsSection(d, t.clients)}
 
   ${
     edu.length || langs.length
