@@ -165,14 +165,6 @@ export const SKILL_DOMAINS: DomainVocabulary[] = [
     ],
   },
   {
-    id: "hardware-iot",
-    labelFa: "سخت‌افزار و اینترنت اشیا",
-    skills: [
-      "Embedded Systems", "Arduino", "Raspberry Pi", "ESP32", "MQTT", "Firmware", "C",
-      "PCB Design", "Sensors", "IoT Protocols", "RTOS", "Microcontrollers", "Robotics",
-    ],
-  },
-  {
     id: "telecom-networks",
     labelFa: "مخابرات و شبکه",
     skills: [
@@ -186,31 +178,6 @@ export const SKILL_DOMAINS: DomainVocabulary[] = [
     skills: [
       "Content Writing", "Copywriting", "Technical Writing", "Editing", "Storytelling",
       "Content Strategy", "Documentation", "Translation", "Localisation", "Scriptwriting",
-    ],
-  },
-  {
-    id: "hr-recruiting",
-    labelFa: "منابع انسانی و جذب",
-    skills: [
-      "Recruiting", "Technical Recruiting", "Talent Sourcing", "Interviewing", "Onboarding",
-      "HR Operations", "Performance Management", "Employer Branding", "HR Analytics",
-      "Compensation & Benefits",
-    ],
-  },
-  {
-    id: "finance-accounting",
-    labelFa: "مالی و حسابداری",
-    skills: [
-      "Accounting", "Financial Reporting", "Budgeting", "Forecasting", "Financial Analysis",
-      "Payroll", "Tax", "Auditing", "Cost Control", "Invoicing", "ERP", "Financial Modelling",
-    ],
-  },
-  {
-    id: "customer-support",
-    labelFa: "پشتیبانی و موفقیت مشتری",
-    skills: [
-      "Customer Support", "Technical Support", "Ticketing Systems", "Zendesk", "SLA Management",
-      "Troubleshooting", "Escalation Management", "Knowledge Base", "Live Chat", "Call Centre",
     ],
   },
 ];

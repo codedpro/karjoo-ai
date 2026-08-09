@@ -25,6 +25,7 @@ import { renderResumeHtml, type ResumeRenderData } from "@/lib/resume/resume-tem
 import { labelsForDomains, vocabularyForDomains } from "@/lib/resume/declared-domains";
 import { assessCoverage, extractJobRequirements } from "@/lib/apply/jd-requirements";
 import { describeArc, planCareerArc, type RoleInput } from "@/lib/resume/career-arc";
+import { DEFAULT_PINNED_COMPANIES, selectRolesForJob } from "@/lib/resume/role-selection";
 import {
   pickTemplate,
   renderResumeTemplate,
@@ -116,6 +117,34 @@ function keepOnlyRealSkills(
     kept.push(s); // ترتیب/نگارشِ هدف‌گیری‌شده‌ی AI حفظ می‌شود
   }
   return kept;
+}
+
+/**
+ * سوابقِ خروجیِ مدل را به کارفرمایانِ **واقعیِ انتخاب‌شده** محدود می‌کند.
+ *
+ * حذفِ یک سابقه از رزومه کاملاً عادی است — کسی موظف نیست همه‌ی شغل‌هایش را بنویسد.
+ * ولی نوشتنِ نامِ شرکتی که کاربر آن‌جا کار نکرده چیزِ دیگری است: ادعایی درباره‌ی سازمانی
+ * که خودش آن را تأیید نکرده، و با یک تماسِ ساده تکذیب می‌شود. آن‌وقت هزینه‌اش برای کاربر
+ * «کمی اغراق» نیست، «دروغ در سابقه» است.
+ *
+ * اگر انتخابی انجام نشده باشد (مثلاً آگهی شرح نداشت) فهرست دست‌نخورده می‌ماند.
+ */
+/** کلیدِ تطبیقِ نامِ شرکت — بی‌توجه به فاصله/پرانتز/بزرگی حروف. */
+function normCompany(v: string): string {
+  return v.toLowerCase().replace(/[\s._()-]+/g, "");
+}
+
+function keepOnlyRealEmployers<T extends { company?: string | null }>(
+  entries: T[],
+  selected: readonly RoleInput[],
+): T[] {
+  if (selected.length === 0) return entries;
+  const allowed = selected.map((r) => normCompany(r.company ?? "")).filter(Boolean);
+  return entries.filter((e) => {
+    const c = normCompany(e.company ?? "");
+    if (!c) return true; // بدونِ نامِ شرکت ادعایی درباره‌ی کسی نیست
+    return allowed.some((a) => a.includes(c) || c.includes(a));
+  });
 }
 
 function buildProfileText(
@@ -254,6 +283,10 @@ export async function generateTailoredResume(
   let matchedTech: string[] = [];
   /** تکنولوژی‌هایی که با انتخابِ همین آگهی مجاز شده‌اند (فقط وقتی کاربر انتخابش کرده). */
   let admissibleTech: string[] = [];
+  /** سوابقی که در همین رزومه می‌آیند (زیرمجموعه‌ای از سوابقِ واقعی). */
+  let selectedRoles: RoleInput[] = [];
+  /** بازه‌ی نهاییِ هر شرکت طبقِ نقشه — مرجعِ قطعیِ تاریخ‌ها، نه چیزی که مدل نوشته. */
+  const plannedPeriods = new Map<string, string>();
   if (job.description) {
     try {
       const reqs = await extractJobRequirements(userId, `${job.title}\n${job.description}`, deps.metering ?? {});
@@ -268,11 +301,24 @@ export async function generateTailoredResume(
       // نقشه‌ی پخش: هر تکنولوژی به تازه‌ترین سابقه‌ای که از نظرِ **زمانی** جا دارد.
       // بدونِ این، مدل همه را در یک سابقه تلنبار می‌کند یا در همه تکرار می‌کند — و بدتر،
       // ممکن است ابزارِ ۲۰۲۵ را به شغلِ ۱۳۹۴ بچسباند.
+      // کدام سوابق اصلاً در این رزومه بیایند: شرکت‌های سنجاق‌شده‌ی کاربر + مرتبط‌ترین‌ها
+      // به همین آگهی، و فقط **یک** شغلِ جاری. حذف آزاد است؛ جایگزینیِ نامِ کارفرما نه.
+      const pinnedCompanies = Array.isArray(prefs.pinnedCompanies)
+        ? (prefs.pinnedCompanies as unknown[]).filter((v): v is string => typeof v === "string")
+        : DEFAULT_PINNED_COMPANIES;
+      selectedRoles = selectRolesForJob(
+        (profile.workExperience as RoleInput[] | null) ?? [],
+        [...reqs.technologies, ...reqs.responsibilities, reqs.domain ?? ""],
+        { pinned: pinnedCompanies },
+      );
       const arc = planCareerArc(
-        ((profile.workExperience as RoleInput[] | null) ?? []),
+        selectedRoles,
         userSelected ? reqs.technologies : cov.covered,
       );
       const arcText = describeArc(arc);
+      for (const r of arc.roles) {
+        if (r.company) plannedPeriods.set(normCompany(r.company), r.period);
+      }
 
       const parts: string[] = [];
       if (cov.covered.length) {
@@ -295,6 +341,9 @@ export async function generateTailoredResume(
           ].join("\n"),
         );
       }
+      parts.push(
+        "• **فقط همین سوابق** در رزومه بیایند و به همین ترتیب — سابقه‌ای که این‌جا نیست اصلاً نیاور، و هیچ شرکتِ دیگری اضافه نکن.",
+      );
       if (arc.unplaced.length) {
         parts.push(
           `• این‌ها در هیچ سابقه‌ای جای زمانیِ معتبر نداشتند، پس فقط در بخشِ مهارت‌ها بیایند و در bulletها به هیچ شرکتی نسبت داده نشوند: ${arc.unplaced.join("، ")}`,
@@ -310,9 +359,16 @@ export async function generateTailoredResume(
     }
   }
 
+  // مدل فقط سوابقِ انتخاب‌شده را می‌بیند. اگر نسخه‌ی کاملِ پروفایل را ببیند، بازه‌ها را
+  // از همان‌جا رونویسی می‌کند و «Present»های حذف‌شده دوباره برمی‌گردند.
+  const profileForPrompt =
+    selectedRoles.length > 0
+      ? ({ ...profile, workExperience: selectedRoles } as typeof profile)
+      : profile;
+
   const tailored = await tailorFn(
     userId,
-    buildProfileText(profile, userRow?.email),
+    buildProfileText(profileForPrompt, userRow?.email),
     buildJobText(
       job,
       [
@@ -353,10 +409,16 @@ export async function generateTailoredResume(
     summary: tailored.summary,
     // گاردِ ضدِجعل: فقط مهارت‌هایی که واقعاً در پروفایل هست.
     skills: keepOnlyRealSkills(tailored.skills, evidenceText, admissibleTech),
-    experience: tailored.experience.map((e) => ({
+    // گاردِ کارفرما — همتای گاردِ مهارت، ولی سخت‌گیرتر: مهارت ادعایی درباره‌ی **خودِ
+    // کاربر** است و او مرجعش است؛ نامِ کارفرما ادعایی درباره‌ی **یک شخصِ ثالث** است که
+    // چیزی اعلام نکرده و خودش می‌تواند تکذیبش کند. پس هر شرکتی که در سوابقِ واقعیِ
+    // کاربر نیست حذف می‌شود، حتی اگر مدل آن را نوشته باشد.
+    experience: keepOnlyRealEmployers(tailored.experience, selectedRoles).map((e) => ({
       company: e.company ?? null,
       title: e.title ?? null,
-      period: e.period ?? null,
+      // بازه از نقشه می‌آید، نه از مدل: تاریخ‌های سابقه واقعیت‌اند و بازنویسی‌شان — حتی
+      // یک «Present»ِ اضافه — ادعایی است که کاربر نکرده.
+      period: (e.company ? plannedPeriods.get(normCompany(e.company)) : null) ?? e.period ?? null,
       bullets: e.bullets,
     })),
     education: ((profile.education as ProfileEducation[] | null) ?? []).map((e) => ({
@@ -413,4 +475,4 @@ export async function getTailoredResumeHtml(
 }
 
 /** فقط برای تست — توابعِ داخلیِ خالص. */
-export const __testables = { keepOnlyRealSkills, buildProfileText };
+export const __testables = { keepOnlyRealSkills, keepOnlyRealEmployers, buildProfileText };
