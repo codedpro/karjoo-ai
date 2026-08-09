@@ -66,7 +66,7 @@ function periodLabel(role: RoleInput): string {
  * بی‌ربط به‌نظر می‌رسد. با سقف، فهرست بینِ شرکت‌ها پخش می‌شود و هر سابقه دلیلی برای
  * خوانده‌شدن دارد.
  */
-export const MAX_TECH_PER_ROLE = 5;
+export const MAX_TECH_PER_ROLE = 7;
 
 /**
  * تکنولوژی‌های خواسته‌شده‌ی آگهی را رویِ سوابقِ واقعی پخش می‌کند.

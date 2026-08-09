@@ -13,7 +13,9 @@ import { meteredChatJson, type MeteringOptions } from "@/lib/billing/metering";
  * صفحه‌ی A4** محتوا باشد (۳ تا ۵ bullet برای هر سابقه). با سقفِ عمومیِ ۱۲۰۰، JSON وسطِ
  * رشته بریده می‌شد و کلِ ساختِ رزومه شکست می‌خورد.
  */
-export const RESUME_TAILOR_MAX_TOKENS = 4000;
+// سقفِ بالاتر چون هر سابقه حالا یک جمله‌ی context + ۴ تا ۶ bullet دارد؛ با ۴۰۰۰ خروجی
+// وسطِ JSON بریده می‌شد و کلِ رزومه از دست می‌رفت.
+export const RESUME_TAILOR_MAX_TOKENS = 6000;
 
 export class ResumeTailorError extends Error {
   readonly code = "resume_tailor_invalid" as const;

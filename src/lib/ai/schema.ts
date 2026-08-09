@@ -63,8 +63,8 @@ export type ScoreAndDraftOutput = z.infer<typeof scoreAndDraftSchema>;
 export const resumeTailorSchema = z.object({
   /** عنوانِ حرفه‌ایِ هدف‌گیری‌شده برای این نقش (مثلِ عنوانِ آگهی، منطبق با تجربه‌ی کاربر). */
   headline: z.string().min(1).max(160),
-  /** خلاصه‌ی حرفه‌ایِ ۲–۴ جمله‌ای، بازنویسی‌شده برای این آگهی. */
-  summary: z.string().min(1).max(1200),
+  /** خلاصه‌ی حرفه‌ایِ ۴ جمله‌ای، بازنویسی‌شده برای این آگهی. */
+  summary: z.string().min(1).max(1600),
   /** مهارت‌های مرتبط، *مرتب‌شده بر اساسِ ربط به آگهی* (زیرمجموعه‌ای از مهارت‌های واقعیِ کاربر). */
   skills: z.array(z.string().min(1).max(60)).max(40),
   /** تجربه‌های شغلی با bulletهای هدف‌گیری‌شده (بازنویسیِ همان نقش‌های واقعی). */
@@ -74,6 +74,12 @@ export const resumeTailorSchema = z.object({
         company: z.string().max(160).optional(),
         title: z.string().max(160).optional(),
         period: z.string().max(80).optional(),
+        /**
+         * یک جمله‌ی «زمینه» پیش از bulletها — چه شرکتی، چه محصولی، چه مقیاسی، نقشِ کاربر
+         * تا کجا بود. مصاحبه‌کننده اول همین را می‌خواهد بداند؛ بدونِ آن، bulletها در خلأ
+         * خوانده می‌شوند و معلوم نیست کارِ یک‌نفره بوده یا تیمِ ۲۰ نفره.
+         */
+        context: z.string().max(400).optional(),
         bullets: z.array(z.string().min(1).max(400)).max(8),
       }),
     )

@@ -442,6 +442,7 @@ export async function generateTailoredResume(
     experience: keepOnlyRealEmployers(tailored.experience, selectedRoles).map((e) => ({
       company: e.company ?? null,
       title: e.title ?? null,
+      context: e.context ?? null,
       // بازه از نقشه می‌آید، نه از مدل: تاریخ‌های سابقه واقعیت‌اند و بازنویسی‌شان — حتی
       // یک «Present»ِ اضافه — ادعایی است که کاربر نکرده.
       period: (e.company ? plannedPeriods.get(normCompany(e.company)) : null) ?? e.period ?? null,

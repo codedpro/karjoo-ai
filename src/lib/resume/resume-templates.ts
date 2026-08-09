@@ -84,7 +84,14 @@ export interface ResumeTemplateData {
   links?: { label?: string | null; url: string }[];
   summary: string;
   skills: string[];
-  experience: { company?: string | null; title?: string | null; period?: string | null; bullets: string[] }[];
+  experience: {
+    company?: string | null;
+    title?: string | null;
+    period?: string | null;
+    /** یک جمله‌ی زمینه پیش از bulletها — شرکت/محصول/مقیاس/دامنه‌ی نقش. */
+    context?: string | null;
+    bullets: string[];
+  }[];
   education?: { school?: string | null; degree?: string | null; period?: string | null }[];
   highlights?: string[];
   lang?: ResumeLang;
@@ -188,6 +195,8 @@ function head(d: ResumeTemplateData, lang: ResumeLang, css: string): string {
 }
 
 const BASE_CSS = `
+  .item-ctx { color:#475569; margin:2px 0 4px; }
+
   @page { size: A4; margin: 14mm 14mm; }
   * { box-sizing: border-box; }
   body { font-family: "Vazirmatn","Segoe UI",Tahoma,Arial,sans-serif; color:#1a1d21; margin:0; font-size:11.5px; line-height:1.75; }
@@ -225,7 +234,7 @@ function sectionsHtml(d: ResumeTemplateData, t: Record<string, string>, opts: { 
         <span class="item-title" dir="auto">${esc(e.title || "")}</span>
         ${e.company ? `<span class="item-sub" dir="auto">${esc(e.company)}</span>` : ""}
         ${e.period ? `<span class="item-period" dir="auto">${esc(e.period)}</span>` : ""}
-      </div>${e.bullets?.length ? `<ul>${e.bullets.map((b) => `<li dir="auto">${rich(b)}</li>`).join("")}</ul>` : ""}</div>`,
+      </div>${e.context ? `<div class="item-ctx" dir="auto">${rich(e.context)}</div>` : ""}${e.bullets?.length ? `<ul>${e.bullets.map((b) => `<li dir="auto">${rich(b)}</li>`).join("")}</ul>` : ""}</div>`,
           )
           .join("")}</section>`
       : "",
@@ -381,7 +390,7 @@ function renderSignature(d: ResumeTemplateData, lang: ResumeLang): string {
         <span class="item-title" dir="auto">${esc(e.title || "")}</span>
         ${e.company ? `<span class="item-sub" style="color:${A};font-weight:700" dir="auto">${esc(e.company)}</span>` : ""}
         ${e.period ? `<span class="item-period" dir="auto">${esc(e.period)}</span>` : ""}
-      </div>${e.bullets?.length ? `<ul>${e.bullets.map((b) => `<li dir="auto">${rich(b)}</li>`).join("")}</ul>` : ""}</div>`,
+      </div>${e.context ? `<div class="item-ctx" dir="auto">${rich(e.context)}</div>` : ""}${e.bullets?.length ? `<ul>${e.bullets.map((b) => `<li dir="auto">${rich(b)}</li>`).join("")}</ul>` : ""}</div>`,
           )
           .join("")}</section>`
       : ""
