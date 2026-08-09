@@ -17,16 +17,35 @@ LOG="${LOG_DIR}/worker.log"
 
 mkdir -p "${LOG_DIR}"
 
-# Is a worker (cwd == WORKER_DIR, running dist/main.js) already alive?
+# A worker that exists but stopped ticking is worse than one that died: the process
+# holds the slot, so this script kept exiting happily while the node had not
+# heartbeated for over an hour. So "running" now means *alive AND ticking*.
+#
+# Liveness signal: the worker appends a line to the log every loop interval, so a log
+# older than STALE_AFTER_SEC means the loop is wedged even if the pid is there.
+STALE_AFTER_SEC=300
+
 worker_running() {
-  local pid cwd
+  local pid cwd found=1
   for pid in $(pgrep -f "dist/main\.js" 2>/dev/null); do
     cwd="$(readlink -f "/proc/${pid}/cwd" 2>/dev/null || true)"
     if [ "${cwd}" = "${WORKER_DIR}" ]; then
-      return 0
+      found=0
+      break
     fi
   done
-  return 1
+  [ "${found}" -eq 0 ] || return 1
+
+  # A pid exists — is it still ticking?
+  if [ -f "${LOG}" ]; then
+    local age
+    age=$(( $(date +%s) - $(stat -c %Y "${LOG}" 2>/dev/null || echo 0) ))
+    if [ "${age}" -gt "${STALE_AFTER_SEC}" ]; then
+      echo "$(date -Is) [keepalive] worker pid alive but log stale (${age}s) — treating as hung" >> "${LOG}"
+      return 1
+    fi
+  fi
+  return 0
 }
 
 if worker_running; then

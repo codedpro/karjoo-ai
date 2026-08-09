@@ -48,6 +48,8 @@ export interface AgentDeps {
   rand?: () => number;
   /** Disable screenshots (tests). */
   captureScreenshot?: boolean;
+  /** Watchdog deadline for one tick (injectable for tests). */
+  tickTimeoutMs?: number;
 }
 
 /** Summary of one tick (for logging/tests). */
@@ -174,12 +176,39 @@ export interface LoopControl {
  * The main loop: run a tick, sleep loopIntervalSec, repeat — until a restart
  * command fires or the control signals stop. Returns when the loop ends.
  */
+/**
+ * How long a single tick may take before we treat the loop as wedged.
+ *
+ * Why this exists: `runTick` awaits network and browser work, and a promise that
+ * never settles stalls the `while` below forever — no error, no exit, no next tick.
+ * That happened in production: the process stayed alive with zero open sockets and
+ * stopped heartbeating for over an hour, and because the supervisor only checks that
+ * *a process* exists, it never relaunched. A hung worker is worse than a dead one.
+ */
+export const TICK_TIMEOUT_MS = 10 * 60_000;
+
+/** Resolves to `"timeout"` if the work outlives the deadline. */
+async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | "timeout"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), ms);
+    // Never hold the process open just for the watchdog.
+    (timer as unknown as { unref?: () => void }).unref?.();
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function runLoop(
   deps: AgentDeps,
   control: LoopControl = { stopped: () => false },
 ): Promise<void> {
   const log = deps.logger ?? defaultLogger;
   const sleep = deps.sleep ?? realSleep;
+  const tickTimeoutMs = deps.tickTimeoutMs ?? TICK_TIMEOUT_MS;
   log.info("worker loop starting", {
     nodeKey: deps.cfg.nodeKey,
     region: deps.cfg.region,
@@ -190,7 +219,18 @@ export async function runLoop(
   while (!control.stopped()) {
     let tick: TickResult;
     try {
-      tick = await runTick(deps);
+      const outcome = await withDeadline(runTick(deps), tickTimeoutMs);
+      if (outcome === "timeout") {
+        // Exit rather than continue: whatever wedged the tick (a stuck browser, a
+        // socket that never closes) is still holding resources, and a fresh process
+        // from the supervisor is cheaper and more reliable than trying to unwind it.
+        log.error("tick exceeded deadline; exiting so the supervisor restarts us", {
+          tickTimeoutMs,
+        });
+        (deps.restart ?? (() => process.exit(1)))();
+        return;
+      }
+      tick = outcome;
     } catch (err) {
       log.error("tick threw (continuing)", { error: errMessage(err) });
       await sleep(deps.cfg.loopIntervalSec * 1000);

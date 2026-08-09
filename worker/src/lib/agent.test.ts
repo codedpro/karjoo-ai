@@ -13,7 +13,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-import { runTick, type AgentDeps } from "./agent.js";
+import { runLoop, runTick, type AgentDeps } from "./agent.js";
 import { KarjooFleetApi } from "./api-client.js";
 import { loadConfig, type WorkerConfig } from "./config.js";
 import { Logger, type LogLevel } from "./logger.js";
@@ -174,5 +174,69 @@ describe("runTick — resilience + §10 no-log-session", () => {
     expect(all).not.toContain("SECRET-t2");
     expect(all).not.toContain("KarjooUA");
     expect(all).not.toContain("JOBINJA_SESSION");
+  });
+});
+
+/**
+ * نگهبانِ زمانِ tick.
+ *
+ * چرا لازم شد: در تولید یک tick هرگز تمام نشد. پروسه زنده ماند، هیچ سوکتِ بازی نداشت،
+ * بیش از یک ساعت heartbeat نفرستاد — و چون سوپروایزر فقط «وجودِ پروسه» را می‌سنجید،
+ * هیچ‌وقت نودِ تازه بالا نیاورد. ورکرِ هنگ‌کرده از ورکرِ مرده بدتر است.
+ */
+describe("runLoop — tick watchdog", () => {
+  const silent = { info: () => {}, warn: () => {}, error: () => {} } as never;
+
+  it("tickِ بی‌پایان → درخواستِ restart و پایانِ حلقه", async () => {
+    let restarted = false;
+    // heartbeat هرگز resolve نمی‌شود — دقیقاً همان چیزی که حلقه را در تولید قفل کرد.
+    const api = { heartbeat: () => new Promise<never>(() => {}) } as never;
+    const deps = {
+      api,
+      cfg: { nodeKey: "n", region: "r", agentVersion: "0", loopIntervalSec: 1 },
+      launchBrowser: (() => {}) as never,
+      runScript: (() => {}) as never,
+      restart: () => {
+        restarted = true;
+      },
+      sleep: async () => {},
+      logger: silent,
+      tickTimeoutMs: 20,
+    } as never;
+
+    const finished = await Promise.race([
+      runLoop(deps).then(() => "ended"),
+      new Promise((r) => setTimeout(() => r("still-running"), 900)),
+    ]);
+    expect(finished).toBe("ended");
+    expect(restarted).toBe(true);
+  });
+
+  it("بدونِ هنگ، حلقه به کارش ادامه می‌دهد", async () => {
+    let ticks = 0;
+    let stop = false;
+    const api = {
+      heartbeat: async () => {
+        ticks += 1;
+        if (ticks >= 2) stop = true;
+        return { ok: true };
+      },
+      claim: async () => [],
+      pollCommands: async () => [],
+    } as never;
+    const deps = {
+      api,
+      cfg: { nodeKey: "n", region: "r", agentVersion: "0", loopIntervalSec: 0 },
+      launchBrowser: (() => {}) as never,
+      runScript: (() => {}) as never,
+      restart: () => {
+        throw new Error("must not restart on a healthy tick");
+      },
+      sleep: async () => {},
+      logger: silent,
+      tickTimeoutMs: 5_000,
+    } as never;
+    await runLoop(deps, { stopped: () => stop });
+    expect(ticks).toBeGreaterThanOrEqual(2);
   });
 });

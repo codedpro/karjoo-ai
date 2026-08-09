@@ -128,3 +128,53 @@ describe("preferLanguage", () => {
     expect(isPersianScript("دانشگاه")).toBe(true);
   });
 });
+
+/**
+ * عددِ ساختگی — خطرناک‌ترین چیزی که مدل می‌تواند بنویسد.
+ *
+ * زنده دیده شد: «۳۰٪ کاهش کارهای دستی» و «۱۵٪ بهبود کارایی کوئری» که هیچ‌کدام در
+ * سابقه‌ی کاربر نبودند. درصدِ ساختگی اولین چیزی است که در مصاحبه پرسیده می‌شود.
+ */
+describe("ungroundedFigures", () => {
+  const EVIDENCE = "improved efficiency by 20%, auto-resolves ~90% of messages, 2M+ subscribers";
+
+  const withPct = (pct: string) =>
+    base({
+      experience: [
+        { company: "CodeNest", title: "Founder", bullets: [`Cut manual work by ${pct}.`] },
+      ],
+    });
+
+  it("درصدی که در سابقه نیست را می‌گیرد", () => {
+    expect(findResumeGaps(withPct("30%"), [], EVIDENCE).ungroundedFigures).toEqual(["30%"]);
+  });
+
+  it("درصدِ واقعیِ سابقه را نمی‌گیرد", () => {
+    expect(findResumeGaps(withPct("20%"), [], EVIDENCE).ungroundedFigures).toEqual([]);
+    expect(findResumeGaps(withPct("90%"), [], EVIDENCE).ungroundedFigures).toEqual([]);
+  });
+
+  it("فاصله‌ی پیش از ٪ فرقی نمی‌کند", () => {
+    expect(findResumeGaps(withPct("20 %"), [], EVIDENCE).ungroundedFigures).toEqual([]);
+  });
+
+  it("تکراری‌ها یک‌بار گزارش می‌شوند", () => {
+    const t = base({
+      experience: [{ company: "X", bullets: ["30% faster", "another 30% gain"] }],
+    });
+    expect(findResumeGaps(t, [], EVIDENCE).ungroundedFigures).toEqual(["30%"]);
+  });
+
+  it("بدونِ سابقه، هیچ عددی ساختگی اعلام نمی‌شود (مثبتِ کاذب نسازیم)", () => {
+    expect(findResumeGaps(withPct("30%"), []).ungroundedFigures).toEqual([]);
+  });
+
+  it("عددِ ساختگی ترمیم را لازم می‌کند", () => {
+    expect(needsRepair(findResumeGaps(withPct("30%"), [], EVIDENCE))).toBe(true);
+  });
+
+  it("پیامِ ترمیم عددِ ساختگی را نام می‌برد", () => {
+    const s = buildRepairInstruction(findResumeGaps(withPct("30%"), [], EVIDENCE), "en");
+    expect(s).toContain("30%");
+  });
+});

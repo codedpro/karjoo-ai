@@ -428,14 +428,23 @@ export async function generateTailoredResume(
   // بازبینی و ترمیم: شکاف‌ها را **در کد** می‌سنجیم و فقط اگر چیزی کم بود یک پاسِ کوتاهِ
   // دوم می‌زنیم. بزرگ‌تر کردنِ پرامپتِ اصلی جواب نداد — هر دستورِ اضافه چیزِ دیگری را خراب کرد.
   {
-    const gaps = findResumeGaps(tailored, placeableTerms);
+    const gaps = findResumeGaps(tailored, placeableTerms, evidenceText);
     if (needsRepair(gaps)) {
-      tailored = await repairTailoredResume(
+      const repaired = await repairTailoredResume(
         userId,
         tailored,
         buildRepairInstruction(gaps, resumeLang),
         deps.metering ?? {},
       );
+      // ترمیم فقط وقتی پذیرفته می‌شود که واقعاً بهتر باشد: عددِ ساختگی کمتر، بدونِ
+      // آب‌رفتنِ محسوسِ متن یا مهارت‌ها. وگرنه همان نسخه‌ی اول می‌ماند.
+      const after = findResumeGaps(repaired, placeableTerms, evidenceText);
+      const shrank = after.chars < gaps.chars * 0.9 || after.skillCount < gaps.skillCount * 0.7;
+      const better =
+        after.ungroundedFigures.length <= gaps.ungroundedFigures.length &&
+        after.missingTerms.length <= gaps.missingTerms.length;
+      if (better && !shrank) tailored = repaired;
+      else if (after.ungroundedFigures.length < gaps.ungroundedFigures.length) tailored = repaired;
     }
   }
 
