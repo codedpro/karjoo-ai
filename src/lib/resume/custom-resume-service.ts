@@ -26,6 +26,7 @@ import { labelsForDomains, vocabularyForDomains } from "@/lib/resume/declared-do
 import { assessCoverage, extractJobRequirements } from "@/lib/apply/jd-requirements";
 import { describeArc, planCareerArc, type RoleInput } from "@/lib/resume/career-arc";
 import { DEFAULT_PINNED_COMPANIES, selectRolesForJob } from "@/lib/resume/role-selection";
+import { selectClientsForJob, type ClientEntry } from "@/lib/resume/client-selection";
 import {
   pickTemplate,
   renderResumeTemplate,
@@ -287,6 +288,8 @@ export async function generateTailoredResume(
   let selectedRoles: RoleInput[] = [];
   /** بازه‌ی نهاییِ هر شرکت طبقِ نقشه — مرجعِ قطعیِ تاریخ‌ها، نه چیزی که مدل نوشته. */
   const plannedPeriods = new Map<string, string>();
+  /** مشتریانِ واقعیِ منتخب برای همین آگهی (از فهرستِ خودِ کاربر). */
+  let pickedClients: ClientEntry[] = [];
   if (job.description) {
     try {
       const reqs = await extractJobRequirements(userId, `${job.title}\n${job.description}`, deps.metering ?? {});
@@ -318,6 +321,17 @@ export async function generateTailoredResume(
       const arcText = describeArc(arc);
       for (const r of arc.roles) {
         if (r.company) plannedPeriods.set(normCompany(r.company), r.period);
+      }
+
+      // «مشتریانِ منتخب»: برای کسی که استودیو دارد، کارفرما نامِ مشتریانش را می‌شناسد نه
+      // نامِ استودیو را. از فهرستِ واقعیِ خودِ کاربر، مرتبط‌ترین‌ها به کشور و حوزه‌ی این آگهی.
+      const clientList = Array.isArray(prefs.clients) ? (prefs.clients as ClientEntry[]) : [];
+      if (clientList.length) {
+        pickedClients = selectClientsForJob(
+          clientList,
+          `${job.title ?? ""} ${job.city ?? ""} ${job.description ?? ""}`,
+          [...reqs.technologies, reqs.domain ?? ""],
+        ).clients;
       }
 
       const parts: string[] = [];
@@ -409,6 +423,8 @@ export async function generateTailoredResume(
     summary: tailored.summary,
     // گاردِ ضدِجعل: فقط مهارت‌هایی که واقعاً در پروفایل هست.
     skills: keepOnlyRealSkills(tailored.skills, evidenceText, admissibleTech),
+    // نام‌ها مستقیم از فهرستِ خودِ کاربر می‌آیند و اصلاً از مدل عبور نمی‌کنند.
+    clients: pickedClients.map((c) => ({ name: c.name, work: c.work ?? null })),
     // گاردِ کارفرما — همتای گاردِ مهارت، ولی سخت‌گیرتر: مهارت ادعایی درباره‌ی **خودِ
     // کاربر** است و او مرجعش است؛ نامِ کارفرما ادعایی درباره‌ی **یک شخصِ ثالث** است که
     // چیزی اعلام نکرده و خودش می‌تواند تکذیبش کند. پس هر شرکتی که در سوابقِ واقعیِ

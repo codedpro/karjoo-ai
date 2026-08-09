@@ -103,3 +103,25 @@ export const jdRequirementsSchema = z.object({
 });
 
 export type JdRequirements = z.infer<typeof jdRequirementsSchema>;
+
+
+/**
+ * فهرستِ مشتریان/کارفرمایانِ استخراج‌شده از **متنِ رزومه‌ی خودِ کاربر**.
+ * منبع فقط همان متن است؛ این گام چیزی کشف یا پیشنهاد نمی‌کند.
+ */
+export const clientListSchema = z.object({
+  clients: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(120),
+        country: z.string().max(8).optional(),
+        domain: z.string().max(60).optional(),
+        work: z.string().max(160).optional(),
+        year: z.number().int().min(1970).max(2100).optional(),
+      }),
+    )
+    .max(60)
+    .default([]),
+});
+
+export type ClientList = z.infer<typeof clientListSchema>;
