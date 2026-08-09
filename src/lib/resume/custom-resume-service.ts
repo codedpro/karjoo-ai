@@ -24,6 +24,7 @@ import { meteredTailorResume } from "@/lib/resume/tailor";
 import { renderResumeHtml, type ResumeRenderData } from "@/lib/resume/resume-template";
 import { labelsForDomains, vocabularyForDomains } from "@/lib/resume/declared-domains";
 import { assessCoverage, extractJobRequirements } from "@/lib/apply/jd-requirements";
+import { describeArc, planCareerArc, type RoleInput } from "@/lib/resume/career-arc";
 import {
   pickTemplate,
   renderResumeTemplate,
@@ -32,11 +33,34 @@ import {
   type ResumeTemplateData,
 } from "@/lib/resume/resume-templates";
 
+/**
+ * از کدام مسیر این آگهی به رزومه‌سازی رسیده — یعنی کاربر **چطور** اعلام کرده که خودش را
+ * واجدِ این شغل می‌داند.
+ *
+ * چرا این مفهوم لازم شد: گاردِ مهارت برای جلوگیری از **جعلِ مدل** ساخته شده بود، ولی همان
+ * گارد سرِ راهِ خودِ کاربر هم می‌ایستاد. اگر کسی روی یک آگهیِ SEO کلیکِ «اپلای» بزند،
+ * دیگر بحثِ حدسِ مدل نیست — کاربر صریحاً گفته این شغل را می‌خواهم و از پسش برمی‌آیم.
+ * مرجعِ توانایی‌های کاربر خودِ اوست، نه فهرستِ حوزه‌هایی که ما از قبل نوشته‌ایم.
+ *
+ * پس گارد جابه‌جا می‌شود، نه برداشته: نقطه‌ی تصمیم می‌رود به **انتخابِ شغل** —
+ *   • `manual`     — کاربر خودش روی همین آگهی «اپلای» زده.
+ *   • `auto_apply` — آگهی از فیلترهای خودِ کاربر و امتیازِ تطبیق‌دهنده رد شده و کاربر
+ *                    اپلای خودکار را روشن کرده.
+ *   • `none`       — هیچ انتخابی ثبت نشده (مثلاً پیش‌نمایشِ داخلی) → گاردِ کامل.
+ *
+ * چیزی که هیچ مسیری باز نمی‌کند: ساختنِ کارفرما، عنوان یا بازه‌ی زمانیِ جعلی، و نسبت‌دادنِ
+ * تکنولوژی به سالی که هنوز وجود نداشته (`tech-timeline`). اعلامِ کاربر درباره‌ی **توانایی**
+ * اوست، نه مجوزِ بازنویسیِ **سابقه**.
+ */
+export type QualificationSource = "manual" | "auto_apply" | "none";
+
 export interface GenerateDeps {
   db?: Database;
   metering?: MeteringOptions;
   /** تزریق برای تست — پیش‌فرض meteredTailorResume. */
   tailorFn?: typeof meteredTailorResume;
+  /** کاربر این آگهی را چطور انتخاب کرده (پیش‌فرض: هیچ — گاردِ کامل). */
+  source?: QualificationSource;
 }
 
 export interface TailoredResumeResult {
@@ -68,16 +92,26 @@ function nonEmpty(a: (string | null | undefined)[]): string {
  *
  * تطبیق سهل‌گیرانه است: بی‌توجه به بزرگی/کوچکی حروف، فاصله، نقطه و خط‌تیره
  * («Next.js» ≡ «nextjs» ≡ «Next JS»).
+ *
+ * `admissible` مسیرِ دومِ پذیرش است: مهارت‌هایی که **خودِ کاربر با انتخابِ این آگهی**
+ * اعلامشان کرده. توضیح در `QualificationSource` — خلاصه این‌که مرجعِ «من این را بلدم»
+ * کاربر است، نه فهرستِ ما؛ کاری که همچنان نمی‌کنیم ساختنِ ادعا **بدونِ هیچ اعلامی** است.
  */
-function keepOnlyRealSkills(aiSkills: string[], evidence: string): string[] {
+function keepOnlyRealSkills(
+  aiSkills: string[],
+  evidence: string,
+  admissible: readonly string[] = [],
+): string[] {
   const norm = (v: string) => v.toLowerCase().replace(/[\s._-]+/g, "");
   const hay = norm(evidence);
+  const allowed = new Set(admissible.map(norm).filter(Boolean));
   const kept: string[] = [];
   const seen = new Set<string>();
   for (const s of aiSkills) {
     const key = norm(s);
     if (!key || seen.has(key)) continue;
-    if (!hay.includes(key)) continue; // جایی در دادهٔ واقعیِ کاربر شاهدی ندارد → حذف
+    // شاهد در دادهٔ کاربر، **یا** اعلامِ خودِ کاربر با انتخابِ همین آگهی.
+    if (!hay.includes(key) && !allowed.has(key)) continue;
     seen.add(key);
     kept.push(s); // ترتیب/نگارشِ هدف‌گیری‌شده‌ی AI حفظ می‌شود
   }
@@ -211,9 +245,15 @@ export async function generateTailoredResume(
   // گامِ ۱ از تجزیه: نیازمندی‌های آگهی را ساخت‌یافته بیرون بکش، بعد بسنج کدام‌ها شاهد
   // دارند. سپس **صریح** به مدل بگو روی همان‌ها تکیه کند — به‌جای این‌که خودش از دلِ دو متنِ
   // بلند حدس بزند چه چیزی مرتبط است. نتیجه: هدف‌گیریِ دقیق‌تر و پوششِ کاملِ آن‌چه واقعاً داریم.
+  // انتخابِ آگهی توسطِ کاربر = اعلامِ او که واجدِ این شغل است.
+  const source: QualificationSource = deps.source ?? "none";
+  const userSelected = source !== "none";
+
   let coverageHint = "";
   /** تکنولوژی‌هایی که هم آگهی خواسته و هم کاربر شاهد دارد — همان تقاطعی که مدل باید نام ببرد. */
   let matchedTech: string[] = [];
+  /** تکنولوژی‌هایی که با انتخابِ همین آگهی مجاز شده‌اند (فقط وقتی کاربر انتخابش کرده). */
+  let admissibleTech: string[] = [];
   if (job.description) {
     try {
       const reqs = await extractJobRequirements(userId, `${job.title}\n${job.description}`, deps.metering ?? {});
@@ -222,14 +262,43 @@ export async function generateTailoredResume(
       // و فقط سیگنال را خراب می‌کنند؛ آن‌ها را مستقیم به مدل می‌دهیم تا خودش قضاوت کند.
       const cov = assessCoverage(reqs.technologies, evidenceText);
       matchedTech = cov.covered;
+      // با انتخابِ این آگهی، خواسته‌های خودِ آگهی هم قابلِ نام‌بردن می‌شوند.
+      if (userSelected) admissibleTech = reqs.technologies;
+
+      // نقشه‌ی پخش: هر تکنولوژی به تازه‌ترین سابقه‌ای که از نظرِ **زمانی** جا دارد.
+      // بدونِ این، مدل همه را در یک سابقه تلنبار می‌کند یا در همه تکرار می‌کند — و بدتر،
+      // ممکن است ابزارِ ۲۰۲۵ را به شغلِ ۱۳۹۴ بچسباند.
+      const arc = planCareerArc(
+        ((profile.workExperience as RoleInput[] | null) ?? []),
+        userSelected ? reqs.technologies : cov.covered,
+      );
+      const arcText = describeArc(arc);
+
       const parts: string[] = [];
       if (cov.covered.length) {
         parts.push(
           `• تکنولوژی‌هایی که این آگهی خواسته و کاربر برایشان شاهد دارد (از رزومه یا از حوزه‌های اعلامیِ خودش). **هر کدام باید جایی در رزومه صریح نام برده شود** — در مهارت‌ها و دستِ‌کم یکی در bulletهای سوابق: ${cov.covered.join("، ")}`,
         );
       }
-      if (cov.missing.length) {
+      if (!userSelected && cov.missing.length) {
         parts.push(`• آگهی این‌ها را هم خواسته ولی کاربر شاهدی ندارد — **نام نبر**: ${cov.missing.join("، ")}`);
+      }
+      if (arcText) {
+        parts.push(
+          [
+            "• نقشه‌ی پخشِ تکنولوژی روی سوابقِ واقعی — این نقشه فقط می‌گوید هر تکنولوژیِ",
+            "  خواسته‌شده‌ی آگهی **کجا** نام برده شود، و سقفِ حجمِ نوشته نیست: هر سابقه",
+            "  همچنان باید ۳ تا ۵ bulletِ پُر و محتوادار داشته باشد و کارِ واقعیِ خودش را",
+            "  کامل توصیف کند. فقط تکنولوژیِ آگهی را در سابقه‌ی دیگری تکرار نکن.",
+            "  شرکت، عنوان و بازه‌ی هر سابقه **دقیقاً** همین است و تغییر نمی‌کند:",
+            arcText,
+          ].join("\n"),
+        );
+      }
+      if (arc.unplaced.length) {
+        parts.push(
+          `• این‌ها در هیچ سابقه‌ای جای زمانیِ معتبر نداشتند، پس فقط در بخشِ مهارت‌ها بیایند و در bulletها به هیچ شرکتی نسبت داده نشوند: ${arc.unplaced.join("، ")}`,
+        );
       }
       if (reqs.responsibilities.length) {
         parts.push(`• مسئولیت‌های این نقش (دستاوردهای واقعیِ متناظر را برجسته کن): ${reqs.responsibilities.slice(0, 10).join("؛ ")}`);
@@ -283,7 +352,7 @@ export async function generateTailoredResume(
       .map((l) => ({ name: l.name!, level: l.level ?? null })),
     summary: tailored.summary,
     // گاردِ ضدِجعل: فقط مهارت‌هایی که واقعاً در پروفایل هست.
-    skills: keepOnlyRealSkills(tailored.skills, evidenceText),
+    skills: keepOnlyRealSkills(tailored.skills, evidenceText, admissibleTech),
     experience: tailored.experience.map((e) => ({
       company: e.company ?? null,
       title: e.title ?? null,

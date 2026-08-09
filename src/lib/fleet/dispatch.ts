@@ -168,7 +168,11 @@ async function defaultLoadResumeHtml(
   // هنوز ساخته نشده → همین حالا بساز (importِ پویا تا چرخه‌ی import پیش نیاید).
   try {
     const { generateTailoredResume } = await import("@/lib/resume/custom-resume-service");
-    const built = await generateTailoredResume(userId, listingId, { db: db as never });
+    // این آگهی از فیلترهای خودِ کاربر و امتیازِ تطبیق‌دهنده رد شده و اپلای خودکار روشن است.
+    const built = await generateTailoredResume(userId, listingId, {
+      db: db as never,
+      source: "auto_apply",
+    });
     return built?.html ?? null;
   } catch {
     return null;

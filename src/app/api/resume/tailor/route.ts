@@ -31,7 +31,8 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     try {
-      const result = await generateTailoredResume(user.id, listingId);
+      // کاربر خودش این آگهی را انتخاب کرده و رزومه‌ی همین شغل را خواسته.
+      const result = await generateTailoredResume(user.id, listingId, { source: "manual" });
       return json({ id: result.id, headline: result.headline, jobTitle: result.jobTitle }, 201);
     } catch (err) {
       if (err instanceof InsufficientBalanceError) {

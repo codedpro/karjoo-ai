@@ -14,7 +14,14 @@ import "server-only";
  * چیزی که همچنان مجاز نیست، ادعای حوزه‌ای است که کاربر **اعلام نکرده**.
  *
  * یعنی: اعلامِ «Web3/Blockchain» ⇒ Solidity/ethers.js/smart contracts مجاز می‌شوند.
- * اعلام‌نکردنِ «Sales» ⇒ رزومه به فروش تبدیل نمی‌شود.
+ *
+ * **جای درستِ این فهرست کجاست:** پیدا‌کردنِ شغل، نه ساختنِ رزومه. حوزه‌ها تعیین می‌کنند
+ * کاربر چه آگهی‌هایی ببیند و تطبیق‌دهنده چه چیزی را مرتبط بداند. اگر کاربر آگهی‌ای را
+ * **خودش انتخاب کند** — کلیکِ اپلای، یا عبور از فیلترهای خودش — همان انتخاب اعلامِ اوست
+ * که واجدِ آن شغل است، حتی اگر حوزه‌اش از قبل این‌جا ثبت نشده باشد. آن مسیر در
+ * `QualificationSource` توضیح داده شده و این فهرست جلویش را نمی‌گیرد.
+ *
+ * پس این فهرست «سقفِ توانایی‌های کاربر» نیست؛ نقطه‌ی شروعِ کشفِ شغل است.
  */
 
 export interface DomainVocabulary {
@@ -119,6 +126,92 @@ export const SKILL_DOMAINS: DomainVocabulary[] = [
     id: "design",
     labelFa: "طراحی",
     skills: ["UI Design", "UX Design", "Figma", "Design Systems", "Prototyping", "Responsive Design", "Accessibility"],
+  },
+  {
+    id: "gaming",
+    labelFa: "بازی‌سازی",
+    skills: [
+      "Unity", "Unreal Engine", "C#", "C++", "Game Design", "Godot", "Blender",
+      "3D Modelling", "Shader Programming", "Physics Engines", "Multiplayer Networking",
+      "Game Monetisation", "Level Design", "Mobile Games",
+    ],
+  },
+  {
+    id: "seo-digital-marketing",
+    labelFa: "سئو و بازاریابی دیجیتال",
+    skills: [
+      "SEO", "Technical SEO", "On-Page SEO", "Off-Page SEO", "Link Building", "Keyword Research",
+      "Google Analytics", "Google Search Console", "Google Ads", "Content Marketing",
+      "Email Marketing", "Social Media Marketing", "Conversion Rate Optimisation",
+      "A/B Testing", "Marketing Automation", "Campaign Management",
+    ],
+  },
+  {
+    id: "data-analytics",
+    labelFa: "تحلیل داده و هوش تجاری",
+    skills: [
+      "Data Analysis", "SQL", "Power BI", "Tableau", "Metabase", "Excel", "Data Visualisation",
+      "ETL", "Data Warehousing", "Dashboarding", "KPI Design", "Statistical Analysis",
+      "Reporting", "Data Modelling",
+    ],
+  },
+  {
+    id: "qa-testing",
+    labelFa: "تست و تضمین کیفیت",
+    skills: [
+      "Manual Testing", "Automated Testing", "Test Planning", "Selenium", "Playwright", "Cypress",
+      "Jest", "Vitest", "Pytest", "API Testing", "Postman", "Load Testing", "Regression Testing",
+      "Bug Tracking", "QA Documentation",
+    ],
+  },
+  {
+    id: "hardware-iot",
+    labelFa: "سخت‌افزار و اینترنت اشیا",
+    skills: [
+      "Embedded Systems", "Arduino", "Raspberry Pi", "ESP32", "MQTT", "Firmware", "C",
+      "PCB Design", "Sensors", "IoT Protocols", "RTOS", "Microcontrollers", "Robotics",
+    ],
+  },
+  {
+    id: "telecom-networks",
+    labelFa: "مخابرات و شبکه",
+    skills: [
+      "Networking", "TCP/IP", "Routing", "Switching", "Cisco", "MikroTik", "VPN", "Firewalls",
+      "Network Monitoring", "OSS/BSS", "Telecom Operations", "VoIP", "SIP", "LTE", "5G",
+    ],
+  },
+  {
+    id: "content-writing",
+    labelFa: "تولید محتوا و نویسندگی",
+    skills: [
+      "Content Writing", "Copywriting", "Technical Writing", "Editing", "Storytelling",
+      "Content Strategy", "Documentation", "Translation", "Localisation", "Scriptwriting",
+    ],
+  },
+  {
+    id: "hr-recruiting",
+    labelFa: "منابع انسانی و جذب",
+    skills: [
+      "Recruiting", "Technical Recruiting", "Talent Sourcing", "Interviewing", "Onboarding",
+      "HR Operations", "Performance Management", "Employer Branding", "HR Analytics",
+      "Compensation & Benefits",
+    ],
+  },
+  {
+    id: "finance-accounting",
+    labelFa: "مالی و حسابداری",
+    skills: [
+      "Accounting", "Financial Reporting", "Budgeting", "Forecasting", "Financial Analysis",
+      "Payroll", "Tax", "Auditing", "Cost Control", "Invoicing", "ERP", "Financial Modelling",
+    ],
+  },
+  {
+    id: "customer-support",
+    labelFa: "پشتیبانی و موفقیت مشتری",
+    skills: [
+      "Customer Support", "Technical Support", "Ticketing Systems", "Zendesk", "SLA Management",
+      "Troubleshooting", "Escalation Management", "Knowledge Base", "Live Chat", "Call Centre",
+    ],
   },
 ];
 
