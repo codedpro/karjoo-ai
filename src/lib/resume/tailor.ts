@@ -4,7 +4,7 @@ import "server-only";
  * «رزومه‌ی سفارشیِ هر شغل» — فراخوانیِ مترشده‌ی هوش مصنوعی که محتوای رزومه‌ی پایه را برای یک
  * آگهیِ خاص بازنویسی/هدف‌گیری می‌کند. هزینه به کیف‌پولِ *همان کاربر* با نرخِ 1xAi بسته می‌شود.
  */
-import { buildResumeTailorPrompt } from "@/lib/ai/prompts";
+import { buildResumeRepairPrompt, buildResumeTailorPrompt } from "@/lib/ai/prompts";
 import { resumeTailorSchema, type ResumeTailorOutput } from "@/lib/ai/schema";
 import { meteredChatJson, type MeteringOptions } from "@/lib/billing/metering";
 
@@ -43,4 +43,30 @@ export async function meteredTailorResume(
     throw new ResumeTailorError(`tailored résumé output invalid: ${parsed.error.message}`);
   }
   return parsed.data;
+}
+
+
+/**
+ * یک پاسِ ترمیم روی خروجیِ قبلی اجرا می‌کند و نتیجه‌ی معتبرشده را برمی‌گرداند.
+ * خطا/خروجیِ نامعتبر → همان خروجیِ قبلی (ترمیم هرگز چیزی را خراب‌تر نمی‌کند).
+ */
+export async function repairTailoredResume(
+  userId: string,
+  previous: ResumeTailorOutput,
+  instruction: string,
+  opts: MeteringOptions = {},
+): Promise<ResumeTailorOutput> {
+  try {
+    const messages = buildResumeRepairPrompt(JSON.stringify(previous), instruction);
+    const out = await meteredChatJson(
+      userId,
+      "resume_tailor",
+      { messages, temperature: 0.4, maxTokens: RESUME_TAILOR_MAX_TOKENS },
+      opts,
+    );
+    const parsed = resumeTailorSchema.safeParse(out.result.data);
+    return parsed.success ? parsed.data : previous;
+  } catch {
+    return previous;
+  }
 }

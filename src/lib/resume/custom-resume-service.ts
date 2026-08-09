@@ -20,13 +20,15 @@ import {
 } from "@/db/schema";
 import { HttpError } from "@/lib/api/http";
 import type { MeteringOptions } from "@/lib/billing/metering";
-import { meteredTailorResume } from "@/lib/resume/tailor";
+import { repairTailoredResume, meteredTailorResume } from "@/lib/resume/tailor";
 import { renderResumeHtml, type ResumeRenderData } from "@/lib/resume/resume-template";
 import { labelsForDomains, vocabularyForDomains } from "@/lib/resume/declared-domains";
 import { assessCoverage, extractJobRequirements } from "@/lib/apply/jd-requirements";
 import { describeArc, planCareerArc, type RoleInput } from "@/lib/resume/career-arc";
 import { DEFAULT_PINNED_COMPANIES, selectRolesForJob } from "@/lib/resume/role-selection";
 import { selectClientsForJob, type ClientEntry } from "@/lib/resume/client-selection";
+import { buildRepairInstruction, findResumeGaps, needsRepair } from "@/lib/resume/repair";
+import { preferLanguage } from "@/lib/resume/script-match";
 import {
   pickTemplate,
   renderResumeTemplate,
@@ -284,6 +286,8 @@ export async function generateTailoredResume(
   let matchedTech: string[] = [];
   /** تکنولوژی‌هایی که با انتخابِ همین آگهی مجاز شده‌اند (فقط وقتی کاربر انتخابش کرده). */
   let admissibleTech: string[] = [];
+  /** اصطلاح‌هایی که باید جایی در رزومه بیایند (پایه‌ی سنجشِ ترمیم). */
+  let placeableTerms: string[] = [];
   /** سوابقی که در همین رزومه می‌آیند (زیرمجموعه‌ای از سوابقِ واقعی). */
   let selectedRoles: RoleInput[] = [];
   /** بازه‌ی نهاییِ هر شرکت طبقِ نقشه — مرجعِ قطعیِ تاریخ‌ها، نه چیزی که مدل نوشته. */
@@ -319,6 +323,7 @@ export async function generateTailoredResume(
       const placeable = userSelected
         ? [...reqs.technologies, ...reqs.concepts]
         : [...cov.covered, ...assessCoverage(reqs.concepts, evidenceText).covered];
+      placeableTerms = placeable;
       const arc = planCareerArc(selectedRoles, placeable);
       const arcText = describeArc(arc);
       for (const r of arc.roles) {
@@ -391,7 +396,7 @@ export async function generateTailoredResume(
       ? ({ ...profile, workExperience: selectedRoles } as typeof profile)
       : profile;
 
-  const tailored = await tailorFn(
+  let tailored = await tailorFn(
     userId,
     buildProfileText(profileForPrompt, userRow?.email),
     buildJobText(
@@ -420,8 +425,29 @@ export async function generateTailoredResume(
     deps.metering ?? {},
   );
 
+  // بازبینی و ترمیم: شکاف‌ها را **در کد** می‌سنجیم و فقط اگر چیزی کم بود یک پاسِ کوتاهِ
+  // دوم می‌زنیم. بزرگ‌تر کردنِ پرامپتِ اصلی جواب نداد — هر دستورِ اضافه چیزِ دیگری را خراب کرد.
+  {
+    const gaps = findResumeGaps(tailored, placeableTerms);
+    if (needsRepair(gaps)) {
+      tailored = await repairTailoredResume(
+        userId,
+        tailored,
+        buildRepairInstruction(gaps, resumeLang),
+        deps.metering ?? {},
+      );
+    }
+  }
+
+  // نامِ لاتین برای رزومه‌ی انگلیسی: نامِ فارسی روی رزومه‌ی انگلیسی هم ناخواناست و هم
+  // با بقیه‌ی سند نمی‌خواند. کاربر می‌تواند شکلِ لاتین را در ترجیحات بگذارد.
+  const latinName =
+    typeof prefs.fullNameLatin === "string" && prefs.fullNameLatin.trim()
+      ? prefs.fullNameLatin.trim()
+      : null;
+
   const data: ResumeTemplateData = {
-    fullName: profile.fullName,
+    fullName: resumeLang === "en" && latinName ? latinName : profile.fullName,
     headline: tailored.headline || profile.headline || null,
     email: userRow?.email ?? null,
     phone: phoneOverride ?? profile.phone ?? null,
@@ -448,7 +474,13 @@ export async function generateTailoredResume(
       period: (e.company ? plannedPeriods.get(normCompany(e.company)) : null) ?? e.period ?? null,
       bullets: e.bullets,
     })),
-    education: ((profile.education as ProfileEducation[] | null) ?? []).map((e) => ({
+    // فقط تحصیلاتِ هم‌زبان با رزومه — پروفایل هر دو نسخه‌ی فارسی و انگلیسی را دارد و
+    // بدونِ این فیلتر، هر دو ردیفِ تکراری کنارِ هم می‌نشستند.
+    education: preferLanguage(
+      (profile.education as ProfileEducation[] | null) ?? [],
+      resumeLang,
+      (e) => `${e.institution ?? ""} ${e.field ?? ""} ${e.degree ?? ""}`,
+    ).map((e) => ({
       school: e.institution ?? null,
       degree: nonEmpty([e.degree, e.field]) || null,
       period: nonEmpty([e.startYear, e.endYear ? `– ${e.endYear}` : null]) || null,
