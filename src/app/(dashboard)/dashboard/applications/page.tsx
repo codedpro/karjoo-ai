@@ -24,13 +24,22 @@ import {
   cn,
   toFaDigits,
 } from "@/components/dashboard/ui";
+import type { ApplicationFunnel } from "@/lib/apply/boards/jobinja-read";
 import {
-  getApplications,
-  type ApplicationFunnel,
-} from "@/lib/apply/boards/jobinja-read";
-import type { BoardApplication } from "@/db/schema";
+  listApplicationsPage,
+  parseApplicationQuery,
+  type ApplicationRow as ApplicationListRow,
+} from "@/lib/apply/applications-query";
 
 import { buildFunnelSegments, CATEGORY_META, type FunnelCategory } from "./funnel";
+import {
+  ActiveFilterNote,
+  Pagination,
+  SearchBox,
+  SortControls,
+  StatusFilter,
+  type ToolbarState,
+} from "./toolbar";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (استریم با Suspense؛ بدونِ force-dynamic).
 export const runtime = "nodejs";
@@ -40,9 +49,20 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function ApplicationsPage() {
+/** Next 16: `searchParams` یک Promise است و باید await شود. */
+export default async function ApplicationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await getDashboardUser();
   if (!user) redirect("/login");
+
+  // پارامترهای خام → پرس‌وجوی معتبر (ورودیِ دستکاری‌شده‌ی URL به پیش‌فرض می‌افتد).
+  const raw = await searchParams;
+  const flat: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(raw)) flat[k] = Array.isArray(v) ? v[0] : v;
+  const state = parseApplicationQuery(flat) as ToolbarState;
 
   return (
     <div className="space-y-8">
@@ -52,8 +72,9 @@ export default async function ApplicationsPage() {
         actions={<JobinjaSyncButton label="به‌روزرسانی از جابینجا" />}
       />
 
-      <Suspense fallback={<ApplicationsSkeleton />}>
-        <ApplicationsSection userId={user.userId} />
+      {/* کلیدِ Suspense شاملِ فیلترهاست تا با هر تغییرِ فیلتر، اسکلت دوباره نشان داده شود. */}
+      <Suspense key={JSON.stringify(state)} fallback={<ApplicationsSkeleton />}>
+        <ApplicationsSection userId={user.userId} state={state} />
       </Suspense>
     </div>
   );
@@ -61,8 +82,12 @@ export default async function ApplicationsPage() {
 
 /* ───────────────────────── بخشِ async (Suspense) ───────────────────────── */
 
-async function ApplicationsSection({ userId }: { userId: string }) {
-  const { funnel, items } = await getApplications(userId, "jobinja");
+async function ApplicationsSection({ userId, state }: { userId: string; state: ToolbarState }) {
+  const { funnel, items, filteredTotal, pageCount } = await listApplicationsPage(
+    userId,
+    "jobinja",
+    state,
+  );
 
   if (funnel.total === 0) {
     return (
@@ -82,7 +107,19 @@ async function ApplicationsSection({ userId }: { userId: string }) {
   return (
     <div className="space-y-8">
       <FunnelSummary funnel={funnel} />
-      <ApplicationsList items={items} />
+
+      <section className="space-y-4" aria-label="فیلتر و مرتب‌سازی">
+        <StatusFilter state={state} counts={funnel} />
+        <div className="flex flex-col gap-3 border-t border-foreground/10 pt-4 lg:flex-row lg:items-center lg:justify-between">
+          <SortControls state={state} />
+          <SearchBox state={state} />
+        </div>
+        <ActiveFilterNote state={state} shown={filteredTotal} />
+      </section>
+
+      <ApplicationsList items={items} sort={state.sort} />
+
+      <Pagination state={state} pageCount={pageCount} filteredTotal={filteredTotal} />
     </div>
   );
 }
@@ -167,20 +204,27 @@ function StatCell({
 
 /* ───────────────────────────  فهرستِ درخواست‌ها  ─────────────────────────── */
 
-function ApplicationsList({ items }: { items: BoardApplication[] }) {
+function ApplicationsList({ items, sort }: { items: ApplicationListRow[]; sort: string }) {
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        icon={<IconSend />}
+        title="با این فیلتر چیزی پیدا نشد"
+        body="فیلترِ وضعیت یا عبارتِ جست‌وجو را عوض کن، یا فیلترها را بردار تا همه‌ی درخواست‌ها را ببینی."
+        action={
+          <ButtonLink href="/dashboard/applications" variant="secondary" size="sm">
+            حذفِ فیلترها
+          </ButtonLink>
+        }
+      />
+    );
+  }
   return (
     <section className="space-y-4">
-      <div className="flex items-center gap-2 text-sm text-muted">
-        <Badge tone="brand">
-          <span className="ltr-nums tabular-nums">{toFaDigits(items.length)}</span>
-          &nbsp;درخواست
-        </Badge>
-        <span className="text-pretty">تازه‌ترین اول</span>
-      </div>
       <ol className="space-y-3">
         {items.map((item) => (
           <li key={item.id}>
-            <ApplicationRow item={item} />
+            <ApplicationRow item={item} sort={sort} />
           </li>
         ))}
       </ol>
@@ -189,9 +233,12 @@ function ApplicationsList({ items }: { items: BoardApplication[] }) {
 }
 
 /** یک ردیفِ درخواست — عنوان/شرکت/تاریخ + نشانِ وضعیتِ رنگی؛ کلِ کارت لینک به آگهیِ جابینجا. */
-function ApplicationRow({ item }: { item: BoardApplication }) {
+function ApplicationRow({ item, sort }: { item: ApplicationListRow; sort: string }) {
   const meta = CATEGORY_META[item.statusCategory] ?? CATEGORY_META.other;
-  const when = formatFaDate(item.appliedAt ?? item.lastSeenAt);
+  // تاریخِ ارسال از خودِ جابینجا می‌آید؛ `lastSeenAt` فقط زمانِ همگام‌سازیِ ماست و اگر
+  // به‌جای آن نشان داده شود، همه‌ی درخواست‌ها «امروز» به‌نظر می‌رسند.
+  const applied = formatFaDate(item.appliedAt);
+  const posted = formatFaDate(item.postedAt);
 
   const body = (
     <Card padded interactive={Boolean(item.url)} className="h-full">
@@ -202,16 +249,28 @@ function ApplicationRow({ item }: { item: BoardApplication }) {
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
             {item.company ? <span className="truncate">{item.company}</span> : null}
-            {when ? (
+            {applied ? (
               <>
                 {item.company ? <span aria-hidden>·</span> : null}
-                <span className="ltr-nums">{when}</span>
+                <span className={cn("ltr-nums", sort === "applied" && "font-semibold text-foreground")}>
+                  ارسال: {applied}
+                </span>
+              </>
+            ) : null}
+            {posted ? (
+              <>
+                <span aria-hidden>·</span>
+                <span className={cn("ltr-nums", sort === "posted" && "font-semibold text-foreground")}>
+                  انتشارِ آگهی: {posted}
+                </span>
               </>
             ) : null}
           </div>
         </div>
+        {/* متنِ خامِ جابینجا روی نشان می‌نشیند: دسته‌ی ما خلاصه است، ولی کاربر باید بتواند
+            عبارتِ دقیقِ خودِ سایت («تأیید برای مصاحبه») را هم ببیند. */}
         <Badge tone={meta.tone} title={item.statusRaw ?? undefined}>
-          {meta.label}
+          {item.statusRaw?.trim() || meta.label}
         </Badge>
       </div>
     </Card>

@@ -574,6 +574,49 @@ export async function fetchJobDescription(
 }
 
 /**
+ * تاریخِ انتشارِ آگهی را از JSON-LDِ صفحه می‌خواند.
+ *
+ * جابینجا در متنِ صفحه فقط «۳ روز پیش» را نشان می‌دهد (نسبی و بی‌دقت)، ولی در بلاکِ
+ * `JobPosting`ِ schema.org تاریخِ دقیق را به ISO می‌گذارد: `"datePosted": "2026-07-29"`.
+ * همان را برمی‌داریم تا مرتب‌سازیِ «تازه‌ترین آگهی» در داشبورد واقعی باشد.
+ */
+export function extractPostedAt(html: string): Date | null {
+  const raw = /"datePosted"\s*:\s*"([^"]+)"/.exec(html)?.[1];
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** شرح + تاریخِ انتشار را با **یک** بار گرفتنِ صفحه برمی‌دارد (دو بار گرفتن اتلاف است). */
+export async function fetchJobMeta(
+  url: string,
+  opts: { fetchImpl?: typeof fetch; isAllowed?: (u: string) => Promise<boolean> } = {},
+): Promise<{ description: string | null; postedAt: Date | null }> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const allowed = opts.isAllowed ?? ((u: string) => robotsIsAllowed(u, BROWSER_USER_AGENT));
+  try {
+    if (!(await allowed(url))) return { description: null, postedAt: null };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    let html: string;
+    try {
+      const res = await fetchImpl(url, {
+        headers: { "User-Agent": BROWSER_USER_AGENT, "Accept-Language": "fa-IR" },
+        signal: controller.signal,
+        redirect: "follow",
+      });
+      if (!res.ok) return { description: null, postedAt: null };
+      html = await res.text();
+    } finally {
+      clearTimeout(timer);
+    }
+    return { description: extractJobDescription(html), postedAt: extractPostedAt(html) };
+  } catch {
+    return { description: null, postedAt: null };
+  }
+}
+
+/**
  * متنِ شرحِ آگهی را از HTMLِ صفحه بیرون می‌کشد. جابینجا بخشِ اصلی را زیرِ تیترِ
  * «شرح موقعیت شغلی» می‌گذارد؛ اگر آن الگو عوض شد، به بلاکِ محتوای آگهی برمی‌گردیم.
  * خروجی متنِ ساده (بدون تگ) و کوتاه‌شده تا حدِ منطقی برای پرامپت/نمایش.

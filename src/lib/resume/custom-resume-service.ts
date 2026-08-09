@@ -159,16 +159,22 @@ export async function generateTailoredResume(
   // بدونِ شرحِ آگهی، «هدف‌گیری» فقط از روی عنوان انجام می‌شود و عملاً بی‌معناست. کارتِ
   // نتایجِ جست‌وجو شرح ندارد، پس همین‌جا یک‌بار از صفحه‌ی خودِ آگهی می‌گیریم و ذخیره می‌کنیم
   // (هم برای این پرامپت، هم برای مودالِ «شرحِ شغل» در بایگانی). خطا → با همان عنوان ادامه.
-  if (!job.description && job.board === "jobinja" && job.url) {
+  if ((!job.description || !job.postedAt) && job.board === "jobinja" && job.url) {
     try {
-      const { fetchJobDescription } = await import("@/lib/apply/boards/jobinja");
-      const description = await fetchJobDescription(job.url);
-      if (description) {
+      const { fetchJobMeta } = await import("@/lib/apply/boards/jobinja");
+      // همان یک بار گرفتنِ صفحه، تاریخِ انتشار را هم می‌دهد — و بدونِ آن، مرتب‌سازیِ
+      // «تازه‌ترین آگهی» در صفحه‌ی اپلای‌ها هیچ داده‌ای برای مرتب‌کردن ندارد.
+      const { description, postedAt } = await fetchJobMeta(job.url);
+      if (description || postedAt) {
         await conn
           .update(jobListings)
-          .set({ description, updatedAt: new Date() })
+          .set({
+            ...(description ? { description } : {}),
+            ...(postedAt && !job.postedAt ? { postedAt } : {}),
+            updatedAt: new Date(),
+          })
           .where(eq(jobListings.id, listingId));
-        job = { ...job, description };
+        job = { ...job, description: description ?? job.description, postedAt: postedAt ?? job.postedAt };
       }
     } catch {
       /* بهترین‌تلاش — نبودِ شرح نباید ساختِ رزومه را بشکند */

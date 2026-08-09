@@ -42,6 +42,8 @@ export interface ParsedApplication {
   url?: string | null;
   statusRaw?: string | null;
   statusCategory: ApplicationStatusCategory;
+  /** زمانِ واقعیِ ارسالِ درخواست (از `created_at`ِ شمسیِ جابینجا). */
+  appliedAt?: Date | null;
 }
 
 /** نگاشتِ پروفایلِ پارس‌شده (نمایش «پروفایلِ جابینجای شما»). */
@@ -88,16 +90,29 @@ const JOBINJA_MACHINE_STATUS: Record<string, ApplicationStatusCategory> = {
   others: "other",
 };
 
-export function normalizeApplicationStatus(raw: string | null | undefined): ApplicationStatusCategory {
+/**
+ * وضعیتِ یک درخواست را نرمال می‌کند.
+ *
+ * `raw` کلیدِ ماشین‌خوان است و `display` متنی که جابینجا به کاربر نشان می‌دهد. ترتیبِ
+ * اولویت **عمداً** این نیست که همیشه ماشین برنده باشد: جابینجا برای بخشِ بزرگی از
+ * درخواست‌ها `machine_status: "others"` می‌فرستد در حالی که متنِ نمایشی دقیقاً می‌گوید
+ * «بررسی‌شده» یا «رد‌شده». اعتماد به کلیدِ ماشین ۲۹۸ درخواست را در «سایر» می‌ریخت و
+ * قیف را بی‌معنا می‌کرد. پس: کلیدِ ماشین فقط وقتی برنده است که چیزی **مشخص** بگوید.
+ */
+export function normalizeApplicationStatus(
+  raw: string | null | undefined,
+  display?: string | null,
+): ApplicationStatusCategory {
   const s = (raw ?? "").trim();
-  if (!s) return "pending";
+  const shown = (display ?? "").trim();
+  if (!s && !shown) return "pending";
 
-  // ۱) کلیدِ ماشین‌خوانِ جابینجا (دقیق‌ترین منبع).
-  const machine = JOBINJA_MACHINE_STATUS[s.toLowerCase()];
-  if (machine) return machine;
+  // ۱) کلیدِ ماشین‌خوان — فقط اگر دسته‌ی مشخصی بدهد («others» یعنی «نمی‌دانم»، نه یک دسته).
+  const machine = s ? JOBINJA_MACHINE_STATUS[s.toLowerCase()] : undefined;
+  if (machine && machine !== "other") return machine;
 
   // ۲) متنِ فارسی (نمایشی) — نیم‌فاصله را حذف می‌کنیم تا «بررسی‌شده»/«رد‌شده» هم بگیرند.
-  const fa = s.replace(/\u200c/g, "");
+  const fa = (shown || s).replace(/\u200c/g, "");
   if (/استخدام\s*شده/.test(fa)) return "hired";
   if (/مصاحبه|دعوت/.test(fa)) return "interview";
   if (/رد|بایگان|عدم|منفی|لغو/.test(fa)) return "rejected";
@@ -253,7 +268,12 @@ interface InitStateApplication {
   created_at?: string;
   job_link?: string;
   details_link?: string;
-  job?: { title?: string; company?: { name?: string } | null };
+  // جابینجا نامِ شرکت را زیرِ `persian_name`/`english_name` می‌گذارد، نه `name` — و همین
+  // باعث شده بود ستونِ «شرکت» برای هر ۵۰۶ درخواست خالی بماند.
+  job?: {
+    title?: string;
+    company?: { persian_name?: string; english_name?: string; name?: string } | null;
+  };
 }
 
 /** JSONِ `init-state` را می‌خواند و به ParsedApplication نگاشت می‌کند. */
@@ -280,10 +300,17 @@ export function parseAppliedFromInitState(html: string): ParsedApplication[] {
     out.push({
       externalId: id,
       title: r.job?.title?.trim() || null,
-      company: r.job?.company?.name?.trim() || null,
+      company:
+        r.job?.company?.persian_name?.trim() ||
+        r.job?.company?.english_name?.trim() ||
+        r.job?.company?.name?.trim() ||
+        null,
       url: r.job_link?.trim() || r.details_link?.trim() || `${ORIGIN}/jobs/applied/${id}`,
       statusRaw,
-      statusCategory: normalizeApplicationStatus(r.machine_status ?? r.status ?? null),
+      statusCategory: normalizeApplicationStatus(r.machine_status, r.status),
+      // بدونِ این، `applied_at` خالی می‌ماند و داشبورد ناچار `last_seen_at` (زمانِ همگام‌سازی)
+      // را نشان می‌دهد — یعنی همه‌ی درخواست‌ها «امروز» به‌نظر می‌رسیدند و مرتب‌سازی بی‌معنا بود.
+      appliedAt: parseJalaliDate(r.created_at),
     });
   }
   return out;
@@ -422,6 +449,7 @@ export async function upsertApplications(
         url: a.url ?? null,
         statusRaw: a.statusRaw ?? null,
         statusCategory: a.statusCategory,
+        appliedAt: a.appliedAt ?? null,
         lastSeenAt: sql`now()`,
       })
       .onConflictDoUpdate({
@@ -432,6 +460,8 @@ export async function upsertApplications(
           url: sql`coalesce(excluded.url, ${boardApplications.url})`,
           statusRaw: sql`excluded.status_raw`,
           statusCategory: sql`excluded.status_category`,
+          // coalesce: اگر همگام‌سازیِ بعدی تاریخ نداشت، تاریخِ درستِ قبلی پاک نشود.
+          appliedAt: sql`coalesce(excluded.applied_at, ${boardApplications.appliedAt})`,
           lastSeenAt: sql`now()`,
         },
       });
