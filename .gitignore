@@ -52,3 +52,4 @@ logs/
 # scratch dirs used for one-off provisioning/proof scripts — never commit
 .tmp-*/
 worker/tmp-*/
+.superpowers/
