@@ -16,7 +16,20 @@ import "server-only";
  * صفحه‌بندی: کلید-محور نیست، `limit/offset` است — چون دامنه‌ی ادمین کوچک است و
  * پرش به صفحه‌ی دلخواه مهم‌تر از کارآییِ عمیق است.
  */
-import { and, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  isNull,
+  max,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -186,17 +199,25 @@ async function countApplicationsFor(ids: string[]): Promise<Map<string, number>>
   return new Map(rows.map((r) => [r.userId, Number(r.n)]));
 }
 
+/**
+ * آخرین استفاده از نشست، به‌ازای هر کاربر.
+ *
+ * از `max()`ِ خودِ drizzle استفاده می‌کنیم و نه `sql<Date>\`max(…)\``: نتیجه‌ی یک
+ * templateِ خام از mapperِ ستون رد *نمی‌شود*، پس درایور یک **رشته** برمی‌گرداند در حالی
+ * که تایپ ادعا می‌کند Date است — یعنی تایپ دروغ می‌گوید و اولین `.getTime()` در زمانِ
+ * اجرا می‌ترکد. `max()` تایپ و نگاشتِ ستون را حفظ می‌کند.
+ */
 async function lastSeenFor(ids: string[]): Promise<Map<string, Date | null>> {
   if (ids.length === 0) return new Map();
   const rows = await db
     .select({
       userId: authSessions.userId,
-      lastUsedAt: sql<Date | null>`max(${authSessions.lastUsedAt})`,
+      lastUsedAt: max(authSessions.lastUsedAt),
     })
     .from(authSessions)
     .where(inArray(authSessions.userId, ids))
     .groupBy(authSessions.userId);
-  return new Map(rows.map((r) => [r.userId, r.lastUsedAt]));
+  return new Map(rows.map((r) => [r.userId, r.lastUsedAt ?? null]));
 }
 
 /* ───────────────────────────  جزئیاتِ یک کاربر  ──────────────────────────── */
@@ -282,7 +303,9 @@ export async function getAdminUserDetail(
         and(
           eq(authSessions.userId, userId),
           isNull(authSessions.revokedAt),
-          sql`${authSessions.expiresAt} > ${now}`,
+          // با `gt` و نه templateِ خام: مقایسه‌ی تاریخ باید از mapperِ ستون رد شود،
+          // وگرنه درایور یک شیءِ Date خام می‌گیرد و کوئری در زمانِ اجرا می‌ترکد.
+          gt(authSessions.expiresAt, now),
         ),
       ),
     db
@@ -397,7 +420,8 @@ export async function getAdminUserStats(): Promise<AdminUserStats> {
     db
       .select({ n: count() })
       .from(users)
-      .where(sql`${users.createdAt} >= ${since}`),
+      // `gte` و نه templateِ خام — همان دلیلِ بالا (Date باید از mapperِ ستون رد شود).
+      .where(gte(users.createdAt, since)),
     db
       .select({ n: count() })
       .from(users)

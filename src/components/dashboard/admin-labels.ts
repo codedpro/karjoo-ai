@@ -68,14 +68,32 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 /**
+ * هر ورودیِ تاریخ‌مانند → Date معتبر یا null.
+ *
+ * چرا لازم است؟ یک‌بار یک aggregateِ خام (`sql<Date>\`max(…)\``) *رشته* برگرداند در
+ * حالی که تایپش Date بود؛ اولین `.getTime()` کلِ صفحه‌ی مدیریت را ۵۰۰ کرد. ریشه اصلاح
+ * شد، ولی این توابع صرفاً *نمایشی*‌اند: یک تاریخِ خراب باید «—» نشان دهد، نه صفحه را
+ * بیندازد.
+ */
+function asDate(value: unknown): Date | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === "string" || typeof value === "number") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+/**
  * فاصله‌ی زمانیِ خوانا («۳ روز پیش»). `null` ⇒ «هرگز».
  *
  * عمداً تقریبی است: در نمای مدیریت، «۳ روز پیش» از تاریخِ دقیق مفیدتر است. تاریخِ
  * دقیق را با `absoluteDateFa` کنارش (به‌صورتِ `title`) بگذار.
  */
 export function relativeTimeFa(value: Date | null, now: Date = new Date()): string {
-  if (!value) return "هرگز";
-  const diff = now.getTime() - value.getTime();
+  const at = asDate(value);
+  if (!at) return "هرگز";
+  const diff = now.getTime() - at.getTime();
   if (diff < MINUTE) return "همین حالا";
   if (diff < HOUR) return `${Math.floor(diff / MINUTE)} دقیقه پیش`;
   if (diff < DAY) return `${Math.floor(diff / HOUR)} ساعت پیش`;
@@ -86,14 +104,15 @@ export function relativeTimeFa(value: Date | null, now: Date = new Date()): stri
 
 /** تاریخِ شمسیِ کامل — برای `title` کنارِ زمانِ نسبی. */
 export function absoluteDateFa(value: Date | null): string {
-  if (!value) return "—";
+  const at = asDate(value);
+  if (!at) return "—";
   try {
     return new Intl.DateTimeFormat("fa-IR", {
       dateStyle: "medium",
       timeStyle: "short",
-    }).format(value);
+    }).format(at);
   } catch {
-    return value.toISOString();
+    return at.toISOString();
   }
 }
 
