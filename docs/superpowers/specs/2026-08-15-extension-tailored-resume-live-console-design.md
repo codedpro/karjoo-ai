@@ -70,6 +70,19 @@ For each claimed task, the service worker performs these stages sequentially:
 
 The extension must not log or persist resume bytes. Bytes live only for the current operation and are discarded after the result.
 
+### Browser Tab Lifecycle
+
+The extension tracks whether each Jobinja tab was created by Karjoo or already belonged to the user.
+
+- Discovery uses one extension-created background tab for all result pages and closes it when discovery finishes or aborts.
+- Each application uses at most one extension-created job tab and closes it immediately after a confirmed submission, already-applied reconciliation, ordinary failure, or reported result.
+- A tab that was already open before the run is never closed by Karjoo.
+- Login and security challenges may retain one extension-created tab and focus it for user intervention. No additional jobs are opened while blocked. The retained tab is closed after successful continuation or explicit Stop.
+- Pause and Stop close idle extension-created tabs after returning any unfinished lease to the queue.
+- Tab cleanup runs in `finally` paths so API errors and content-script errors cannot accumulate hidden tabs.
+
+The service worker persists only the identifier of the single retained intervention tab, allowing cleanup after a Chrome service-worker restart without maintaining an unbounded tab list.
+
 ## Ownership and Recovery
 
 The side panel exposes `Continue with extension` whenever the server owns an active, paused, or blocked run. Takeover performs one atomic server transition:
@@ -159,6 +172,7 @@ The dashboard and extension continue to use the same execution-run, task, applic
 - Route-test extension Bearer filter GET/PUT and retry.
 - Test active server takeover and lease release without duplicate submission.
 - Test service-worker stage transitions and pause/requeue behavior for every resume failure.
+- Test tab ownership and cleanup after success, failure, pause, stop, blocked intervention, and service-worker restart.
 - DOM-test `File`/`DataTransfer` upload and acceptance verification.
 - Test side-panel live, filters, history, detail, resume, retry, empty, blocked, and error states.
 - Run root and extension tests, typechecks, lint, production builds, and a packaged-extension smoke test.
