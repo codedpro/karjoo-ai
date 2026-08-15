@@ -8,9 +8,13 @@ import { describe, expect, it } from "vitest";
 
 import type { RoleInput } from "@/lib/resume/career-arc";
 import {
+  canPlaceTechnologyAtCompany,
   DEFAULT_PINNED_COMPANIES,
+  inferVariableCompanyDomain,
+  isInternationalCompanyName,
   scoreRole,
   selectRolesForJob,
+  variableCompaniesForDomain,
 } from "@/lib/resume/role-selection";
 import { __testables } from "@/lib/resume/custom-resume-service";
 
@@ -132,8 +136,47 @@ describe("selectRolesForJob", () => {
     expect(selectRolesForJob([], ["React"])).toEqual([]);
   });
 
-  it("پیش‌فرضِ سنجاق‌ها همان سه شرکتِ اعلامیِ کاربر است", () => {
-    expect(DEFAULT_PINNED_COMPANIES).toEqual(["CodeNest", "MTN Irancell", "CCTV Line"]);
+  it("پیش‌فرضِ سنجاق‌ها همان چهار شرکتِ اعلامیِ کاربر است", () => {
+    expect(DEFAULT_PINNED_COMPANIES).toEqual([
+      "CodeNest",
+      "MTN Irancell",
+      "UK Trade Line",
+      "CCTV Line",
+    ]);
+  });
+});
+
+describe("variable company selection", () => {
+  it("برای سئو/دیجیتال مارکتینگ Buffer و Khadamateman را انتخاب می‌کند", () => {
+    expect(variableCompaniesForDomain("seo-digital-marketing").map((c) => c.name)).toEqual([
+      "Buffer",
+      "Khadamateman",
+    ]);
+  });
+
+  it("برای وب یک international و یک ایران انتخاب می‌کند", () => {
+    expect(variableCompaniesForDomain("web-fullstack")).toEqual([
+      { domain: "web-fullstack", region: "international", name: "Automattic" },
+      { domain: "web-fullstack", region: "iran", name: "Niksam AI" },
+    ]);
+  });
+
+  it("دامنه را از متن آگهی تشخیص می‌دهد", () => {
+    expect(inferVariableCompanyDomain(["SEO, Ahrefs, Search Console"], [])).toBe(
+      "seo-digital-marketing",
+    );
+    expect(inferVariableCompanyDomain(["React Next.js Shopify storefront"], [])).toBe(
+      "web-fullstack",
+    );
+  });
+
+  it("تکنولوژی‌های محدود ایران فقط روی شرکت‌های international مجازند", () => {
+    expect(canPlaceTechnologyAtCompany("Shopify", "MTN Irancell")).toBe(false);
+    expect(canPlaceTechnologyAtCompany("Shopify", "Khadamateman")).toBe(false);
+    expect(canPlaceTechnologyAtCompany("Shopify", "CCTV Line (UK)")).toBe(true);
+    expect(canPlaceTechnologyAtCompany("Shopify", "Automattic")).toBe(true);
+    expect(canPlaceTechnologyAtCompany("PostgreSQL", "MTN Irancell")).toBe(true);
+    expect(isInternationalCompanyName("UK Trade Line")).toBe(true);
   });
 });
 

@@ -80,7 +80,7 @@ export const fleetResultBodySchema = z
   .object({
     taskId: z.string().uuid("taskId باید UUID معتبر باشد"),
     userId: z.string().uuid("userId باید UUID معتبر باشد"),
-    status: z.enum(["submitted", "skipped", "failed"]),
+    status: z.enum(["submitted", "skipped", "failed", "blocked"]),
     externalRef: z.string().trim().min(1).max(512).optional(),
     reason: z.string().trim().min(1).max(2000).optional(),
     /** اثباتِ ساخت‌یافته (پاسخِ سایت) — هرگز نشست/کوکی/توکن. شیء آزاد ولی محدود. */

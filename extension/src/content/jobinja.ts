@@ -11,6 +11,7 @@
  */
 import { applyPrefill } from "@ext/content/apply-dom";
 import type { BackgroundToContent } from "@ext/lib/messages";
+import { parseJobinjaDiscoveryPage } from "@ext/lib/jobinja-discovery";
 
 /** باید با CVID_MESSAGE در content/jobinja-cvid.ts (دنیای MAIN) یکسان بماند. */
 const CVID_MESSAGE = "karjoo:jobinja-cvid";
@@ -24,6 +25,10 @@ chrome.runtime.onMessage.addListener((msg: BackgroundToContent, _sender, sendRes
   }
   if (msg.type === "CONTENT_PREFILL") {
     sendResponse(applyPrefill(msg.item));
+    return true;
+  }
+  if (msg.type === "CONTENT_DISCOVER_JOBINJA") {
+    sendResponse(parseJobinjaDiscoveryPage(document, window.location.href));
     return true;
   }
   return undefined;

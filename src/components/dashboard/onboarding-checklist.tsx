@@ -12,6 +12,11 @@ import "server-only";
  *   ۳) اتصالِ افزونه + سایتِ کاریابی — یک board_accounts با status='connected' هم‌زمان
  *      اثباتِ جفت‌شدنِ افزونه و اتصالِ برد است (چون /connect نشستِ Bearerِ افزونه می‌خواهد).
  *
+ * لینک‌های عمیق باید به *مقصدِ واقعی* بروند، نه به مسیرهای قدیمی: `/dashboard/resume` و
+ * `/dashboard/apply-filters` امروز فقط redirectِ سه‌خطی‌اند؛ پس مستقیم به
+ * `/dashboard/profiles` و `/dashboard/auto-apply` می‌رویم (یک پرشِ کمتر، و برچسبِ گام
+ * همان نامی است که کاربر در ناوبری می‌بیند).
+ *
  * تاب‌آوری (قاعده‌ی طلایی): getterهای data/resume-data و readApplyFilters خطاها را به
  * فراخواننده می‌دهند (swallow نمی‌کنند). پس هر تشخیص را در Promise.allSettled می‌بندیم؛
  * settleِ rejected → آن گام «ناتمام» رندر می‌شود، نه کرشِ کلِ چک‌لیست. هر سه تشخیص
@@ -114,21 +119,21 @@ export async function OnboardingChecklist({ userId }: { userId: string }) {
   const steps: OnboardingStep[] = [
     {
       key: "resume",
-      label: "رزومه و پروفایل خود را تکمیل کنید",
-      cta: "تکمیلِ رزومه",
-      deepLink: "/dashboard/resume",
+      label: "رزومه و پروفایلت را کامل کن",
+      cta: "رزومه و پروفایل",
+      deepLink: "/dashboard/profiles",
       done: resumeDone,
     },
     {
       key: "apply-filters",
-      label: "فیلترهای اپلای را تنظیم کنید",
-      cta: "تنظیمِ فیلترها",
-      deepLink: "/dashboard/apply-filters",
+      label: "بگو دنبالِ چه شغلی هستی (شهر، زمینه، دورکاری)",
+      cta: "تنظیمِ اپلای خودکار",
+      deepLink: "/dashboard/auto-apply",
       done: filtersDone,
     },
     {
       key: "connect-board",
-      label: "افزونه را نصب/متصل کنید و یک سایت کاریابی وصل کنید",
+      label: "افزونه‌ی مرورگر را نصب کن و حسابِ سایتِ کاریابی‌ات را وصل کن",
       cta: "اتصالِ افزونه",
       deepLink: "/dashboard/extension",
       done: boardDone,
@@ -154,7 +159,7 @@ export async function OnboardingChecklist({ userId }: { userId: string }) {
         </Badge>
       </div>
       <p className="mt-1.5 text-sm leading-6 text-muted">
-        برای اینکه کارجو بتواند به‌جای شما اپلای کند، این چند گام را کامل کنید.
+        تا این سه گام کامل نشود، کارجو نمی‌تواند به‌جای تو درخواست بفرستد.
       </p>
 
       {/* فهرستِ گام‌ها */}

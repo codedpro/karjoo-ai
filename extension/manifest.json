@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Karjoo — assisted apply (کارجو)",
-  "version": "0.2.10",
-  "description": "AI job-search copilot for Iranian boards: assisted apply (you review and submit) plus opt-in background auto-apply you explicitly turn on — gated by a daily cap, a match-quality threshold, and a full audit trail. Uses only your own session in your own browser; no detection-evasion.",
+  "version": "0.3.1",
+  "description": "Karjoo queue executor: discover filtered Jobinja jobs and apply with your profile resume in your own browser, with live progress and server takeover.",
   "default_locale": "en",
   "icons": {
     "16": "icons/icon-16.png",
@@ -12,7 +12,6 @@
   },
   "action": {
     "default_title": "Karjoo",
-    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",
@@ -24,7 +23,10 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["storage", "cookies", "scripting", "activeTab", "tabs", "alarms"],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "permissions": ["storage", "cookies", "scripting", "activeTab", "tabs", "alarms", "sidePanel", "notifications"],
   "host_permissions": [
     "https://jobinja.ir/*",
     "https://*.jobinja.ir/*",

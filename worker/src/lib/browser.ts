@@ -27,6 +27,8 @@ export interface BrowserLocator {
   setInputFiles(files: string | string[], opts?: { timeout?: number }): Promise<void>;
   /** Wait for the element to be attached/visible. */
   waitFor(opts?: { timeout?: number; state?: "attached" | "visible" }): Promise<void>;
+  /** Read text from the first match. */
+  textContent?(opts?: { timeout?: number }): Promise<string | null>;
 }
 
 /** A page within a context (the subset we use). */

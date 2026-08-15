@@ -15,14 +15,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { IconCheck, IconWarn } from "./icons";
-import { Badge, Button, Card, cn, toFaDigits } from "./ui";
+import { Button, Card, cn, toFaDigits } from "./ui";
 import { formatToman } from "./wallet-format";
-import {
-  PLAN_TONE,
-  applyQuotaLabel,
-  ctaLabel,
-  workerIpLabel,
-} from "./plans-labels";
+import { applyQuotaLabel, ctaLabel, workerIpLabel } from "./plans-labels";
 import type { PlanDefinition, PlanKey } from "@/lib/billing/plans";
 
 /** پاسخِ POST /api/me/plan — موفق یا خطا (۴۰۲ با لینکِ شارژِ 1xai می‌آید). */
@@ -97,7 +92,9 @@ export function PlansGrid({
 
   return (
     <div>
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      {/* شبکه‌ی ۱→۲→۴: در پوسته‌ی سیال، چهار ستون فقط در نمایشگرِ خیلی پهن جا می‌شود؛
+          قبلاً از xl چهار ستون می‌شد و کارت‌ها به ستون‌های باریکِ فشرده تبدیل می‌شدند. */}
+      <div className="grid gap-5 sm:grid-cols-2 2xl:grid-cols-4">
         {plans.map((plan) => {
           const isCurrent = plan.key === currentPlan;
           const isUpgrade = plan.priceToman > currentPrice;
@@ -129,15 +126,9 @@ export function PlansGrid({
                 </span>
               ) : null}
 
-              {/* عنوان + کلیدِ پلن */}
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-balance text-lg font-extrabold">
-                  {plan.labelFa}
-                </h3>
-                <Badge tone={PLAN_TONE[plan.key]} className="uppercase">
-                  {plan.key}
-                </Badge>
-              </div>
+              {/* عنوان — کلیدِ لاتینِ پلن (FREE/PRO/…) حذف شد: برای کاربرِ فارسی‌زبان
+                  فقط نویزِ فنی بود و نامِ فارسیِ کنارش همان را می‌گفت. */}
+              <h3 className="text-balance text-lg font-extrabold">{plan.labelFa}</h3>
 
               {/* قیمت */}
               <div className="mt-4 flex items-baseline gap-1.5 whitespace-nowrap">
@@ -240,17 +231,16 @@ export function PlansGrid({
       <p className="mt-5 flex items-start gap-2 text-pretty rounded-xl border border-border bg-surface/60 px-4 py-3 text-xs leading-6 text-muted">
         <IconWarn className="mt-0.5 h-4 w-4 shrink-0" />
         <span>
-          هزینه‌ی ارتقا همان لحظه از کیف‌پولِ واحدِ 1xAi شما کسر می‌شود (یک موجودی برای
-          همه‌ی محصولات). اگر موجودی کافی نبود، ابتدا کیف‌پول را در{" "}
+          هزینه‌ی ارتقا همان لحظه از کیف‌پول کسر می‌شود؛ اگر موجودی کافی نبود، اول در{" "}
           <a
             href="https://1xai.ir/topup"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-bold text-brand underline underline-offset-4"
+            className="focus-ring rounded-sm font-bold text-brand underline underline-offset-4"
           >
-            داشبوردِ 1xai
+            صفحه‌ی شارژِ 1xai ↗
           </a>{" "}
-          شارژ کنید؛ پایین‌آوردنِ پلن رایگان و فوری است.
+          شارژ کنید. پایین‌آوردنِ پلن رایگان و فوری است.
         </span>
       </p>
     </div>

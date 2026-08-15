@@ -85,6 +85,20 @@ describe("openAiChatAdapter.buildRequest", () => {
     expect(body.response_format).toEqual({ type: "json_object" });
     expect(body.model).toBe("override-model");
   });
+
+  it("برای GPT-5 از max_completion_tokens استفاده می‌کند و temperature را نمی‌فرستد", () => {
+    const { init } = openAiChatAdapter.buildRequest(CONFIG, {
+      messages: [{ role: "user", content: "x" }],
+      model: "gpt-5",
+      temperature: 0.5,
+      maxTokens: 6000,
+    });
+    const body = JSON.parse(init.body as string);
+    expect(body.model).toBe("gpt-5");
+    expect(body.max_completion_tokens).toBe(6000);
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.temperature).toBeUndefined();
+  });
 });
 
 describe("chatComplete", () => {

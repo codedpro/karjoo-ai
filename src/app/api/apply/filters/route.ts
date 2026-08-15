@@ -79,6 +79,9 @@ export async function PUT(request: Request): Promise<Response> {
       remoteOnly: input.remoteOnly,
       ...(input.minSalary && input.minSalary > 0 ? { minSalary: input.minSalary } : {}),
       ...(input.sort ? { sort: input.sort } : {}),
+      paused: input.paused,
+      ...(input.dailyLimit && input.dailyLimit > 0 ? { dailyLimit: input.dailyLimit } : {}),
+      ...(input.weeklyLimit && input.weeklyLimit > 0 ? { weeklyLimit: input.weeklyLimit } : {}),
       aiFilterEnabled: current.aiFilterEnabled,
     };
 

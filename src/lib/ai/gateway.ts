@@ -133,14 +133,25 @@ function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
 }
 
+function usesCompletionTokenLimit(model: string): boolean {
+  return /^(?:gpt-5(?:-|$)|o\d(?:-|$)|o\d-mini(?:-|$)|o\d-preview(?:-|$))/i.test(model);
+}
+
 export const openAiChatAdapter: ChatAdapter = {
   buildRequest(config, req) {
+    const model = req.model ?? config.model;
     const body: Record<string, unknown> = {
-      model: req.model ?? config.model,
+      model,
       messages: req.messages,
     };
-    if (typeof req.temperature === "number") body.temperature = req.temperature;
-    if (typeof req.maxTokens === "number") body.max_tokens = req.maxTokens;
+    const completionLimit = usesCompletionTokenLimit(model);
+    // GPT-5 / o-series Chat Completions reject legacy max_tokens. They also reject
+    // many explicit temperature values, so leave temperature at provider default there.
+    if (typeof req.temperature === "number" && !completionLimit) body.temperature = req.temperature;
+    if (typeof req.maxTokens === "number") {
+      if (completionLimit) body.max_completion_tokens = req.maxTokens;
+      else body.max_tokens = req.maxTokens;
+    }
     if (req.responseFormat === "json") {
       body.response_format = { type: "json_object" };
     }

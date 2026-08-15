@@ -208,6 +208,40 @@ describe("jobinja.scrapePublicWith (fetch تزریق‌شده — بدون شب�
     expect(pages[1]).toContain("page=5");
   });
 
+  it("با stopWhenStaleDays روی صفحه‌ی قدیمی متوقف می‌شود", async () => {
+    const card = (id: string, posted: string): string =>
+      `<li class="c-jobListView__item">` +
+      `<a class="c-jobListView__titleLink" href="/companies/acme/jobs/${id}/t">عنوان</a>` +
+      `<span class="c-jobListView__passedDays">(${posted})</span>` +
+      `</li>`;
+    let calls = 0;
+    const fakeFetch: typeof fetch = async () => {
+      calls += 1;
+      const rows =
+        calls === 1
+          ? card("Fresh1", "امروز") + card("Fresh2", "۳ روز پیش")
+          : card("Old1", "۲ ماه پیش") + card("Old2", "۳ ماه پیش");
+      return new Response(`<ul>${rows}</ul>`, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    };
+
+    const result = await jobinja.scrapePublicWith(
+      { sort: "published_at_desc" },
+      {
+        fetchImpl: fakeFetch,
+        maxPages: Number.POSITIVE_INFINITY,
+        stopWhenStaleDays: 45,
+        delayMs: 0,
+      },
+    );
+
+    expect(result.listings.map((job) => job.externalId)).toEqual(["Fresh1", "Fresh2"]);
+    expect(result.pagesFetched).toBe(2);
+    expect(result.reachedEnd).toBe(true);
+  });
+
   it("روی پاسخ غیر-200 خطای روشن پرتاب می‌کند", async () => {
     const failingFetch: typeof fetch = async () =>
       new Response("nope", { status: 503 });

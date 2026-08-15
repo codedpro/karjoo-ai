@@ -58,6 +58,7 @@ export interface TickResult {
   submitted: number;
   skipped: number;
   failed: number;
+  blocked: number;
   /** True when the server signalled the daily cap (429) mid-drain. */
   capReached: boolean;
   /** True when a command requested a restart (the loop should stop). */
@@ -82,6 +83,7 @@ export async function runTick(deps: AgentDeps): Promise<TickResult> {
     submitted: 0,
     skipped: 0,
     failed: 0,
+    blocked: 0,
     capReached: false,
     restarted: false,
   };
@@ -120,14 +122,20 @@ export async function runTick(deps: AgentDeps): Promise<TickResult> {
     const job = jobs[i]!;
     const report = await processJob(job, processOpts);
 
+    const securityBlocked = isSiteSecurityChallenge(report.reason);
     if (report.status === "submitted") result.submitted++;
     else if (report.status === "skipped") result.skipped++;
+    else if (securityBlocked) result.blocked++;
     else result.failed++;
 
     // Report the result; the session is already discarded by processJob.
     let reported: { ok: boolean; status: number };
     try {
-      reported = await api.reportResult(report);
+      reported = await api.reportResult(
+        securityBlocked
+          ? { ...report, status: "blocked" }
+          : report,
+      );
     } catch (err) {
       log.warn("report failed", { taskId: report.taskId, error: errMessage(err) });
       continue;
@@ -137,6 +145,13 @@ export async function runTick(deps: AgentDeps): Promise<TickResult> {
     if (reported.status === 429) {
       log.info("daily cap reached (429); stopping drain for this tick");
       result.capReached = true;
+      break;
+    }
+    if (securityBlocked) {
+      log.warn("site security challenge detected; stopping drain for this tick", {
+        taskId: report.taskId,
+        reason: report.reason,
+      });
       break;
     }
 
@@ -257,4 +272,8 @@ export async function runLoop(
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function isSiteSecurityChallenge(reason: string | undefined): boolean {
+  return reason?.startsWith("jobinja_security_check:") ?? false;
 }

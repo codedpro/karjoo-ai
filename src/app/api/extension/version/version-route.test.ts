@@ -27,7 +27,7 @@ describe("GET /api/extension/version", () => {
     const body = await res.json();
     expect(body.version).toBe(KARJOO_EXTENSION_VERSION);
     expect(body.downloadUrl).toBe(KARJOO_EXTENSION_DOWNLOAD_PATH);
-    expect(body.downloadUrl).toBe("/karjoo-extension.zip");
+    expect(body.downloadUrl).toBe(`/karjoo-extension.zip?v=${KARJOO_EXTENSION_VERSION}`);
   });
 
   it("نسخه یک semver معتبر است (MAJOR.MINOR.PATCH)", async () => {

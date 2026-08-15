@@ -16,6 +16,8 @@ import type {
   ApplyResultReport,
   AutoApplySettings,
   AutoApplyStatus,
+  BrowserDiscoveredListing,
+  ExtensionRunOverview,
 } from "@ext/lib/types";
 import type { ScrapeProfileResult, BoardImportOutcome } from "@ext/lib/import-types";
 import type { ApplyPlan } from "@ext/lib/apply-runner";
@@ -116,6 +118,21 @@ export interface FindJobsMsg {
   type: "FIND_JOBS";
 }
 
+export interface GetRunOverviewMsg {
+  type: "GET_RUN_OVERVIEW";
+}
+
+export interface MutateRunMsg {
+  type: "MUTATE_RUN";
+  action: "start" | "takeover" | "pause" | "stop";
+  backgroundEnabled?: boolean;
+}
+
+export interface SetRunBackgroundMsg {
+  type: "SET_RUN_BACKGROUND";
+  enabled: boolean;
+}
+
 /* ── background → content ──────────────────────────────────────────────── */
 
 /** Ask a content script whether the user is logged in on this board, locally. */
@@ -165,6 +182,10 @@ export interface CaptureStorageMsg {
   board: BoardId;
 }
 
+export interface ContentDiscoverJobinjaMsg {
+  type: "CONTENT_DISCOVER_JOBINJA";
+}
+
 export type PopupToBackground =
   | PairMsg
   | GetIdentityMsg
@@ -180,14 +201,18 @@ export type PopupToBackground =
   | GetAutoApplyStatusMsg
   | RunAutoApplyNowMsg
   | JobinjaCvidMsg
-  | FindJobsMsg;
+  | FindJobsMsg
+  | GetRunOverviewMsg
+  | MutateRunMsg
+  | SetRunBackgroundMsg;
 
 export type BackgroundToContent =
   | ProbeSessionMsg
   | ContentPrefillMsg
   | ScrapeProfileMsg
   | ContentApplyMsg
-  | CaptureStorageMsg;
+  | CaptureStorageMsg
+  | ContentDiscoverJobinjaMsg;
 
 /** Subset of background→content messages the IMPORT content scripts handle. */
 export type BackgroundToImportContent = ScrapeProfileMsg;
@@ -221,6 +246,15 @@ export interface ContentApplyResult {
   reason?: string;
 }
 
+export interface ContentDiscoveryResult {
+  listings: BrowserDiscoveredListing[];
+  nextUrl: string | null;
+  oldestPostedAt: string | null;
+  securityChallenge: boolean;
+  loginRequired: boolean;
+  bulkApplyAvailable: boolean;
+}
+
 /** Result of a CAPTURE_STORAGE probe — RAW storage k/v (handled like cookies). */
 export interface CaptureStorageResult {
   storage: CapturedStorage;
@@ -229,6 +263,7 @@ export interface CaptureStorageResult {
 /** Re-exported so consumers import message + import contracts from one place. */
 export type { ScrapeProfileResult, BoardImportOutcome };
 export type { AutoApplySettings, AutoApplyStatus };
+export type { ExtensionRunOverview };
 
 /** Generic ok/err envelope used by background → popup responses. */
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };

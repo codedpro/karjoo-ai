@@ -15,6 +15,9 @@
  *
  * تفکیکِ رایگان/پولی *پررنگ* است: آپلود و «رزومه‌ی اصلی» نشانِ «رایگان»؛ استخراج نشانِ هزینه.
  * وقتی هوش مصنوعی فیلدها را استخراج کرد، از طریقِ onParsed به فرمِ پروفایل داده می‌شود.
+ *
+ * کارتِ آپلود `id="resume-files"` دارد: حالتِ خالیِ صفحه‌ی «رزومه و پروفایل» تنها فراخوانش
+ * را به همین‌جا لنگر می‌زند، پس این شناسه بخشی از قرارداد است و نباید بی‌جایگزین حذف شود.
  */
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -252,66 +255,69 @@ export function UploadsPanel({
         />
       ) : null}
 
-      {/* ── ناحیه‌ی آپلود (drag/drop) ── */}
-      <Card padded>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="flex items-center gap-2.5 text-balance text-base font-bold">
+      {/* ── ناحیه‌ی آپلود (drag/drop) — مقصدِ لنگرِ حالتِ خالیِ صفحه ── */}
+      {/* لنگر روی یک wrapper است، نه روی Card: پرایمیتیوِ مشترک پراپِ id نمی‌گیرد. */}
+      <div id="resume-files" className="scroll-mt-24">
+        <Card padded>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="flex items-center gap-2.5 text-balance text-base font-bold">
+              <span
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand [&>svg]:h-5 [&>svg]:w-5"
+                aria-hidden
+              >
+                <IconUpload />
+              </span>
+              آپلودِ رزومه (PDF)
+            </h3>
+            <FreeBadge />
+          </div>
+
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (!anyBusy) setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={onDrop}
+            className={cn(
+              "mt-4 flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-colors",
+              dragOver ? "border-brand bg-brand/5" : "border-border bg-surface/50",
+            )}
+          >
             <span
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand [&>svg]:h-5 [&>svg]:w-5"
+              className="grid h-12 w-12 place-items-center rounded-2xl bg-brand/10 text-brand [&>svg]:h-6 [&>svg]:w-6"
               aria-hidden
             >
               <IconUpload />
             </span>
-            آپلودِ رزومه (PDF)
-          </h3>
-          <FreeBadge />
-        </div>
-
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (!anyBusy) setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          className={cn(
-            "mt-4 flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed px-6 py-8 text-center transition-colors",
-            dragOver ? "border-brand bg-brand/5" : "border-border bg-surface/50",
-          )}
-        >
-          <span
-            className="grid h-12 w-12 place-items-center rounded-2xl bg-brand/10 text-brand [&>svg]:h-6 [&>svg]:w-6"
-            aria-hidden
-          >
-            <IconUpload />
-          </span>
-          <p className="text-pretty text-sm leading-6 text-muted">
-            فایلِ PDF را اینجا رها کنید یا از دکمه‌ی زیر انتخاب کنید (حداکثر ۵ مگابایت).
-            <br />
-            آپلود و استخراجِ متن همیشه رایگان است.
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void upload(f);
-              e.target.value = "";
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={anyBusy}
-            className="focus-ring inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-border bg-card px-5 py-2.5 text-sm font-medium transition-colors hover:border-brand hover:text-foreground active:translate-y-px disabled:pointer-events-none disabled:opacity-60"
-          >
-            <IconUpload className="h-4 w-4" />
-            {busy?.kind === "upload" ? "در حال آپلود…" : "انتخابِ فایلِ PDF"}
-          </button>
-        </div>
-      </Card>
+            <p className="text-pretty text-sm leading-6 text-muted">
+              فایلِ PDF را اینجا رها کنید یا از دکمه‌ی زیر انتخاب کنید (حداکثر ۵ مگابایت).
+              <br />
+              آپلود و استخراجِ متن همیشه رایگان است.
+            </p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void upload(f);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={anyBusy}
+              className="focus-ring inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-border bg-card px-5 py-2.5 text-sm font-medium transition-colors hover:border-brand hover:text-foreground active:translate-y-px disabled:pointer-events-none disabled:opacity-60"
+            >
+              <IconUpload className="h-4 w-4" />
+              {busy?.kind === "upload" ? "در حال آپلود…" : "انتخابِ فایلِ PDF"}
+            </button>
+          </div>
+        </Card>
+      </div>
 
       {/* ── فهرستِ فایل‌ها ── */}
       <Card padded>

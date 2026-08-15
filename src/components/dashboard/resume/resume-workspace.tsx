@@ -9,6 +9,10 @@
  *
  * دو زبانه: «پروفایل» (فرمِ جامع) و «فایل‌ها» (آپلود + کنش‌های هر فایل). در دسکتاپ هر دو
  * کنارِ هم‌اند؛ در موبایل با تب سوییچ می‌شوند تا صفحه شلوغ نشود.
+ *
+ * `initialTab` برای کاربرِ تازه است: وقتی نه پروفایلی هست و نه فایلی، صفحه‌ی «رزومه و
+ * پروفایل» با تبِ «فایل‌ها» باز می‌شود تا فراخوانِ «رزومه‌ات را آپلود کن» در موبایل هم
+ * پشتِ تبِ بسته پنهان نماند (در دسکتاپ هر دو ستون دیده می‌شوند و اثری ندارد).
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -52,18 +56,21 @@ export function ResumeWorkspace({
   files,
   parseCostEstimate,
   balanceToman,
+  initialTab = "profile",
 }: {
   initialProfile: ApiFullProfile | null;
   files: ClientResumeFile[];
   parseCostEstimate: CostEstimate | null;
   balanceToman?: number;
+  /** تبِ بازِ اولیه در موبایل — «files» برای کاربرِ بدونِ رزومه. */
+  initialTab?: Tab;
 }) {
   const router = useRouter();
 
   const [profile, setProfile] = useState<ClientProfile>(() =>
     toClientProfile(initialProfile),
   );
-  const [tab, setTab] = useState<Tab>("profile");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [skillDraft, setSkillDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);

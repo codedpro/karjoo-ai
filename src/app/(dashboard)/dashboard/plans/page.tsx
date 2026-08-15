@@ -1,34 +1,42 @@
 /**
- * نمای «پلن‌ها و ارتقا» (Server component) — الگوی Next 16 (پوسته‌ی فوری + استریم).
+ * «اشتراک» (Server component) — چهار لایه‌ی قیمتِ کارجو و ارتقا/تغییرِ پلن.
  *
- * چهار لایه‌ی قیمتِ کارجو (رایگان/حرفه‌ای/مکس/مکس‌پلاس) را به‌صورتِ کارت (RTL/فارسی)
- * نشان می‌دهد: قیمت به تومان، اعتبارِ ماهانه‌ی هوش مصنوعی، سهمیه‌ی اپلای، تعدادِ IPِ
- * ورکر و تماسِ مستقیم. پلنِ فعلیِ کاربر برجسته می‌شود و هر پلنِ دیگر CTAِ ارتقا/تغییر
- * دارد که به POST /api/me/plan می‌رود.
+ * زبان: زیرعنوانِ قبلی با «پلن یعنی استحقاق» شروع می‌شد (اصطلاحِ داخلیِ کد) و بعد همان
+ * پاراگرافِ صفحه‌ی صورتحساب را تکرار می‌کرد. حالا یک جمله: اشتراک تعیین می‌کند چند اپلای در
+ * روز و با چه امکاناتی. تفکیکِ نقشِ این صفحه از «اعتبار و هزینه» هم در یک یادداشتِ کوتاه آمده.
  *
- * پوسته در `dashboard/layout.tsx` استاتیک است؛ این صفحه فقط محتوا می‌دهد. داده مستقیم
- * از منبعِ حقیقتِ کد (`PLAN_LIST`) و وضعیتِ کاربر مقید به userIdِ نشست (قاعده‌ی ۴) خوانده
- * می‌شود. بخش‌های وابسته به DB داخلِ `<Suspense>` با اسکلتِ **هم‌شکلِ محتوا** استریم
- * می‌شوند (نوارِ وضعیت + شبکه‌ی کارتِ پلن).
+ * کارایی: `StatusSection` و `GridSection` هر دو وضعیتِ پلن را لازم دارند و قبلاً هرکدام
+ * `getUserPlanStatus` را جدا صدا می‌زدند — یعنی دو بار خواندنِ DB + دو بار تماس با کیف‌پولِ
+ * 1xai در یک رندر. با `cache()`ِ React یک‌بار اجرا می‌شود و نتیجه در همان درخواست به اشتراک
+ * گذاشته می‌شود؛ دو `<Suspense>`ِ مستقل هم حفظ می‌شوند (نوارِ وضعیت زودتر می‌آید).
+ *
+ * پوسته در `dashboard/layout.tsx` استاتیک است؛ داده مقید به userIdِ نشست (قاعده‌ی ۴).
  */
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
+import { cache, Suspense } from "react";
 
 import { getDashboardUser } from "@/components/dashboard/session";
 import { getUserPlanStatus } from "@/components/dashboard/plan-data";
 import { PlanStatusPanel } from "@/components/dashboard/plan-status-panel";
 import { PlansGrid } from "@/components/dashboard/plans-grid";
-import { PageHeader, ButtonLink, Skeleton } from "@/components/dashboard/ui";
+import { IconWallet } from "@/components/dashboard/icons";
+import { ButtonLink, Callout, PageHeader, Skeleton } from "@/components/dashboard/ui";
 import { PLAN_LIST } from "@/lib/billing/plans";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (دیگر force-dynamic لازم نیست).
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "پلن‌ها و ارتقا",
+  title: "اشتراک",
   robots: { index: false, follow: false },
 };
+
+/**
+ * وضعیتِ پلن، یک‌بار در هر درخواست. `cache` نتیجه را برای همه‌ی فراخوان‌های همان رندر
+ * نگه می‌دارد؛ پس دو بخشِ Suspense روی یک خواندن سوارند.
+ */
+const planStatus = cache(getUserPlanStatus);
 
 export default async function PlansPage() {
   const user = await getDashboardUser();
@@ -37,16 +45,23 @@ export default async function PlansPage() {
   const { userId } = user;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
-        title="پلن‌ها و ارتقا"
-        subtitle="پلن یعنی استحقاق: سهمیه‌ی اپلای، ورکرِ ۲۴/۷ و پشتیبانی. هوش مصنوعی در همه‌ی پلن‌ها به‌میزانِ مصرف و با نرخِ خودِ 1xAi از کیف‌پولِ واحدت کسر می‌شود (شارژ در 1xai). ارتقا قیمتِ پلن را همان لحظه از همان کیف‌پول کسر می‌کند."
-        actions={
+        title="اشتراک"
+        subtitle="اشتراک تعیین می‌کند روزانه چند درخواست برایت فرستاده شود و چه امکاناتی داشته باشی."
+      />
+
+      <Callout
+        icon={<IconWallet />}
+        title="اشتراک با اعتبارِ کیف‌پول فرق دارد"
+        action={
           <ButtonLink href="/dashboard/billing" variant="secondary" size="sm">
-            کیف‌پول و صورتحساب
+            اعتبار و هزینه
           </ButtonLink>
         }
-      />
+      >
+        هزینه‌ی پردازش‌های هوش مصنوعی جدا از اشتراک، به‌اندازه‌ی مصرف، از کیف‌پول کسر می‌شود.
+      </Callout>
 
       {/* خلاصه‌ی وضعیتِ فعلیِ کاربر (پلن/موجودی/گرنت/اپلای) */}
       <Suspense fallback={<StatusSkeleton />}>
@@ -64,12 +79,12 @@ export default async function PlansPage() {
 /* ───────────────────────── بخش‌های async (Suspense) ───────────────────────── */
 
 async function StatusSection({ userId }: { userId: string }) {
-  const status = await getUserPlanStatus(userId);
+  const status = await planStatus(userId);
   return <PlanStatusPanel status={status} />;
 }
 
 async function GridSection({ userId }: { userId: string }) {
-  const status = await getUserPlanStatus(userId);
+  const status = await planStatus(userId);
   return <PlansGrid plans={PLAN_LIST} currentPlan={status.planKey} />;
 }
 
@@ -94,10 +109,10 @@ function StatusSkeleton() {
   );
 }
 
-/** هم‌شکلِ PlansGrid — چهار کارتِ پلن با قیمت/اعتبار/مشخصات/CTA. */
+/** هم‌شکلِ PlansGrid — همان شبکه‌ی پاسخ‌گو (۱→۲→۴ ستون) با چهار کارتِ پلن. */
 function GridSkeleton() {
   return (
-    <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4" aria-hidden>
+    <div className="grid gap-5 sm:grid-cols-2 2xl:grid-cols-4" aria-hidden>
       {Array.from({ length: 4 }).map((_, i) => (
         <div
           key={i}

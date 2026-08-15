@@ -14,7 +14,7 @@
  *   • ۴۰۱ → نشستِ کارجو منقضی شده؛ دوباره وارد شوید.
  *   • بقیه → خطای عمومیِ محترمانه.
  */
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 
@@ -36,6 +36,26 @@ const TONE_BOX: Record<SyncTone, string> = {
   info: "border border-border bg-surface/70 text-muted",
   error: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
 };
+
+const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const DEFAULT_AUTO_SYNC_KEY = "karjoo:jobinja:auto-sync:last";
+
+async function postSync(endpoint: string): Promise<{
+  res: Response;
+  data: { ok?: boolean; applications?: number; error?: string };
+}> {
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    applications?: number;
+    error?: string;
+  };
+  return { res, data };
+}
 
 export function JobinjaSyncButton({
   label,
@@ -63,16 +83,7 @@ export function JobinjaSyncButton({
     setView(null);
     setPending(true);
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: "{}",
-      });
-      const data = (await res.json().catch(() => ({}))) as {
-        ok?: boolean;
-        applications?: number;
-        error?: string;
-      };
+      const { res, data } = await postSync(endpoint);
 
       // نشستِ سایت وصل/سالم نیست: ۴۰۹ (no_session) یا ۲۰۰ با ok:false (کوکی/رمزگشایی خراب).
       if (res.status === 409 || (res.ok && data.ok === false)) {
@@ -143,4 +154,43 @@ export function JobinjaSyncButton({
       ) : null}
     </div>
   );
+}
+
+export function JobinjaAutoSync({
+  endpoint = "/api/boards/jobinja/sync",
+  storageKey = DEFAULT_AUTO_SYNC_KEY,
+  intervalMs = AUTO_SYNC_INTERVAL_MS,
+}: {
+  endpoint?: string;
+  storageKey?: string;
+  intervalMs?: number;
+}) {
+  const router = useRouter();
+  const ran = useRef(false);
+
+  useEffect(() => {
+    if (ran.current) return;
+    ran.current = true;
+
+    const now = Date.now();
+    const last = Number.parseInt(sessionStorage.getItem(storageKey) ?? "0", 10);
+    if (Number.isFinite(last) && last > 0 && now - last < intervalMs) return;
+    sessionStorage.setItem(storageKey, String(now));
+
+    let cancelled = false;
+    void postSync(endpoint)
+      .then(({ res, data }) => {
+        if (cancelled) return;
+        if (res.ok && data.ok !== false) router.refresh();
+      })
+      .catch(() => {
+        // Best-effort background sync. The visible button remains the explicit error surface.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [endpoint, intervalMs, router, storageKey]);
+
+  return null;
 }

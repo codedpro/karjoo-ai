@@ -4,16 +4,10 @@
  * صرفاً نگاشتِ نمایشی/خالص است؛ هیچ I/O، هیچ راز. عمداً جدا از `labels.ts` و
  * `wallet-labels.ts` نگه داشته شده تا تداخلِ مالکیتی نباشد. اعداد جای دیگری با
  * `toFaDigits` فارسی می‌شوند.
+ *
+ * `PLAN_TONE` حذف شد: تنها مصرفش نشانِ کلیدِ لاتینِ پلن (FREE/PRO/…) روی کارت بود که برای
+ * کاربرِ فارسی‌زبان جز نویزِ فنی چیزی نداشت.
  */
-import type { PlanKey } from "@/lib/billing/plans";
-
-/** لحنِ نشانِ هر پلن — هم‌خوان با تُن‌های Badge در ui.tsx. */
-export const PLAN_TONE: Record<PlanKey, "muted" | "brand" | "accent"> = {
-  free: "muted",
-  pro: "brand",
-  max: "accent",
-  maxplus: "accent",
-};
 
 /**
  * متنِ سهمیه‌ی اپلای را برای نمایش می‌سازد: عدد برای سقف‌دار، «نامحدود» برای null.

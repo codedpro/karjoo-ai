@@ -1,19 +1,35 @@
 /**
  * پنل‌های ارائه‌ایِ صفحه‌ی «اپلای خودکار» (server-safe، بدونِ state/I/O).
  *
- * سه پنل: مصرفِ امروز نسبت به سقف، آمادگیِ حساب‌های متصل، و ردِ ممیزیِ اپلای خودکار.
+ * سه پنل: مصرفِ امروز نسبت به سقف، وضعیتِ اپلای با افزونه‌ی مرورگر، و تاریخچه‌ی تغییرات.
  * فقط استایل/چیدمان؛ داده از RSC پاس داده می‌شود. هیچ رازی، هیچ کوئری.
  *
- * زبانِ بصری روی پرایمیتیوهای مشترک (Card/Badge/SectionHeading/EmptyState) و آیکن‌های
- * درون‌خطیِ SVG (بدونِ ایموجی) سوار است. برچسب‌ها با `whitespace-nowrap`/`min-w-0`+`truncate`
- * از شکستِ زشتِ دو-خطی مصون‌اند؛ متن‌های بدنه `text-pretty`.
+ * دو تصمیمِ محتوایی که این فایل نگه می‌دارد:
+ *   • هیچ اصطلاحِ داخلی در متنِ کاربر نیست: «ردِ ممیزی» شد «تاریخچه‌ی تغییرات»، «آستانه»
+ *     شد «حداقلِ امتیاز»، و به‌جای نامِ پلن، *نتیجه‌ای* که کاربر می‌گیرد نوشته می‌شود.
+ *   • پنلِ افزونه بن‌بستِ آموزشی نیست: به‌جای توضیحِ اینکه «کلید داخلِ افزونه است»،
+ *     *وضعیتِ واقعیِ* حساب‌های متصل را نشان می‌دهد و به /dashboard/extension می‌بَرد.
+ *
+ * زبانِ بصری روی پرایمیتیوهای مشترک (Card/Badge/Callout/EmptyState) و آیکن‌های درون‌خطیِ
+ * SVG (بدونِ ایموجی) سوار است. برچسب‌ها با `whitespace-nowrap`/`min-w-0`+`truncate` از
+ * شکستِ زشتِ دو-خطی مصون‌اند؛ متن‌های بدنه `text-pretty`.
  */
-import { Badge, Card, EmptyState, SectionHeading, cn, toFaDigits } from "./ui";
 import {
+  Badge,
+  ButtonLink,
+  Callout,
+  Card,
+  EmptyState,
+  SectionHeading,
+  cn,
+  toFaDigits,
+} from "./ui";
+import {
+  IconArrowEnd,
   IconBolt,
   IconCheck,
   IconGauge,
-  IconPlug,
+  IconPuzzle,
   IconReceipt,
   IconServer,
   IconWarn,
@@ -74,7 +90,7 @@ export function ApplyUsagePanel({ apply }: { apply: ApplyUsageStatus }) {
             سقفِ اپلای امروز
           </h3>
           <p className="mt-0.5 text-pretty text-xs leading-5 text-muted">
-            اپلای خودکار هرگز از سقفِ روزانه‌ی پلنِ شما فراتر نمی‌رود.
+            بیشتر از سقفِ روزانه‌ی اشتراکت ارسال نمی‌شود.
           </p>
         </div>
       </div>
@@ -101,20 +117,20 @@ export function ApplyUsagePanel({ apply }: { apply: ApplyUsageStatus }) {
             <div
               className={cn(
                 "h-full rounded-full transition-all duration-500",
-                atCap ? "bg-rose-500" : "bg-gradient-to-l from-brand to-brand-2",
+                atCap ? "bg-rose-500" : "bg-linear-to-l from-brand to-brand-2",
               )}
               style={{ width: `${Math.max(pct, apply.usedToday > 0 ? 6 : 0)}%` }}
             />
           </div>
         ) : (
           <p className="mt-3 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-            پلنِ شما سقفِ روزانه ندارد.
+            اشتراکِ تو سقفِ روزانه ندارد.
           </p>
         )}
 
         {atCap ? (
           <p className="mt-3 text-pretty rounded-xl bg-rose-500/10 px-3.5 py-2.5 text-xs leading-6 text-rose-600 dark:text-rose-400">
-            به سقفِ امروز رسیده‌اید؛ اپلای خودکار تا فردا متوقف است.
+            سقفِ امروز پر شد؛ ارسالِ بعدی فردا انجام می‌شود.
           </p>
         ) : null}
       </div>
@@ -122,30 +138,61 @@ export function ApplyUsagePanel({ apply }: { apply: ApplyUsageStatus }) {
   );
 }
 
-/* ─────────────────────────  آمادگیِ حساب‌های متصل  ───────────────────────── */
+/* ───────────────────  اپلای با مرورگرِ خودت (افزونه)  ─────────────────── */
 
-export function BoardReadinessPanel({ boards }: { boards: BoardReadiness[] }) {
+/**
+ * وضعیتِ حالتِ «اپلای با مرورگرِ خودت». پیش‌تر این بخش صرفاً توضیح می‌داد که کلیدِ
+ * روشن/خاموش داخلِ افزونه است — یعنی بن‌بست. حالا اول *وضعیتِ واقعی* را می‌گوید
+ * (کدام سایت‌ها وصل‌اند و آماده‌اند)، بعد یک اشاره‌ی یک‌جمله‌ای + دکمه‌ی رفتن به
+ * صفحه‌ی افزونه می‌دهد.
+ */
+export function ExtensionApplyPanel({ boards }: { boards: BoardReadiness[] }) {
+  const readyBoards = boards.filter((b) => b.status === "connected" && b.specReady);
+  const connectedBoards = boards.filter((b) => b.status === "connected");
+
+  const state: { tone: "green" | "amber" | "muted"; label: string; line: string } =
+    readyBoards.length > 0
+      ? {
+          tone: "green",
+          label: "آماده",
+          line: `افزونه وصل است و می‌تواند در مرورگرِ خودت روی ${readyBoards
+            .map((b) => boardLabel(b.board))
+            .join("، ")} درخواست بفرستد.`,
+        }
+      : connectedBoards.length > 0
+        ? {
+            tone: "amber",
+            label: "در حالِ آماده‌سازی",
+            line: "حسابت وصل شده، ولی ارسالِ خودکار برای این سایت هنوز آماده نیست.",
+          }
+        : {
+            tone: "muted",
+            label: "وصل نیست",
+            line: "هنوز هیچ حسابی وصل نشده؛ با افزونه وارد سایتِ کاریابی شو تا این حالت کار کند.",
+          };
+
   return (
     <Card padded>
-      <div className="flex items-center gap-3">
-        <PanelIcon tone="accent">
-          <IconPlug className="h-5 w-5" />
-        </PanelIcon>
-        <div className="min-w-0">
-          <h3 className="text-balance text-base font-bold leading-tight">
-            آمادگیِ سایت‌ها
-          </h3>
-          <p className="mt-0.5 text-pretty text-xs leading-5 text-muted">
-            اپلای خودکار فقط روی سایت‌های متصل و آماده اجرا می‌شود.
-          </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <PanelIcon tone="accent">
+            <IconPuzzle className="h-5 w-5" />
+          </PanelIcon>
+          <div className="min-w-0">
+            <h3 className="text-balance text-base font-bold leading-tight">
+              اپلای با مرورگرِ خودت
+            </h3>
+            <p className="mt-0.5 text-pretty text-xs leading-5 text-muted">
+              با هر اشتراکی کار می‌کند، تا وقتی مرورگرت باز باشد.
+            </p>
+          </div>
         </div>
+        <Badge tone={state.tone}>{state.label}</Badge>
       </div>
 
-      {boards.length === 0 ? (
-        <p className="mt-5 text-pretty rounded-xl border border-dashed border-border bg-surface/60 px-4 py-5 text-center text-xs leading-6 text-muted">
-          هنوز حسابی متصل نشده است. برای اتصال، افزونه‌ی کارجو را نصب و وارد سایت شوید.
-        </p>
-      ) : (
+      <p className="mt-4 text-pretty text-sm leading-7 text-muted">{state.line}</p>
+
+      {boards.length > 0 ? (
         <ul className="mt-4 space-y-2.5">
           {boards.map((b) => {
             const status =
@@ -161,35 +208,43 @@ export function BoardReadinessPanel({ boards }: { boards: BoardReadiness[] }) {
                     {boardLabel(b.board)}
                   </div>
                   <div className="text-pretty text-xs leading-5 text-muted">
-                    {b.specReady
-                      ? "مشخصاتِ اپلای آماده است"
-                      : "مشخصاتِ اپلای در حالِ ساخت است"}
+                    {ready ? "آماده‌ی ارسالِ خودکار" : "هنوز آماده نیست"}
                   </div>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  <Badge tone={status.tone}>{status.label}</Badge>
-                  <Badge tone={ready ? "green" : "muted"}>
-                    {ready ? "آماده" : "ناآماده"}
-                  </Badge>
-                </div>
+                <Badge tone={status.tone} className="shrink-0">
+                  {status.label}
+                </Badge>
               </li>
             );
           })}
         </ul>
-      )}
+      ) : null}
+
+      <Callout
+        tone="info"
+        className="mt-4"
+        action={
+          <ButtonLink href="/dashboard/extension" variant="secondary" size="sm">
+            صفحه‌ی افزونه
+            <IconArrowEnd className="h-4 w-4" />
+          </ButtonLink>
+        }
+      >
+        کلیدِ روشن/خاموشِ این حالت داخلِ خودِ افزونه است.
+      </Callout>
     </Card>
   );
 }
 
-/* ─────────────────────────  ردِ ممیزیِ اپلای خودکار  ───────────────────────── */
+/* ─────────────────────────  تاریخچه‌ی تغییرات  ───────────────────────── */
 
 export function AutoApplyAuditPanel({ audit }: { audit: AutoApplyAuditRow[] }) {
   if (audit.length === 0) {
     return (
       <EmptyState
-        icon={<IconReceipt className="h-7 w-7 text-brand" />}
-        title="هنوز رویدادی ثبت نشده"
-        body="هر روشن/خاموش‌شدنِ تاگل و هر تلاش یا ردِ اپلای خودکار این‌جا ثبت می‌شود تا همیشه بدانید چه اتفاقی افتاده."
+        icon={<IconReceipt />}
+        title="هنوز اتفاقی نیفتاده"
+        body="از این‌جا به بعد، هر روشن/خاموش‌شدن و هر ارسال یا صرف‌نظر این‌جا ثبت می‌شود."
       />
     );
   }
@@ -198,8 +253,8 @@ export function AutoApplyAuditPanel({ audit }: { audit: AutoApplyAuditRow[] }) {
     <Card padded>
       <SectionHeading
         as="h2"
-        title="ردِ ممیزیِ اپلای خودکار"
-        subtitle="فهرستِ شفافِ تصمیم‌ها و تلاش‌های اخیرِ اپلای خودکار (تازه‌ترین اول)."
+        title="تاریخچه‌ی تغییرات"
+        subtitle="تازه‌ترین اتفاق‌ها در بالا."
       />
 
       <ul className="mt-5 space-y-2.5">
@@ -240,7 +295,7 @@ export function AutoApplyAuditPanel({ audit }: { audit: AutoApplyAuditRow[] }) {
   );
 }
 
-/* ─────────────────────────  آیکنِ رویدادِ ممیزی  ───────────────────────── */
+/* ─────────────────────────  آیکنِ هر رویداد  ───────────────────────── */
 
 const AUDIT_ICON_TONES = {
   brand: "bg-brand/10 text-brand",
@@ -251,7 +306,7 @@ const AUDIT_ICON_TONES = {
   muted: "bg-foreground/5 text-muted",
 } as const;
 
-/** آیکنِ درون‌خطیِ متناسب با نوعِ رویدادِ ممیزی (به‌جای ایموجی). */
+/** آیکنِ درون‌خطیِ متناسب با نوعِ رویداد (به‌جای ایموجی). */
 function AuditIcon({
   eventType,
   tone,

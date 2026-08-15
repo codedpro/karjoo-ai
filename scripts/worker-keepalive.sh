@@ -62,6 +62,8 @@ KARJOO_HEADLESS="true" \
 KARJOO_NODE_REGION="local-host" \
 KARJOO_AGENT_VERSION="0.1.0" \
 KARJOO_LOOP_INTERVAL_SEC="60" \
+KARJOO_POLITENESS_BASE_MS="45000" \
+KARJOO_POLITENESS_JITTER_MS="45000" \
 setsid nohup node dist/main.js >> "${LOG}" 2>&1 &
 
 echo "$(date -Is) [keepalive] launched worker pid=$!" >> "${LOG}"

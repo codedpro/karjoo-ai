@@ -28,6 +28,7 @@ const watch = process.argv.includes("--watch");
 const entryPoints = {
   background: resolve(root, "src/background/service-worker.ts"),
   popup: resolve(root, "src/popup/popup.ts"),
+  sidepanel: resolve(root, "src/sidepanel/sidepanel.ts"),
   "content/jobinja": resolve(root, "src/content/jobinja.ts"),
   // MAIN-world hook that lifts the Jobinja cvId from the SPA's own cv-builder API calls.
   "content/jobinja-cvid": resolve(root, "src/content/jobinja-cvid.ts"),
@@ -56,6 +57,8 @@ const staticCopies = [
   ["manifest.json", "manifest.json"],
   ["src/popup/popup.html", "popup.html"],
   ["src/popup/popup.css", "popup.css"],
+  ["src/sidepanel/sidepanel.html", "sidepanel.html"],
+  ["src/sidepanel/sidepanel.css", "sidepanel.css"],
   ["icons", "icons"],
   // Chrome requires a _locales/<default_locale> dir whenever the manifest sets
   // default_locale (even with no __MSG__ placeholders); copy it verbatim.

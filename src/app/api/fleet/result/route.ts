@@ -18,6 +18,7 @@ import { json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
 import { requireNodeCredential } from "@/lib/api/fleet-auth";
 import { fleetResultBodySchema } from "@/lib/api/fleet-schemas";
 import { recordFleetResult } from "@/lib/fleet/dispatch";
+import { blockServerExecution } from "@/lib/apply/execution-run";
 
 // به DB دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -30,6 +31,17 @@ export async function POST(request: Request): Promise<Response> {
 
     // ۲) اعتبارسنجیِ بدنه (strict — مادهٔ سری/فیلدِ ناشناخته رد).
     const body = await parseJsonBody(request, fleetResultBodySchema);
+
+    if (body.status === "blocked") {
+      const run = await blockServerExecution(
+        body.userId,
+        node.id,
+        body.taskId,
+        body.reason ?? "job board security challenge",
+      );
+      if (!run) return json({ error: "apply task not found for node and user" }, 409);
+      return json({ taskStatus: "pending", run });
+    }
 
     // ۳) ثبتِ نتیجه — nodeId همیشه از اعتبارنامه. مقید به userIdِ بدنه ولی هسته مالکیتِ
     //    task توسطِ همان کاربر را دوباره می‌سنجد.

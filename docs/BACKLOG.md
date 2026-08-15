@@ -30,7 +30,26 @@ Generated from a multi-agent audit (8 subsystem scanners → 55 raw findings →
 | 22 | Jobinja APPLY_SPEC selectors unverified best-effort guesses | incomplete | medium | M | ⛔ blocked — needs a live logged-in Jobinja account to record/verify the real apply-form selectors. **Owner action.** |
 | 23 | Real payment flow (sell paid tiers) | incomplete | medium | XL | ✅ done via **card-to-card** (کارت‌به‌کارت): user submits transfer + reference → admin approves → credit/upgrade. No self-credit. Set `KARJOO_CARD_NUMBER`/`KARJOO_CARD_HOLDER` in env. |
 
+| 24 | Interest categories with no Jobinja mapping silently produce an UNFILTERED scrape | bug | high | S | ⛔ open — see below |
+| 25 | Interests page and apply-filters write the same `preferences.categorySlugs` key with two different vocabularies | bug | medium | M | ⚠️ mitigated in UI only — see below |
+
 Plus: **onboarding** — server-computed "شروعِ کار" checklist on the dashboard (résumé → filters → connect), streamed + auto-hiding. (in progress)
+
+### #24 — unmapped interest categories → unfiltered scrape (highest open risk)
+
+`INTERNAL_TO_JOBINJA` (`src/lib/apply/boards/jobinja-categories.ts:212`) has **no entry for 9 of the 26** taxonomy slugs: `management-business`, `human-resources`, `civil-engineering`, `architecture`, `healthcare-medical`, `legal`, `logistics-supply-chain`, `manufacturing-production`, `hospitality-tourism`. It also carries 7 dead keys that are not taxonomy slugs at all (`hr-recruitment`, `office-admin`, `supply-chain`, `civil-architecture`, `medical-health`, `translation`, `transport-logistics`).
+
+Consequence: a user who selects *only* unmapped categories (e.g. «حقوقی») still passes the `hasTargeting` gate, but `buildSearchUrl` emits **no** `filters[job_categories][]` — i.e. a plain `/jobs` scrape across every category. For an auto-apply product that is a mass-apply hazard, not just a bad result set.
+
+Fix is the mapping table, not the UI. Until it is filled in, consider failing `hasTargeting` closed when every selected category resolves to nothing — better to run zero applies than untargeted ones.
+
+### #25 — two writers, one key
+
+`replaceInterests` → `mergeInterestPreferences` (`src/lib/interests/to-preferences.ts:83`) and `mergeApplyFilters` (`src/lib/apply/filters.ts:170`) both write `candidate_profiles.preferences.categorySlugs`; last writer wins. Interests writes internal slugs (`software-development`), apply-filters writes Jobinja machine names (`وب،‌-برنامه‌نویسی-و-نرم‌افزار`). The comment at `src/lib/apply/filters.ts:17-19` claiming this layer "doesn't touch the interests keys" is stale.
+
+Also: `user_interests` has no reader outside `getSelectedSlugs`, and the second key `categories` written at `to-preferences.ts:83` is read by nobody. `orchestrator.ts:212` defines a local `toJobPreferences` that ignores `categorySlugs` entirely, so `runJobinjaIngest` never sees interests at all.
+
+The «زمینه‌های شغلی» page now warns the user that saving there replaces the categories chosen on «اپلای خودکار», but the collision itself is unfixed — it needs one owner for the key, or namespacing.
 
 Details for each item live in the audit transcript; fixSketches were captured per finding.
 

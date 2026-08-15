@@ -5,7 +5,15 @@
  * خودِ URL می‌ماند (قابلِ اشتراک و بوکمارک و بازگشت با دکمه‌ی back)، مرتب‌سازی/صفحه‌بندی
  * روی پایگاه‌داده انجام می‌شود نه روی آرایه‌ی رندرشده، و صفحه بدونِ هیچ جاوااسکریپتی کار
  * می‌کند. پس این کامپوننت سرور است و هیچ `use client` لازم ندارد.
+ *
+ * سلسله‌مراتبِ بصری (تصمیمِ تازه): این سنگین‌ترین نوارِ ابزارِ داشبورد بود، آن‌هم برای فهرستی
+ * که معمولاً چند ده ردیف بیشتر نیست. حالا فقط چیپ‌های وضعیت — که خودشان خلاصه‌ی مفیدی‌اند —
+ * همیشه دیده می‌شوند و مرتب‌سازی/جست‌وجو داخلِ یک `<details>`ِ جمع‌شده می‌روند که *فقط* وقتی
+ * کاربر واقعاً از آن‌ها استفاده کرده باز است. `<details>` هم بدونِ جاوااسکریپت کار می‌کند، پس
+ * قاعده‌ی «همه‌چیز با لینک و فرمِ GET» نمی‌شکند.
  */
+import { ChevronDown } from "lucide-react";
+
 import {
   APPLICATION_SORTS,
   APPLICATION_STATUSES,
@@ -96,6 +104,32 @@ export function StatusFilter({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * مرتب‌سازی + جست‌وجو، جمع‌شده در یک `<details>`.
+ *
+ * پیش‌فرض بسته است تا صفحه آرام بماند؛ اگر کاربر جست‌وجو یا مرتب‌سازیِ غیرپیش‌فرض دارد،
+ * باز باز می‌شود — وگرنه فیلترِ فعالش نامرئی می‌شد و نمی‌فهمید چرا فهرست کوتاه است.
+ */
+export function ToolbarDetails({ state }: { state: ToolbarState }) {
+  const touched = Boolean(state.q) || state.sort !== "applied" || state.dir !== "desc";
+  return (
+    <details open={touched} className="group">
+      <summary className="focus-ring inline-flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted transition-colors marker:content-[''] hover:text-foreground">
+        <span>مرتب‌سازی و جست‌وجو</span>
+        <ChevronDown
+          strokeWidth={1.75}
+          className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-open:rotate-180"
+          aria-hidden
+        />
+      </summary>
+      <div className="mt-3 flex flex-col gap-3 rounded-xl border border-border bg-surface/50 p-3 lg:flex-row lg:items-center lg:justify-between">
+        <SortControls state={state} />
+        <SearchBox state={state} />
+      </div>
+    </details>
   );
 }
 
@@ -233,7 +267,7 @@ function PageLink({
   const cls = cn(
     "focus-ring min-w-9 rounded-lg px-2.5 py-1.5 text-center text-xs transition",
     active
-      ? "bg-brand text-white font-bold"
+      ? "bg-brand font-bold text-brand-foreground"
       : "border border-foreground/10 text-muted hover:border-foreground/25 hover:text-foreground",
   );
   if (disabled) {

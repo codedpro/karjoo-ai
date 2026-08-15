@@ -1,20 +1,18 @@
 /**
- * پنلِ «هزینه‌ی هوش مصنوعی» — کارتِ راهنمای سمتِ‌سرور برای صفحه‌های کنشِ پولی.
+ * کارتِ «نرخِ پردازش‌های هوش مصنوعی» — پاسخ به «هر کار چقدر برایم آب می‌خورد؟».
  *
- * ارائه‌ای (server-safe). نشان می‌دهد:
- *   • پلن و موجودیِ کیف‌پول،
- *   • «حدودِ هزینه»ی کنش‌های پولی (تطبیق + انگیزه‌نامه)،
- *   • و اگر کاربر اجازه‌ی فراخوانیِ پولی ندارد (پلنِ free یا موجودیِ ≤۰)، یک نوارِ
- *     «نیازمندِ شارژ» با لینکِ شارژ.
+ * ارائه‌ای (server-safe). فقط نمایش می‌دهد؛ هیچ کسری/متری نمی‌کند و تخمین در
+ * `lib/billing/ui` (خالص) محاسبه می‌شود.
  *
- * هیچ کسری/متری نمی‌کند؛ فقط نمایش. تخمین در lib/billing/ui (خالص) محاسبه می‌شود.
- * از پرایمیتیوهای مشترک (`Card`/`Badge`/`ButtonLink`) استفاده می‌کند تا با بقیه‌ی
- * داشبورد یکدست بماند؛ برچسبِ پلن `whitespace-nowrap` است تا در چیپ دو-خطی نشود.
+ * تصمیمِ تازه: این کارت قبلاً موجودیِ کیف‌پول و دکمه‌ی شارژ را هم داشت و کنارِ صفحه‌ی
+ * تطبیق‌ها می‌نشست. حالا خانه‌اش «اعتبار و هزینه» است، جایی که پنلِ کیف‌پول همان بالا
+ * موجودی و مسیرِ شارژ را می‌گوید — پس تکرارِ آن‌ها فقط صفحه را شلوغ می‌کرد. این‌جا فقط
+ * *نرخ* می‌ماند و اگر پردازشِ پولی ممکن نباشد، یک هشدارِ یک‌خطی.
  */
 import { formatToman, type CostEstimate } from "@/lib/billing/ui";
 import type { Plan } from "@/db/schema";
 
-import { Badge, ButtonLink, Card } from "./ui";
+import { Badge, Card } from "./ui";
 
 /** برچسبِ کوتاهِ پلن — عمداً موجز تا در نشان یک-خطی بماند (payg قبلاً می‌شکست). */
 const PLAN_LABELS: Record<Plan, string> = {
@@ -32,6 +30,7 @@ function CostRow({ label, estimate }: { label: string; estimate: CostEstimate | 
     <li className="flex items-center justify-between gap-3 py-2.5 text-sm">
       <span className="text-pretty text-muted">{label}</span>
       <span className="ltr-nums shrink-0 whitespace-nowrap font-semibold tabular-nums">
+        {/* `formatToman`ِ lib/billing/ui خودش ارقامِ فارسی و واحد را می‌گذارد. */}
         {estimate ? `~ ${formatToman(estimate.costToman)}` : "—"}
       </span>
     </li>
@@ -40,57 +39,39 @@ function CostRow({ label, estimate }: { label: string; estimate: CostEstimate | 
 
 export function AiCostPanel({
   plan,
-  balanceToman,
   canUsePaidAi,
   matchEstimate,
   coverLetterEstimate,
-  topupHref = "/dashboard/billing",
 }: {
   plan: Plan;
-  balanceToman: number;
   canUsePaidAi: boolean;
   matchEstimate: CostEstimate | null;
   coverLetterEstimate: CostEstimate | null;
-  topupHref?: string;
 }) {
   return (
     <Card padded>
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-balance text-base font-bold">هزینه‌ی هوش مصنوعی</h3>
+        <h3 className="text-balance text-base font-bold">هر کار چقدر هزینه دارد</h3>
         <Badge tone="muted">{PLAN_LABELS[plan]}</Badge>
       </div>
 
-      {/* موجودیِ کیف‌پول — کارتِ برجسته با عددِ درشت */}
-      <div className="mt-4 rounded-xl border border-border bg-surface/70 px-4 py-3">
-        <div className="text-xs text-muted">موجودیِ کیف‌پول</div>
-        <div className="ltr-nums mt-0.5 text-lg font-extrabold tabular-nums">
-          {formatToman(balanceToman)}
-        </div>
-      </div>
-
-      <ul className="mt-3 divide-y divide-border/70">
+      <ul className="mt-2 divide-y divide-border/70">
         <CostRow label="تطبیقِ هوشمندِ هر آگهی" estimate={matchEstimate} />
         <CostRow label="نگارشِ انگیزه‌نامه" estimate={coverLetterEstimate} />
       </ul>
 
       <p className="mt-3 text-pretty text-xs leading-6 text-muted">
-        ارقام تخمینی‌اند؛ هزینه‌ی واقعی پس از هر پردازش از مصرفِ واقعیِ توکن محاسبه و از
-        کیف‌پول کسر می‌شود. مشاهده‌ی آگهی و اپلای از طریقِ افزونه رایگان است.
+        ارقام تخمینی‌اند؛ مبلغِ واقعی پس از هر پردازش حساب و کسر می‌شود. آپلودِ رزومه و
+        ارسالِ درخواست رایگان است.
       </p>
 
       {!canUsePaidAi ? (
-        <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-          <p className="text-balance text-sm font-semibold text-amber-800 dark:text-amber-300">
-            شارژِ حساب لازم است
-          </p>
-          <p className="mt-1 text-pretty text-xs leading-6 text-amber-700/90 dark:text-amber-200/80">
-            موجودیِ کیف‌پولِ واحدِ 1xAi شما برای پردازشِ هوش مصنوعی کافی نیست — با هر
-            پلنی (حتی رایگان) کافی است کیف‌پول را در 1xai شارژ کنید.
-          </p>
-          <ButtonLink href={topupHref} size="sm" className="mt-3">
-            شارژِ کیف‌پول
-          </ButtonLink>
-        </div>
+        <p
+          role="status"
+          className="mt-4 text-pretty rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs leading-6 text-amber-700 dark:text-amber-300"
+        >
+          موجودی برای این پردازش‌ها کافی نیست — کیف‌پول را شارژ کنید.
+        </p>
       ) : null}
     </Card>
   );

@@ -38,6 +38,8 @@ const JOBINJA_JOBS_URL = `${JOBINJA_ORIGIN}/jobs`;
  */
 const BROWSER_USER_AGENT = KARJOO_USER_AGENT;
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 /** ادب در برداشت: سقف تعداد صفحه، مکث بین صفحه‌ها و مهلت هر درخواست. */
 /**
  * صفحه‌های جست‌وجو در هر اجرا. ۳ تا کم بود: هر صفحه ~۲۰ آگهی، یعنی هر دورِ کشف فقط ~۶۰
@@ -66,6 +68,11 @@ export interface ScrapeOptions {
    * به‌اندازه‌ی صفحاتِ مصرف‌شده جلو می‌رود).
    */
   targetCount?: number;
+  /**
+   * اگر داده شود، آگهی‌های قدیمی‌تر از این تعداد روز جمع نمی‌شوند و وقتی یک صفحه‌ی
+   * newest-first فقط آگهیِ قدیمی داشته باشد، پیمایش همان‌جا تمام می‌شود.
+   */
+  stopWhenStaleDays?: number;
   /** مکث بین صفحه‌ها (میلی‌ثانیه) — برای رعایت ادب. */
   delayMs?: number;
   /** پیاده‌سازی fetch قابل‌تزریق (تست). پیش‌فرض: fetch سراسری. */
@@ -240,6 +247,46 @@ function cleanPostedAt(raw?: string): string | undefined {
   return text.length > 0 ? text : undefined;
 }
 
+function normalizeDigits(input: string): string {
+  const fa = "۰۱۲۳۴۵۶۷۸۹";
+  const ar = "٠١٢٣٤٥٦٧٨٩";
+  return input.replace(/[۰-۹٠-٩]/g, (ch) => {
+    const faIdx = fa.indexOf(ch);
+    if (faIdx >= 0) return String(faIdx);
+    const arIdx = ar.indexOf(ch);
+    return arIdx >= 0 ? String(arIdx) : ch;
+  });
+}
+
+function relativePostedDate(raw?: string, now = new Date()): Date | null {
+  if (!raw) return null;
+  const text = normalizeDigits(raw).replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+
+  let days: number | null = null;
+  if (/^(امروز|today)$/i.test(text)) days = 0;
+  else if (/^(دیروز|yesterday)$/i.test(text)) days = 1;
+  else {
+    const match = /(\d+)\s*(روز|day|days|هفته|week|weeks|ماه|month|months)\s*(?:پیش|ago)?/i.exec(text);
+    if (match) {
+      const n = Number(match[1]);
+      const unit = match[2];
+      if (Number.isFinite(n)) {
+        if (/روز|day/i.test(unit)) days = n;
+        else if (/هفته|week/i.test(unit)) days = n * 7;
+        else if (/ماه|month/i.test(unit)) days = n * 30;
+      }
+    }
+  }
+  return days === null ? null : new Date(now.getTime() - days * MS_PER_DAY);
+}
+
+function isFreshByPostedAt(listing: JobListing, maxAgeDays: number, now = new Date()): boolean {
+  const posted = relativePostedDate(listing.postedAt, now);
+  if (!posted) return true;
+  return posted.getTime() >= now.getTime() - maxAgeDays * MS_PER_DAY;
+}
+
 /**
  * یک کارت آگهی را به `JobListing` نرمال می‌کند. اگر کارت معتبر نباشد (بدون
  * لینک/شناسه/عنوان) `null` برمی‌گرداند تا برداشت با خطا متوقف نشود.
@@ -365,9 +412,7 @@ export function buildSearchUrl(
   if (typeof prefs.minSalary === "number" && prefs.minSalary > 0) {
     params.set("filters[sal_min]", String(prefs.minSalary));
   }
-  if (prefs.sort && prefs.sort.trim().length > 0) {
-    params.set("sort", prefs.sort.trim());
-  }
+  params.set("sort", prefs.sort?.trim() || "published_at_desc");
   if (page > 1) {
     params.set("page", String(page));
   }
@@ -407,7 +452,10 @@ export const jobinja: JobBoardConnector & {
    */
   async scrapePublicWith(prefs: JobPreferences, opts: ScrapeOptions): Promise<ScrapeResult> {
     const fetchImpl = opts.fetchImpl ?? fetch;
-    const maxPages = Math.max(1, opts.maxPages ?? DEFAULT_MAX_PAGES);
+    const maxPages =
+      opts.maxPages === Number.POSITIVE_INFINITY
+        ? Number.POSITIVE_INFINITY
+        : Math.max(1, opts.maxPages ?? DEFAULT_MAX_PAGES);
     const startPage = Math.max(1, Math.floor(opts.startPage ?? 1));
     const endPage = startPage + maxPages - 1;
     const targetCount =
@@ -489,8 +537,17 @@ export const jobinja: JobBoardConnector & {
         break;
       }
 
+      const freshListings =
+        typeof opts.stopWhenStaleDays === "number" && opts.stopWhenStaleDays > 0
+          ? pageListings.filter((listing) => isFreshByPostedAt(listing, opts.stopWhenStaleDays!))
+          : pageListings;
+      if (freshListings.length === 0 && pageListings.some((listing) => listing.postedAt)) {
+        reachedEnd = true;
+        break;
+      }
+
       let added = 0;
-      for (const listing of pageListings) {
+      for (const listing of freshListings) {
         if (seen.has(listing.externalId)) continue;
         seen.add(listing.externalId);
         collected.push(listing);

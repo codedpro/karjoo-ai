@@ -4,7 +4,7 @@
  * اکشن‌های سرورِ بخشِ ادمینِ ناوگان (server actions) — Track C.
  *
  * این‌ها «پروکسیِ امن» به هسته‌ی Foundationِ ناوگان‌اند: روی کنترل‌پلین اجرا می‌شوند، با
- * نگهبانِ ادمین (isFleetAdmin — مقایسه‌ی رازِ داخلیِ سرور سمتِ سرور) محافظت می‌شوند، و راز
+ * نگهبانِ ادمین (isDashboardAdmin — مقایسه‌ی رازِ داخلیِ سرور سمتِ سرور) محافظت می‌شوند، و راز
  * *هرگز* به کلاینت نشت نمی‌کند. کلاینت فقط شناسه‌ها (nodeId/userId) را می‌فرستد؛ مجوز از
  * کوکیِ ادمین می‌آید، نه از بدنه.
  *
@@ -22,7 +22,7 @@ import { z } from "zod";
 import { assignNodeToUser, unassignNodeFromUser, WorkerIpLimitError } from "@/lib/fleet/assign";
 import { issueCommand } from "@/lib/fleet/commands";
 import type { Plan, WorkerCommand } from "@/db/schema";
-import { isFleetAdmin } from "./fleet-admin-guard";
+import { isDashboardAdmin } from "./admin-guard";
 import { readUserPlan } from "./fleet-admin-data";
 
 /** مسیرِ صفحه‌ی ادمینِ ناوگان — برای revalidate پس از هر تغییر. */
@@ -43,7 +43,7 @@ const commandSchema = z.object({
 
 /** نگهبانِ مشترک: اگر ادمین نباشد، نتیجه‌ی ردِ یکدست برمی‌گرداند (هیچ تغییری). */
 async function requireAdmin(): Promise<FleetActionResult | null> {
-  const ok = await isFleetAdmin();
+  const ok = await isDashboardAdmin();
   if (!ok) {
     return { ok: false, message: "دسترسیِ ادمین ندارید." };
   }

@@ -86,6 +86,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
       assertAllowed: async () => ({ minScore: 0.7 }),
       claimItems: async () => [item()],
       loadSession: async () => "SESSION",
+      loadResumeHtml: async () => "<html>tailored</html>",
     };
     expect(await claimFleetJobs("n1", 5, deps)).toEqual([]);
   });
@@ -104,6 +105,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
       },
       claimItems,
       loadSession: async () => "SESSION-uOk",
+      loadResumeHtml: async () => "<html>tailored</html>",
     };
 
     const jobs = await claimFleetJobs("n1", 5, deps);
@@ -124,6 +126,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
       assertAllowed: async () => ({ minScore: 0.75 }),
       claimItems,
       loadSession: async () => "S",
+      loadResumeHtml: async () => "<html>tailored</html>",
     };
     await claimFleetJobs("n1", 3, deps);
     expect(claimItems).toHaveBeenCalledWith("u1", 3, 0.75);
@@ -142,6 +145,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
         item({ taskId: "tB", board: "jobvision" }), // نشست ندارد → رد.
       ],
       loadSession,
+      loadResumeHtml: async () => "<html>tailored</html>",
     };
 
     const jobs = await claimFleetJobs("n1", 5, deps);
@@ -159,6 +163,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
       assertAllowed,
       claimItems: async () => [item()],
       loadSession: async () => "S",
+      loadResumeHtml: async () => "<html>tailored</html>",
     };
     expect(await claimFleetJobs("n1", 5, deps)).toEqual([]);
     expect(assertAllowed).not.toHaveBeenCalled();
@@ -172,6 +177,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
       // هر کاربر می‌تواند ۱ آیتم بدهد؛ ولی limit کل = ۱.
       claimItems: async (userId, lim) => (lim > 0 ? [item({ taskId: `t-${userId}` })] : []),
       loadSession: async () => "S",
+      loadResumeHtml: async () => "<html>tailored</html>",
     };
     const jobs = await claimFleetJobs("n1", 1, deps);
     expect(jobs).toHaveLength(1); // فقط ۱ کار، نه ۲.
@@ -182,6 +188,21 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
     const jobs = await claimFleetJobs("n1", 0, { readAssignedUserIds });
     expect(jobs).toEqual([]);
     expect(readAssignedUserIds).not.toHaveBeenCalled();
+  });
+
+  it("اگر رزومه‌ی هدف‌گیری‌شده ساخته/خوانده نشود، task برای تلاش بعد آزاد می‌شود", async () => {
+    const releaseMissingResumeTask = vi.fn(async () => undefined);
+    const deps: ClaimFleetDeps = {
+      readAssignedUserIds: async () => ["u1"],
+      readPlan: async () => "max",
+      assertAllowed: async () => ({ minScore: 0.7 }),
+      claimItems: async () => [item()],
+      loadSession: async () => "S",
+      loadResumeHtml: async () => null,
+      releaseMissingResumeTask,
+    };
+    expect(await claimFleetJobs("n1", 5, deps)).toEqual([]);
+    expect(releaseMissingResumeTask).toHaveBeenCalledWith("t1");
   });
 });
 

@@ -251,6 +251,15 @@ export async function runPlan(
   plan: ApplyPlan,
   stepTimeoutMs: number,
 ): Promise<PlanOutcome> {
+  const accessBlock = await detectAccessBlock(page, stepTimeoutMs);
+  if (accessBlock) {
+    return {
+      status: "failed",
+      confirmed: false,
+      reason: accessBlock,
+    };
+  }
+
   for (const step of plan.steps) {
     const locator = page.locator(step.selector);
 
@@ -259,6 +268,13 @@ export async function runPlan(
         await locator.waitFor({ timeout: stepTimeoutMs, state: "attached" });
       } catch {
         if (step.optional) continue;
+        if (isApplyFormWait(step.selector, plan)) {
+          return {
+            status: "skipped",
+            confirmed: false,
+            reason: "this listing has no on-site apply form or the user has already applied",
+          };
+        }
         return { status: "failed", confirmed: false, reason: `waitFor missing: ${step.selector}` };
       }
       continue;
@@ -314,6 +330,13 @@ export async function runPlan(
       // hidden on this viewport — the mobile-only form toggler on desktop) is skipped,
       // not fatal. Required steps still fail the job.
       if (step.optional) continue;
+      if (step.selector === plan.submitSelector && isDisabledElementError(err)) {
+        return {
+          status: "skipped",
+          confirmed: false,
+          reason: "submit button is disabled (already applied or profile requirements missing)",
+        };
+      }
       return { status: "failed", confirmed: false, reason: `step '${step.kind}' failed: ${errMessage(err)}` };
     }
   }
@@ -332,4 +355,39 @@ export async function runPlan(
 function errMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+function isApplyFormWait(selector: string, plan: ApplyPlan): boolean {
+  return selector === "#apply-form" && plan.submitSelector.includes("#apply-form");
+}
+
+function isDisabledElementError(err: unknown): boolean {
+  return /\bdisabled\b|not enabled|element is not enabled/i.test(errMessage(err));
+}
+
+async function detectAccessBlock(
+  page: BrowserPage,
+  stepTimeoutMs: number,
+): Promise<string | null> {
+  const bodyLocator = page.locator("body");
+  if (!bodyLocator.textContent) return null;
+
+  let body = "";
+  try {
+    body = (await bodyLocator.textContent({
+      timeout: Math.min(stepTimeoutMs, 3000),
+    })) ?? "";
+  } catch {
+    return null;
+  }
+
+  if (
+    /checking your browser before accessing the website/i.test(body) ||
+    /please complete the security check before accessing the website/i.test(body) ||
+    /recaptcha/i.test(body)
+  ) {
+    return "jobinja_security_check: worker browser was blocked by the site security challenge; no apply attempt was made";
+  }
+
+  return null;
 }

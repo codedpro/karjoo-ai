@@ -16,16 +16,21 @@ export function boardLabel(board: string): string {
   return BOARD_LABELS[board] ?? board;
 }
 
-/** برچسب + لحنِ نشانِ وضعیتِ تطبیق. */
+/**
+ * برچسب + لحنِ نشانِ وضعیتِ تطبیق.
+ *
+ * برچسب‌ها *کاری*اند نه فنی: کاربر باید از روی نشان بفهمد کارِ بعدی چیست، نه اینکه در
+ * خطِ لوله‌ی داخلیِ ما چه اتفاقی افتاده («فیلترشده» را کسی نمی‌فهمید).
+ */
 export const MATCH_STATUS: Record<
   string,
   { label: string; tone: "brand" | "accent" | "muted" | "green" | "amber" | "rose" }
 > = {
-  pending: { label: "در صف امتیازدهی", tone: "muted" },
-  scored: { label: "امتیازگرفته", tone: "muted" },
-  drafted: { label: "آماده‌ی اپلای", tone: "brand" },
-  queued: { label: "در صفِ اپلای", tone: "accent" },
-  dismissed: { label: "رد شده", tone: "muted" },
+  pending: { label: "در صفِ بررسی", tone: "muted" },
+  scored: { label: "بررسی‌شده", tone: "muted" },
+  drafted: { label: "آماده‌ی ارسال", tone: "brand" },
+  queued: { label: "در صفِ ارسال", tone: "accent" },
+  dismissed: { label: "کنار گذاشته شد", tone: "muted" },
 };
 
 /** برچسب + لحنِ نشانِ وضعیتِ اپلای. */
@@ -35,14 +40,14 @@ export const APPLICATION_STATUS: Record<
 > = {
   draft: { label: "پیش‌نویس", tone: "muted" },
   submitted: { label: "ارسال‌شده", tone: "green" },
-  skipped: { label: "رد‌شده", tone: "amber" },
+  skipped: { label: "ارسال نشد", tone: "amber" },
   failed: { label: "ناموفق", tone: "rose" },
 };
 
-/** کانالِ اجرای اپلای. */
+/** کانالِ اجرای اپلای — «نودِ ایرانی» اصطلاحِ زیرساختِ ماست، نه چیزی که کاربر بشناسد. */
 export const CHANNEL_LABELS: Record<string, string> = {
   extension: "افزونه‌ی مرورگر",
-  worker: "نود ایرانی",
+  worker: "سرورِ کارجو (۲۴/۷)",
 };
 
 /** وضعیتِ اتصالِ حسابِ سایت. */

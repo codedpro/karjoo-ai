@@ -5,7 +5,7 @@ import type { RunFilterApplyReport } from "@/lib/apply/orchestrator";
 
 function report(queued: number): RunFilterApplyReport {
   return {
-    aiFilter: true,
+    aiFilter: false,
     ingested: queued,
     persistedListings: queued,
     queued,
@@ -27,7 +27,7 @@ const eligible: EligibleUser[] = [
 type RunFilterOpts = {
   userId: string;
   aiFilter: boolean;
-  threshold: number;
+  threshold?: number;
   dailyCap: number;
   db?: unknown;
 };
@@ -35,17 +35,20 @@ type RunFilterOpts = {
 describe("runServerDiscovery", () => {
   // اسپای مُهرِ چرخش — در همه‌ی تست‌ها تزریق می‌شود تا به DBِ واقعی دست نخورد.
   let mark: ReturnType<typeof vi.fn>;
+  let prepareResumes: ReturnType<typeof vi.fn>;
   beforeEach(() => {
     mark = vi.fn(async () => {});
+    prepareResumes = vi.fn(async () => ({ attempted: 0, prepared: 0, failed: 0 }));
   });
 
-  it("برای هر کاربرِ واجدِ شرایط، aiFilter=true با آستانه‌ی minScore اجرا می‌کند", async () => {
+  it("برای هر کاربرِ واجدِ شرایط، فیلترمود را بدون گیتِ score اجرا می‌کند", async () => {
     const runFilter = vi.fn(async (_opts: RunFilterOpts) => report(3));
     const summary = await runServerDiscovery({
       listEligible: async () => eligible,
       assertAllowed: async () => ({ minScore: 0.82 }),
       canUsePaidAi: async () => undefined,
       runFilter,
+      prepareResumes,
       markAttempted: mark,
     });
 
@@ -55,9 +58,9 @@ describe("runServerDiscovery", () => {
     expect(runFilter).toHaveBeenCalledTimes(2);
     expect(runFilter.mock.calls[0]?.[0]).toMatchObject({
       userId: "u1",
-      aiFilter: true,
-      threshold: 0.82,
+      aiFilter: false,
     });
+    expect(runFilter.mock.calls[0]?.[0].threshold).toBeUndefined();
   });
 
   it("بی‌موجودیِ AI → کاربر رد می‌شود و runFilter برایش صدا نمی‌شود (fail-closed روی پول)", async () => {
@@ -71,6 +74,7 @@ describe("runServerDiscovery", () => {
         return undefined;
       },
       runFilter,
+      prepareResumes,
       markAttempted: mark,
     });
 
@@ -91,6 +95,7 @@ describe("runServerDiscovery", () => {
       },
       canUsePaidAi: async () => undefined,
       runFilter: vi.fn(async () => report(0)),
+      prepareResumes,
       markAttempted: mark,
     });
     expect(summary.skipped).toBe(1);
@@ -109,6 +114,7 @@ describe("runServerDiscovery", () => {
       assertAllowed: async () => ({ minScore: 0.7 }),
       canUsePaidAi: async () => undefined,
       runFilter,
+      prepareResumes,
       markAttempted: mark,
       budgetMs: 5_000,
       now,
@@ -132,6 +138,7 @@ describe("runServerDiscovery", () => {
       assertAllowed: async () => ({ minScore: 0.7 }),
       canUsePaidAi: async () => undefined,
       runFilter,
+      prepareResumes,
       markAttempted: mark,
     });
 
@@ -152,6 +159,7 @@ describe("runServerDiscovery", () => {
         return undefined;
       },
       runFilter: vi.fn(async (_o: RunFilterOpts) => report(1)),
+      prepareResumes,
       markAttempted: mark,
     });
 

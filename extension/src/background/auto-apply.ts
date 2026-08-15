@@ -1,70 +1,33 @@
-/**
- * Background auto-apply orchestration (the impure half — chrome.* + network).
- *
- * ════════════════════════════════════════════════════════════════════════════
- * §10 GUARDRAILS (the point of this build):
- *   • A chrome.alarms job runs every AUTO_APPLY_ALARM_MINUTES. Each tick FIRST
- *     fetches the server-authoritative auto-apply settings. If the toggle is OFF
- *     (or no boards are connected, or the extension is not paired) the tick does
- *     NOTHING (decideTick → run:false). The toggle is the user's explicit,
- *     revocable consent.
- *   • It claims the user's pending, above-threshold queue (the server already
- *     gates by toggle + daily cap + threshold). If the server says the queue is
- *     gated (reason: 'disabled' | 'quota_exceeded') the tick stops.
- *   • For each eligible item it drives the per-board APPLY content script IN THE
- *     USER'S OWN BROWSER to fill + submit the public form, then reports the result.
- *     A 429 from the result endpoint = daily cap reached → stop the drain.
- *   • Politeness: a base + jitter delay between applies; a small per-tick budget.
- *   • Works with the popup CLOSED while the browser runs. It CANNOT run with the
- *     browser fully closed — that is the Max/Max+ worker tier (see README).
- *   • No detection-evasion anywhere.
- * ════════════════════════════════════════════════════════════════════════════
- *
- * The PURE decisions live in apply-runner.ts; this module is the thin adapter
- * that calls chrome.* / the API and sequences the runner's decisions.
- */
-import { BOARDS, type BoardId } from "@ext/lib/config";
+import { BOARDS } from "@ext/lib/config";
 import { KarjooApi } from "@ext/lib/api-client";
 import {
   getApiOrigin,
+  getNotifiedBlockedAt,
+  getOrCreateExecutorId,
   getSessionToken,
-  setAutoApplySettings,
   setAutoApplyStatus,
+  setNotifiedBlockedAt,
 } from "@ext/lib/storage";
 import {
   AUTO_APPLY_ALARM,
-  AUTO_APPLY_ALARM_MINUTES,
   SESSION_REFRESH_ALARM,
   SESSION_REFRESH_MINUTES,
-  MAX_APPLIES_PER_TICK,
-  politenessDelayMs,
 } from "@ext/lib/auto-apply-config";
-import {
-  decideTick,
-  eligibleItems,
-  shouldStopForClaim,
-  shouldStopForCap,
-  buildApplyPlan,
-  applyValuesFor,
-  type AutoApplyGate,
-} from "@ext/lib/apply-runner";
+import { buildApplyPlan, applyValuesFor } from "@ext/lib/apply-runner";
 import { buildApplyResultReport } from "@ext/lib/apply-result-payload";
-import { planUsesVault, type AutoApplyStatus } from "@ext/lib/types";
+import { planUsesVault, type ApplyQueueItem, type AutoApplyStatus, type ExtensionRunOverview } from "@ext/lib/types";
 import { refreshAllBoardSessions } from "@ext/background/session-refresh";
 import { sendToTab, waitForTabComplete } from "@ext/background/tab-utils";
-import type { ApplyQueueItem } from "@ext/lib/types";
-import type { ContentApplyResult } from "@ext/lib/messages";
+import type { ContentApplyResult, ContentDiscoveryResult } from "@ext/lib/messages";
 
-/* ── alarm setup (call once on startup/install) ────────────────────────────── */
+let activeCycle: Promise<AutoApplyStatus> | null = null;
 
-/** Create the periodic alarms. Idempotent — chrome.alarms.create replaces. */
 export function setupAutoApplyAlarms(): void {
   if (typeof chrome === "undefined" || !chrome.alarms) return;
-  chrome.alarms.create(AUTO_APPLY_ALARM, { periodInMinutes: AUTO_APPLY_ALARM_MINUTES });
+  chrome.alarms.create(AUTO_APPLY_ALARM, { periodInMinutes: 1 });
   chrome.alarms.create(SESSION_REFRESH_ALARM, { periodInMinutes: SESSION_REFRESH_MINUTES });
 }
 
-/** Wire the alarm listener. The service worker calls this at module load. */
 export function registerAutoApplyAlarmListener(): void {
   if (typeof chrome === "undefined" || !chrome.alarms?.onAlarm) return;
   chrome.alarms.onAlarm.addListener((alarm) => {
@@ -73,213 +36,268 @@ export function registerAutoApplyAlarmListener(): void {
   });
 }
 
-/* ── one auto-apply tick ───────────────────────────────────────────────────── */
-
-/** Build an authed API client from storage, or null if not paired. */
 async function apiOrNull(): Promise<KarjooApi | null> {
   const token = await getSessionToken();
   if (!token) return null;
-  const origin = await getApiOrigin();
-  return new KarjooApi({ origin, token });
+  return new KarjooApi({ origin: await getApiOrigin(), token });
 }
 
-/** Persist a non-secret status summary (and return it). */
 async function record(status: AutoApplyStatus): Promise<AutoApplyStatus> {
   await setAutoApplyStatus(status);
   return status;
 }
 
-/**
- * Run ONE background auto-apply tick. Returns the resulting status (also stored).
- * Safe to call from the alarm or from a manual "run now" popup action.
- */
-export async function runAutoApplyTick(): Promise<AutoApplyStatus> {
+export async function getRunOverview(): Promise<ExtensionRunOverview | null> {
+  const api = await apiOrNull();
+  return api ? api.getExecutionRun() : null;
+}
+
+export async function mutateRun(
+  action: "start" | "takeover" | "pause" | "stop",
+  backgroundEnabled = true,
+): Promise<ExtensionRunOverview> {
+  const api = await apiOrNull();
+  if (!api) throw new Error("افزونه هنوز به کارجو متصل نیست.");
+  const executorId = await getOrCreateExecutorId();
+  const overview = await api.mutateExecutionRun({
+    action,
+    executorId,
+    ...((action === "start" || action === "takeover") ? { backgroundEnabled } : {}),
+  });
+  if (action === "start" || action === "takeover") {
+    void runAutoApplyTick(true);
+  }
+  return overview;
+}
+
+export async function setRunBackground(enabled: boolean): Promise<ExtensionRunOverview | null> {
+  const api = await apiOrNull();
+  if (!api) return null;
+  const executorId = await getOrCreateExecutorId();
+  const overview = await api.getExecutionRun();
+  if (overview.run.owner !== "extension" || overview.run.executorId !== executorId) return overview;
+  return api.mutateExecutionRun({ action: "heartbeat", executorId, backgroundEnabled: enabled });
+}
+
+export async function runAutoApplyTick(force = false): Promise<AutoApplyStatus> {
+  if (activeCycle) return activeCycle;
+  activeCycle = runCycle(force).finally(() => { activeCycle = null; });
+  return activeCycle;
+}
+
+async function runCycle(force: boolean): Promise<AutoApplyStatus> {
   const ranAt = Date.now();
   try {
     const api = await apiOrNull();
     if (!api) return record({ ranAt, outcome: "not_paired", submitted: 0, failed: 0 });
-
-    // 1) Server-authoritative settings — cache them for the popup, then gate.
-    const settings = await api.getAutoApplySettings();
-    await setAutoApplySettings({ enabled: settings.enabled, minScore: settings.minScore });
-
-    const connectedBoards = await listConnectedBoards(api);
-    const gate: AutoApplyGate = {
-      enabled: settings.enabled,
-      minScore: settings.minScore,
-      boardsConnected: connectedBoards.length > 0,
-    };
-    const decision = decideTick(gate);
-    if (!decision.run) {
-      return record({
-        ranAt,
-        outcome: decision.reason === "disabled" ? "disabled" : "no_boards",
-        submitted: 0,
-        failed: 0,
-      });
+    const executorId = await getOrCreateExecutorId();
+    const overview = await api.getExecutionRun();
+    await notifyBlockedRun(overview);
+    if (
+      overview.run.owner !== "extension" ||
+      overview.run.executorId !== executorId ||
+      overview.run.state !== "running" ||
+      (!overview.run.backgroundEnabled && !force)
+    ) {
+      return record({ ranAt, outcome: "disabled", submitted: 0, failed: 0 });
     }
-
-    // 2) Claim the gated queue. The server enforces toggle + cap + threshold; we
-    //    pass a small limit and stop early on a cap/disabled signal.
-    const claim = await api.claimQueue(MAX_APPLIES_PER_TICK);
-    if (shouldStopForClaim(claim)) {
-      return record({
-        ranAt,
-        outcome: claim.reason === "quota_exceeded" ? "quota_reached" : "disabled",
-        submitted: 0,
-        failed: 0,
-      });
-    }
-
-    const items = eligibleItems(claim.items, decision.minScore);
-    if (items.length === 0) {
-      return record({ ranAt, outcome: "empty", submitted: 0, failed: 0 });
-    }
-
-    // 3) Apply each item politely, stopping the moment the server reports the cap.
-    let submitted = 0;
-    let failed = 0;
-    for (const [i, item] of items.entries()) {
-      // Politeness: jittered delay before each apply except the first.
-      if (i > 0) await sleep(politenessDelayMs());
-
-      const reachedCap = await applyOne(
-        api,
-        item,
-        () => {
-          submitted += 1;
-        },
-        () => {
-          failed += 1;
-        },
-      );
-      if (reachedCap) {
-        return record({
-          ranAt,
-          outcome: "quota_reached",
-          submitted,
-          failed,
-          message: "سقفِ روزانه‌ی اپلای پر شد.",
-        });
-      }
-    }
-
-    return record({
-      ranAt,
-      outcome: submitted > 0 ? "applied" : "empty",
-      submitted,
-      failed,
+    const lastDiscoveryAt = Number(overview.run.progress.lastDiscoveryAt ?? 0);
+    return discoverAndDrain(api, executorId, {
+      backgroundEnabled: overview.run.backgroundEnabled,
+      discoverDue: force || !lastDiscoveryAt || Date.now() - lastDiscoveryAt >= 10 * 60_000,
+      lastDiscoveryAt,
     });
-  } catch (err) {
+  } catch (error) {
     return record({
       ranAt,
       outcome: "error",
       submitted: 0,
       failed: 0,
-      message: err instanceof Error ? err.message : String(err),
+      message: error instanceof Error ? error.message : String(error),
     });
   }
 }
 
-/**
- * Apply to one item. Drives the board content script to fill + submit, then
- * reports the result. Returns true ONLY when the server reported the daily cap
- * (HTTP 429) so the caller stops the whole drain.
- */
-async function applyOne(
+async function discoverAndDrain(
   api: KarjooApi,
-  item: ApplyQueueItem,
-  onSubmitted: () => void,
-  onFailed: () => void,
-): Promise<boolean> {
-  const plan = buildApplyPlan(item, applyValuesFor(item));
-  if (!plan) {
-    await safeReport(api, item.id, "skipped", "no apply spec for board");
-    onFailed();
-    return false;
+  executorId: string,
+  options: { backgroundEnabled: boolean; discoverDue: boolean; lastDiscoveryAt: number },
+): Promise<AutoApplyStatus> {
+  const ranAt = Date.now();
+  let discovered = 0;
+  let submitted = 0;
+  let failed = 0;
+
+  let lastDiscoveryAt = options.lastDiscoveryAt;
+  const discovery = options.discoverDue ? await api.getDiscoveryConfig() : null;
+  if (discovery && !discovery.paused && discovery.hasTargeting && discovery.searchUrl) {
+    const result = await discoverJobinja(api, executorId, discovery.searchUrl, discovery.maxAgeDays);
+    lastDiscoveryAt = Date.now();
+    discovered = result.discovered;
+    if (result.blocked) {
+      return record({ ranAt, outcome: "error", submitted, failed, message: result.reason });
+    }
   }
 
-  // Open/focus the job page and drive its apply content script.
-  const origin = BOARDS[item.board]?.origin;
-  let exec: ContentApplyResult;
-  try {
-    const tab = await ensureTab(item.jobUrl, origin ?? item.jobUrl);
-    if (!tab?.id) throw new Error("could not open the job page");
-    // A freshly opened tab's content script isn't ready yet — wait for load +
-    // retry the send, else CONTENT_APPLY fails with "Receiving end does not exist".
+  for (;;) {
+    await api.mutateExecutionRun({
+      action: "heartbeat",
+      executorId,
+    });
+    const claim = await api.claimQueue(1, executorId);
+    const item = claim.items[0];
+    if (!item) {
+      if (options.backgroundEnabled) {
+        await api.mutateExecutionRun({
+          action: "progress",
+          executorId,
+          progress: { stage: "waiting", discovered, submitted, failed, lastDiscoveryAt },
+        });
+      } else {
+        await api.mutateExecutionRun({ action: "complete", executorId });
+      }
+      return record({
+        ranAt,
+        outcome: submitted > 0 ? "applied" : "empty",
+        submitted,
+        failed,
+        message: discovered > 0 ? `${discovered} آگهی بررسی شد.` : undefined,
+      });
+    }
+
+    await api.mutateExecutionRun({
+      action: "progress",
+      executorId,
+      currentTaskId: item.id,
+      progress: {
+        stage: "applying",
+        title: item.jobTitle,
+        company: item.company ?? "",
+        discovered,
+        submitted,
+        failed,
+        lastDiscoveryAt,
+      },
+    });
+
+    const result = await applyOne(item);
+    if (!result.ok && isBlockingReason(result.reason)) {
+      const reason = result.reason ?? "jobinja_security_check";
+      await api.mutateExecutionRun({ action: "block", executorId, taskId: item.id, reason });
+      await notify("اپلای متوقف شد", "جابینجا نیاز به ورود یا تایید امنیتی دارد. صف حفظ شد.");
+      return record({ ranAt, outcome: "error", submitted, failed, message: reason });
+    }
+
+    const report = buildApplyResultReport({
+      id: item.id,
+      status: result.ok ? "submitted" : "failed",
+      ...(!result.ok && result.reason ? { reason: result.reason } : {}),
+    });
+    await api.reportResult(report, executorId);
+    if (result.ok) submitted += 1;
+    else failed += 1;
+  }
+}
+
+async function discoverJobinja(
+  api: KarjooApi,
+  executorId: string,
+  firstUrl: string,
+  maxAgeDays: number,
+): Promise<{ discovered: number; blocked: boolean; reason?: string }> {
+  let url: string | null = firstUrl;
+  let discovered = 0;
+  const visited = new Set<string>();
+  const cutoff = Date.now() - maxAgeDays * 86_400_000;
+  let tab: chrome.tabs.Tab | undefined;
+
+  while (url && !visited.has(url)) {
+    visited.add(url);
+    tab = tab?.id
+      ? await chrome.tabs.update(tab.id, { url, active: false })
+      : await chrome.tabs.create({ url, active: false });
+    if (!tab.id) throw new Error("could not open Jobinja discovery tab");
     await waitForTabComplete(tab.id);
-    exec = await sendToTab<ContentApplyResult>(tab.id, { type: "CONTENT_APPLY", plan });
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    const cap = await safeReport(api, item.id, "failed", reason);
-    onFailed();
-    return cap;
+    const page: ContentDiscoveryResult = await sendToTab<ContentDiscoveryResult>(
+      tab.id,
+      { type: "CONTENT_DISCOVER_JOBINJA" },
+    );
+    if (page.securityChallenge || page.loginRequired) {
+      const reason = page.securityChallenge ? "jobinja_security_check: discovery blocked" : "jobinja_login_required: discovery blocked";
+      await api.mutateExecutionRun({
+        action: "block",
+        executorId,
+        reason,
+      });
+      await notify("کشف شغل متوقف شد", "صفحهٔ جابینجا را بررسی و ورود/تایید امنیتی را تکمیل کنید.");
+      return { discovered, blocked: true, reason };
+    }
+    if (page.listings.length > 0) {
+      const imported = await api.importDiscoveredListings(page.listings);
+      discovered += imported.ingested;
+    }
+    await api.mutateExecutionRun({
+      action: "progress",
+      executorId,
+      progress: {
+        stage: "discovering",
+        discovered,
+        bulkApplyAvailable: page.bulkApplyAvailable,
+        lastDiscoveryAt: Date.now(),
+      },
+    });
+    if (page.oldestPostedAt && new Date(page.oldestPostedAt).getTime() < cutoff) break;
+    url = page.nextUrl;
   }
-
-  if (exec?.ok) {
-    const cap = await safeReport(api, item.id, "submitted");
-    if (!cap) onSubmitted();
-    return cap;
-  }
-
-  const reason = exec?.reason ?? "apply failed on page";
-  const cap = await safeReport(api, item.id, "failed", reason);
-  onFailed();
-  return cap;
+  if (tab?.id) await chrome.tabs.remove(tab.id).catch(() => undefined);
+  return { discovered, blocked: false };
 }
 
-/**
- * Report a result through the no-secrets chokepoint. Returns true if the server
- * answered 429 (daily cap reached). Never throws (failures are swallowed into a
- * false so the drain can continue/stop cleanly).
- */
-async function safeReport(
-  api: KarjooApi,
-  id: string,
-  status: "submitted" | "failed" | "skipped",
-  reason?: string,
-): Promise<boolean> {
+async function applyOne(item: ApplyQueueItem): Promise<ContentApplyResult> {
+  const plan = buildApplyPlan(item, applyValuesFor(item));
+  if (!plan) return { ok: false, ranSteps: [], reason: "no apply spec for board" };
   try {
-    const report = buildApplyResultReport({ id, status, reason });
-    const res = await api.reportResult(report);
-    return shouldStopForCap({ ok: res.ok, status: res.status });
-  } catch {
-    return false;
+    const tab = await ensureTab(item.jobUrl, BOARDS[item.board]?.origin ?? item.jobUrl);
+    if (!tab?.id) throw new Error("could not open the job page");
+    await waitForTabComplete(tab.id);
+    return await sendToTab<ContentApplyResult>(tab.id, { type: "CONTENT_APPLY", plan });
+  } catch (error) {
+    return { ok: false, ranSteps: [], reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
-/** Connected board ids from /api/extension/me (status !== expired/needs_reauth). */
-async function listConnectedBoards(api: KarjooApi): Promise<BoardId[]> {
-  try {
-    const me = (await api.meRaw()) as { boards?: { board: string; status?: string }[] };
-    return (me.boards ?? [])
-      .filter((b) => b.status === undefined || b.status === "connected")
-      .map((b) => b.board as BoardId)
-      .filter((b): b is BoardId => b in BOARDS);
-  } catch {
-    return [];
-  }
+function isBlockingReason(reason?: string): boolean {
+  return Boolean(reason && /jobinja_(security_check|login_required)/.test(reason));
 }
 
-/* ── session refresh tick (delegated) ──────────────────────────────────────── */
+async function notifyBlockedRun(overview: ExtensionRunOverview): Promise<void> {
+  const blockedAt = overview.run.blockedAt;
+  if (overview.run.state !== "blocked" || !blockedAt || blockedAt === await getNotifiedBlockedAt()) return;
+  await setNotifiedBlockedAt(blockedAt);
+  await notify("اپلای سرور متوقف شد", "جابینجا سرور را محدود کرد. افزونه را باز و «ادامه با افزونه» را بزنید.");
+}
+
+async function notify(title: string, message: string): Promise<void> {
+  if (!chrome.notifications) return;
+  await chrome.notifications.create({
+    type: "basic",
+    iconUrl: chrome.runtime.getURL("icons/icon-128.png"),
+    title,
+    message,
+  });
+}
 
 export async function runSessionRefreshTick(): Promise<void> {
   const api = await apiOrNull();
   if (!api) return;
-  // Plan decides whether the session may leave the device: Free/Pro keep it
-  // LOCAL; only Max/Max+ push it to the user's own encrypted vault. getPlan()
-  // fails closed to 'free' (no push) on any error.
-  const plan = await api.getPlan();
-  await refreshAllBoardSessions(api, { pushToVault: planUsesVault(plan) });
+  await refreshAllBoardSessions(api, { pushToVault: planUsesVault(await api.getPlan()) });
 }
-
-/* ── tab + timing helpers (shared shape with the assisted flow) ────────────── */
 
 async function ensureTab(jobUrl: string, origin: string): Promise<chrome.tabs.Tab | undefined> {
   const existing = await chrome.tabs.query({ url: `${origin}/*` });
-  const match = existing.find((t) => t.url && sameJob(t.url, jobUrl));
+  const match = existing.find((tab) => tab.url && sameJob(tab.url, jobUrl));
   if (match?.id !== undefined) {
-    await chrome.tabs.update(match.id, { active: true });
+    await chrome.tabs.update(match.id, { active: false });
     return match;
   }
   return chrome.tabs.create({ url: jobUrl, active: false });
@@ -287,14 +305,10 @@ async function ensureTab(jobUrl: string, origin: string): Promise<chrome.tabs.Ta
 
 function sameJob(a: string, b: string): boolean {
   try {
-    const ua = new URL(a);
-    const ub = new URL(b);
-    return ua.origin === ub.origin && ua.pathname === ub.pathname;
+    const first = new URL(a);
+    const second = new URL(b);
+    return first.origin === second.origin && first.pathname === second.pathname;
   } catch {
     return a === b;
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }

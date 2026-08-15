@@ -10,47 +10,51 @@ import { boardLabel as sharedBoardLabel } from "./labels";
 type Tone = "brand" | "accent" | "muted" | "green" | "amber" | "rose";
 
 /**
- * برچسب + لحن + توضیحِ هر نوع رویدادِ ممیزیِ اپلای خودکار. خودِ آیکن در UI با نگاشتِ
+ * برچسب + لحن + توضیحِ هر رویدادِ «تاریخچه‌ی تغییرات». خودِ آیکن در UI با نگاشتِ
  * `AuditIcon` در `auto-apply-panels.tsx` (بر پایه‌ی eventType، از `./icons`) رندر می‌شود —
  * این‌جا دیگر ایموجی نگه نمی‌داریم.
+ *
+ * قاعده‌ی نگارش: هیچ اصطلاحِ داخلی («آستانه»، «صف»، «تاگل»، نامِ پلن) در متنی که کاربر
+ * می‌خواند نمی‌آید؛ هر جمله می‌گوید *چه اتفاقی افتاد*، نه اینکه کدام کلید عوض شد.
  */
 export const AUTO_APPLY_EVENT_LABELS: Record<
   AutoApplyAuditEventType,
   { label: string; tone: Tone; description: string }
 > = {
   auto_apply_enabled: {
-    label: "روشن‌کردنِ اپلای خودکار",
+    label: "اپلای خودکار روشن شد",
     tone: "green",
-    description: "شما رضایتِ اپلای خودکار را فعال کردید.",
+    description: "تو اجازه دادی کارجو به‌جای تو درخواست بفرستد.",
   },
   auto_apply_disabled: {
-    label: "خاموش‌کردنِ اپلای خودکار",
+    label: "اپلای خودکار خاموش شد",
     tone: "muted",
-    description: "شما اپلای خودکار را غیرفعال کردید.",
+    description: "از این پس چیزی بدونِ تأییدِ تو فرستاده نمی‌شود.",
   },
   auto_apply_attempted: {
-    label: "تلاش برای اپلای خودکار",
+    label: "تلاش برای ارسال",
     tone: "brand",
-    description: "یک فرصت از صف برای اپلای خودکار برداشته شد.",
+    description: "یک آگهی از نوبتِ ارسال برداشته شد.",
   },
   auto_apply_skipped: {
-    label: "ردِ یک فرصت",
+    label: "از یک آگهی صرف‌نظر شد",
     tone: "amber",
-    description: "یک فرصت به‌دلیلِ آستانه/سقف/خاموش‌بودنِ تاگل اپلای نشد.",
+    description:
+      "یا امتیازِ آگهی از حداقلِ امتیازِ تو کمتر بود، یا سقفِ روزانه پر شده بود.",
   },
   server_auto_apply_enabled: {
-    label: "روشن‌کردنِ اپلای خودکارِ سرور",
+    label: "ارسال از سرورهای کارجو روشن شد",
     tone: "green",
-    description: "شما اپلای خودکارِ سرور (۲۴ ساعته، Max/Max+) را فعال کردید.",
+    description: "کارجو حتی وقتی مرورگرت بسته است هم درخواست می‌فرستد.",
   },
   server_auto_apply_disabled: {
-    label: "خاموش‌کردنِ اپلای خودکارِ سرور",
+    label: "ارسال از سرورهای کارجو خاموش شد",
     tone: "muted",
-    description: "شما اپلای خودکارِ سرور را غیرفعال کردید.",
+    description: "ارسال فقط وقتی انجام می‌شود که مرورگر و افزونه باز باشند.",
   },
 };
 
-/** برچسبِ فارسیِ یک رویدادِ ممیزی (با fallback امن). */
+/** برچسبِ فارسیِ یک رویدادِ تاریخچه (با fallback امن). */
 export function autoApplyEventLabel(eventType: string): {
   label: string;
   tone: Tone;

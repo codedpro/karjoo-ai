@@ -48,6 +48,12 @@ export interface ApplyFilters {
   sort?: string;
   /** تاگلِ فیلترِ هوشمند (AI) — پریمیوم. */
   aiFilterEnabled: boolean;
+  /** توقفِ کشف/صف‌گذاریِ خودکار تا وقتی کاربر دوباره فعال کند. */
+  paused: boolean;
+  /** سقفِ صف‌گذاری در روز. undefined = سقف پلن/پیش‌فرض. */
+  dailyLimit?: number;
+  /** سقفِ صف‌گذاری در هفته. undefined = بدون سقف هفتگیِ کاربر. */
+  weeklyLimit?: number;
 }
 
 /** فیلترِ خالی (پیش‌فرضِ کاربرِ بدونِ انتخاب). */
@@ -57,6 +63,7 @@ export const EMPTY_APPLY_FILTERS: ApplyFilters = {
   jobTypes: [],
   remoteOnly: false,
   aiFilterEnabled: false,
+  paused: false,
 };
 
 /** آرایه‌ی رشته‌ی تمیز و یکتا (trim‌شده، بدونِ خالی، بدونِ تکرار). */
@@ -104,6 +111,13 @@ export function parseApplyFilters(
     ...(minSalary === undefined ? {} : { minSalary }),
     ...(sort === undefined ? {} : { sort }),
     aiFilterEnabled: raw.aiFilterEnabled === true,
+    paused: raw.paused === true,
+    ...(positiveNumber(raw.dailyLimit) === undefined
+      ? {}
+      : { dailyLimit: Math.floor(positiveNumber(raw.dailyLimit)!) }),
+    ...(positiveNumber(raw.weeklyLimit) === undefined
+      ? {}
+      : { weeklyLimit: Math.floor(positiveNumber(raw.weeklyLimit)!) }),
   };
 }
 
@@ -128,6 +142,13 @@ export function toJobPreferences(
   if (f.categorySlugs.length > 0) prefs.categorySlugs = f.categorySlugs;
   if (f.jobTypes.length > 0) prefs.jobTypes = f.jobTypes;
   if (f.remoteOnly) prefs.remoteOnly = true;
+  if (f.paused) prefs.paused = true;
+  if (f.dailyLimit !== undefined) prefs.dailyLimit = f.dailyLimit;
+  if (f.weeklyLimit !== undefined) prefs.weeklyLimit = f.weeklyLimit;
+  if (raw?.unlimitedApply === true) prefs.unlimitedApply = true;
+  if (raw?.gender === "male" || raw?.gender === "female" || raw?.gender === "unspecified") {
+    prefs.gender = raw.gender;
+  }
   if (f.minSalary !== undefined) prefs.minSalary = f.minSalary;
   if (f.sort !== undefined) prefs.sort = f.sort;
   if (employmentTypes && employmentTypes.length > 0) prefs.employmentTypes = employmentTypes;
@@ -151,6 +172,7 @@ export function mergeApplyFilters(
   base.jobTypes = cleanStringArray(filters.jobTypes);
   base.remoteOnly = filters.remoteOnly === true;
   base.aiFilterEnabled = filters.aiFilterEnabled === true;
+  base.paused = filters.paused === true;
 
   const minSalary = positiveNumber(filters.minSalary);
   if (minSalary === undefined) delete base.minSalary;
@@ -159,6 +181,14 @@ export function mergeApplyFilters(
   const sort = nonEmptyString(filters.sort);
   if (sort === undefined) delete base.sort;
   else base.sort = sort;
+
+  const dailyLimit = positiveNumber(filters.dailyLimit);
+  if (dailyLimit === undefined) delete base.dailyLimit;
+  else base.dailyLimit = Math.floor(dailyLimit);
+
+  const weeklyLimit = positiveNumber(filters.weeklyLimit);
+  if (weeklyLimit === undefined) delete base.weeklyLimit;
+  else base.weeklyLimit = Math.floor(weeklyLimit);
 
   return base;
 }
@@ -179,6 +209,19 @@ export async function readApplyFilters(
     .where(eq(candidateProfiles.userId, userId))
     .limit(1);
   return parseApplyFilters(row?.preferences ?? null);
+}
+
+/** Read the complete targeting preferences, including inherited titles and gender. */
+export async function readJobPreferences(
+  userId: string,
+  db: FiltersDb = defaultDb,
+): Promise<JobPreferences> {
+  const [row] = await db
+    .select({ preferences: candidateProfiles.preferences })
+    .from(candidateProfiles)
+    .where(eq(candidateProfiles.userId, userId))
+    .limit(1);
+  return toJobPreferences(row?.preferences ?? null);
 }
 
 /** خروجیِ نوشتنِ فیلترها. */

@@ -17,6 +17,10 @@ import { meteredChatJson, type MeteringOptions } from "@/lib/billing/metering";
 // وسطِ JSON بریده می‌شد و کلِ رزومه از دست می‌رفت.
 export const RESUME_TAILOR_MAX_TOKENS = 6000;
 
+/** مدلِ پیش‌فرضِ رزومه‌سازی: این کار به پیروی از قیدها و بازنویسیِ ظریف نیاز دارد. */
+export const RESUME_TAILOR_MODEL =
+  process.env.KARJOO_RESUME_TAILOR_MODEL?.trim() || "gpt-5";
+
 export class ResumeTailorError extends Error {
   readonly code = "resume_tailor_invalid" as const;
 }
@@ -35,7 +39,7 @@ export async function meteredTailorResume(
   const out = await meteredChatJson(
     userId,
     "resume_tailor",
-    { messages, temperature: 0.5, maxTokens: RESUME_TAILOR_MAX_TOKENS },
+    { messages, model: RESUME_TAILOR_MODEL, temperature: 0.5, maxTokens: RESUME_TAILOR_MAX_TOKENS },
     opts,
   );
   const parsed = resumeTailorSchema.safeParse(out.result.data);
@@ -61,7 +65,7 @@ export async function repairTailoredResume(
     const out = await meteredChatJson(
       userId,
       "resume_tailor",
-      { messages, temperature: 0.4, maxTokens: RESUME_TAILOR_MAX_TOKENS },
+      { messages, model: RESUME_TAILOR_MODEL, temperature: 0.4, maxTokens: RESUME_TAILOR_MAX_TOKENS },
       opts,
     );
     const parsed = resumeTailorSchema.safeParse(out.result.data);

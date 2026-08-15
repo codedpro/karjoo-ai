@@ -35,7 +35,7 @@ export const SORT_VALUES = [
 export type SortValue = (typeof SORT_VALUES)[number];
 
 /** ترتیبِ پیش‌فرضِ جابینجا وقتی کاربر انتخابی نکرده. */
-export const DEFAULT_SORT: SortValue = "relevance_desc";
+export const DEFAULT_SORT: SortValue = "published_at_desc";
 
 /** یک گزینه‌ی انتخابیِ ساده برای UI. */
 export interface SelectOption<V extends string = string> {
@@ -92,6 +92,12 @@ export const applyFiltersInputSchema = z.object({
   minSalary: z.number().int().nonnegative().max(1_000_000_000).optional(),
   /** ترتیبِ نتایج. نبود = پیش‌فرضِ جابینجا. */
   sort: z.enum(SORT_VALUES).optional(),
+  /** توقفِ کشف/صف‌گذاری. */
+  paused: z.boolean().default(false),
+  /** سقفِ صف‌گذاری روزانه‌ی کاربر. */
+  dailyLimit: z.number().int().positive().max(10_000).optional(),
+  /** سقفِ صف‌گذاری هفتگیِ کاربر. */
+  weeklyLimit: z.number().int().positive().max(100_000).optional(),
 });
 
 /** ورودیِ اعتبارسنجی‌شده‌ی فرم (خروجیِ zod — آرایه‌ها همیشه حاضرند). */
@@ -139,6 +145,8 @@ export function buildJobinjaPreviewUrl(filters: PreviewFilters): string {
   }
   if (filters.sort && filters.sort.trim().length > 0) {
     params.set("sort", filters.sort.trim());
+  } else {
+    params.set("sort", DEFAULT_SORT);
   }
 
   url.search = params.toString();

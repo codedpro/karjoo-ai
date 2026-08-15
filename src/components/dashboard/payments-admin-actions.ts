@@ -3,14 +3,17 @@
 /**
  * اکشن‌های ادمینِ بررسیِ پرداختِ کارت‌به‌کارت (Server Actions).
  *
- * هر اکشن با نگهبانِ ادمین (isFleetAdmin — مقایسه‌ی رازِ داخلیِ سرور سمتِ سرور) محافظت
- * می‌شود؛ بدونِ کوکیِ ادمینِ معتبر هیچ‌کاری نمی‌کند (fail-closed). سبکِ form-action
+ * هر اکشن با نگهبانِ ادمین (`getAdminUser` — ایمیلِ نشست در allowlist، یا کوکیِ اپراتور)
+ * محافظت می‌شود؛ بدونِ مجوز هیچ‌کاری نمی‌کند (fail-closed). سبکِ form-action
  * (FormData → void) تا صفحه‌ی ادمین بدونِ هیچ JSِ کلاینتی کار کند. اعتبار/پلن فقط اینجا
  * (پس از تأییدِ انسانی) تغییر می‌کند.
+ *
+ * تغییرِ مهم نسبت به قبل: `reviewedBy` دیگر رشته‌ی ثابتِ «admin» نیست، بلکه *ایمیلِ
+ * ادمینی* است که واقعاً کلیک کرده — بدونِ آن، ردِ ممیزیِ مالی به هیچ انسانی وصل نبود.
  */
 import { revalidatePath } from "next/cache";
 
-import { isFleetAdmin } from "./fleet-admin-guard";
+import { adminLabel, getAdminUser } from "./admin-guard";
 import {
   approvePaymentRequest,
   rejectPaymentRequest,
@@ -20,19 +23,21 @@ const ADMIN_PAYMENTS_PATH = "/dashboard/admin/payments";
 
 /** تأییدِ یک درخواستِ پرداخت (credit/ارتقا اعمال می‌شود). */
 export async function approvePaymentAction(formData: FormData): Promise<void> {
-  if (!(await isFleetAdmin())) return;
+  const admin = await getAdminUser();
+  if (!admin) return;
   const id = String(formData.get("id") ?? "").trim();
   if (!id) return;
-  await approvePaymentRequest(id, "admin").catch(() => {});
+  await approvePaymentRequest(id, adminLabel(admin)).catch(() => {});
   revalidatePath(ADMIN_PAYMENTS_PATH);
 }
 
 /** ردِ یک درخواستِ پرداخت (با دلیلِ اختیاری). */
 export async function rejectPaymentAction(formData: FormData): Promise<void> {
-  if (!(await isFleetAdmin())) return;
+  const admin = await getAdminUser();
+  if (!admin) return;
   const id = String(formData.get("id") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim() || null;
   if (!id) return;
-  await rejectPaymentRequest(id, "admin", reason).catch(() => {});
+  await rejectPaymentRequest(id, adminLabel(admin), reason).catch(() => {});
   revalidatePath(ADMIN_PAYMENTS_PATH);
 }

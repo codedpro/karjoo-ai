@@ -33,6 +33,9 @@ const profile: CandidateProfile = {
   preferences: { titles: ["برنامه‌نویس"], cities: ["تهران"] },
 };
 
+const FRESH_POSTED_AT = new Date().toISOString();
+const STALE_POSTED_AT = new Date(Date.now() - 46 * 24 * 60 * 60 * 1000).toISOString();
+
 function listing(id: string, over: Partial<JobListing> = {}): JobListing {
   return {
     id: `jobinja:${id}`,
@@ -40,6 +43,7 @@ function listing(id: string, over: Partial<JobListing> = {}): JobListing {
     externalId: id,
     title: `شغل ${id}`,
     url: `https://jobinja.ir/jobs/${id}`,
+    postedAt: FRESH_POSTED_AT,
     ...over,
   };
 }
@@ -513,6 +517,50 @@ describe("runFilterApply — فیلترمود (بدونِ AI)", () => {
     expect(enqueueFn).toHaveBeenCalledTimes(2);
   });
 
+  it("اگر کشف متوقف باشد، هیچ آگهی persist/queue نمی‌شود", async () => {
+    const conn = makeFakeDb({});
+    const connector = fakeConnector([listing("a")]);
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile: async () => ({
+        profile,
+        prefs: { categorySlugs: ["software"], paused: true },
+      }),
+    });
+
+    expect(report.ingested).toBe(0);
+    expect(report.persistedListings).toBe(0);
+    expect(report.queued).toBe(0);
+    expect(enqueueFn).not.toHaveBeenCalled();
+  });
+
+  it("سقف روزانه‌ی کاربر روی سقف پلن اعمال می‌شود", async () => {
+    const conn = makeFakeDb({ queuedToday: 0 });
+    const connector = fakeConnector([listing("a"), listing("b"), listing("c")]);
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      dailyCap: 100,
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile: async () => ({
+        profile,
+        prefs: { categorySlugs: ["software"], dailyLimit: 2 },
+      }),
+    });
+
+    expect(report.queued).toBe(2);
+    expect(report.skippedByCap).toBe(1);
+    expect(enqueueFn).toHaveBeenCalledTimes(2);
+  });
+
   it("آگهیِ از قبل در صف دوباره صف نمی‌شود (idempotent/dedupe)", async () => {
     const conn = makeFakeDb({ matchStatusByExternal: { a: "queued" } });
     const connector = fakeConnector([listing("a"), listing("b")]);
@@ -574,6 +622,12 @@ describe("runFilterApply — فیلترمود (بدونِ AI)", () => {
     expect(report.queued).toBe(1);
     expect(enqueueFn).toHaveBeenCalledTimes(1);
     expect(enqueueFn.mock.calls[0][0].payload.mode).toBe("ai");
+    expect(enqueueFn.mock.calls[0][0].payload.coverLetter).toBeUndefined();
+    const matchInserts = conn
+      ._stats()
+      .inserts.filter((i) => i.table === "matches")
+      .map((i) => i.values as { coverLetter: string | null });
+    expect(matchInserts.every((v) => v.coverLetter === null)).toBe(true);
   });
 
   it("بدونِ پروفایل → HttpError 404", async () => {
@@ -591,17 +645,11 @@ describe("runFilterApply — فیلترمود (بدونِ AI)", () => {
     expect((err as { status?: number }).status).toBe(404);
   });
 
-  // رگرسیون: کانکتورها `postedAt` را به‌صورتِ متنِ انسانیِ نسبی برمی‌گردانند (مثلِ
-  // «۳ روز پیش»)؛ types.ts هم قراردادِ ISO ندارد. پیش از این orchestrator کورکورانه
-  // `new Date(postedAt)` می‌زد که `Invalid Date` می‌ساخت و درایزل هنگامِ درجِ ستونِ
-  // timestamp با «Invalid time value» می‌شکست — و *هر* آگهیِ فیلترمود persist نمی‌شد
-  // (queued=0 با اینکه ingested>0). این تست تضمین می‌کند تاریخِ نامعتبر → null (نه کرش)
-  // و تاریخِ معتبرِ ISO همچنان به Date تبدیل می‌شود.
-  it("postedAtِ غیرِ ISO (متنِ فارسی) آگهی را نمی‌شکند: null می‌شود و آگهی صف می‌شود", async () => {
+  it("postedAt نسبیِ فارسی را به تاریخ معتبر تبدیل می‌کند و آگهی تازه صف می‌شود", async () => {
     const conn = makeFakeDb({});
     const connector = fakeConnector([
       listing("human", { postedAt: "۳ روز پیش" }),
-      listing("iso", { postedAt: "2026-07-01T08:00:00.000Z" }),
+      listing("iso", { postedAt: FRESH_POSTED_AT }),
     ]);
 
     const report = await runFilterApply({
@@ -618,16 +666,45 @@ describe("runFilterApply — فیلترمود (بدونِ AI)", () => {
     expect(report.persistedListings).toBe(2);
     expect(report.queued).toBe(2);
 
-    // مقدارِ postedAtِ درج‌شده در job_listings: نامعتبر → null، معتبر → Date (نه NaN).
+    // مقدارِ postedAtِ درج‌شده در job_listings باید Date معتبر باشد، چه نسبی باشد چه ISO.
     const jobInserts = conn
       ._stats()
       .inserts.filter((i) => i.table === "job_listings")
       .map((i) => (i.values as { externalId: string; postedAt: Date | null }));
     const human = jobInserts.find((v) => v.externalId === "human");
     const iso = jobInserts.find((v) => v.externalId === "iso");
-    expect(human?.postedAt).toBeNull();
+    expect(human?.postedAt).toBeInstanceOf(Date);
+    expect(Number.isNaN((human?.postedAt as Date).getTime())).toBe(false);
     expect(iso?.postedAt).toBeInstanceOf(Date);
     expect(Number.isNaN((iso?.postedAt as Date).getTime())).toBe(false);
+  });
+
+  it("آگهی بدون تاریخ یا قدیمی‌تر از ۴۵ روز را قبل از persist/queue رد می‌کند", async () => {
+    const conn = makeFakeDb({});
+    const connector = fakeConnector([
+      listing("missing", { postedAt: undefined }),
+      listing("stale", { postedAt: STALE_POSTED_AT }),
+      listing("fresh", { postedAt: FRESH_POSTED_AT }),
+    ]);
+
+    const report = await runFilterApply({
+      userId: "u1",
+      boards: ["jobinja"],
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile,
+    });
+
+    expect(report.ingested).toBe(3);
+    expect(report.persistedListings).toBe(1);
+    expect(report.queued).toBe(1);
+    expect(
+      conn
+        ._stats()
+        .inserts.filter((i) => i.table === "job_listings")
+        .map((i) => (i.values as { externalId: string }).externalId),
+    ).toEqual(["fresh"]);
   });
 
   it("سقفِ پیش‌فرضِ فیلترمود صادر شده", () => {
@@ -650,7 +727,12 @@ describe("runFilterApply — مکان‌نمای صفحه‌بندی (pagination
     pagesFetched: number;
     reachedEnd: boolean;
   }) {
-    const calls: { startPage?: number; targetCount?: number }[] = [];
+    const calls: {
+      startPage?: number;
+      maxPages?: number;
+      targetCount?: number;
+      stopWhenStaleDays?: number;
+    }[] = [];
     return {
       calls,
       connector: {
@@ -661,8 +743,21 @@ describe("runFilterApply — مکان‌نمای صفحه‌بندی (pagination
         async scrapePublic() {
           return res.listings;
         },
-        async scrapePublicWith(_prefs: unknown, opts: { startPage?: number; targetCount?: number }) {
-          calls.push({ startPage: opts.startPage, targetCount: opts.targetCount });
+        async scrapePublicWith(
+          _prefs: unknown,
+          opts: {
+            startPage?: number;
+            maxPages?: number;
+            targetCount?: number;
+            stopWhenStaleDays?: number;
+          },
+        ) {
+          calls.push({
+            startPage: opts.startPage,
+            maxPages: opts.maxPages,
+            targetCount: opts.targetCount,
+            stopWhenStaleDays: opts.stopWhenStaleDays,
+          });
           return res;
         },
         async search() {
@@ -786,6 +881,96 @@ describe("runFilterApply — مکان‌نمای صفحه‌بندی (pagination
     expect(report.ingested).toBe(30);
     expect(report.queued).toBe(30); // هیچ آگهیِ واکشی‌شده‌ای جا نیفتاد
     expect(advanceCursorFn.mock.calls[0]?.[4]).toBe(3); // 1 + 2 صفحه
+  });
+
+  it("unlimitedApply: سقف تعداد/صفحه را حذف می‌کند و تا مرز تازگی آگهی می‌خزد", async () => {
+    const conn = makeFakeDb({ queuedToday: 10 });
+    const { connector, calls } = pagedConnector({
+      listings: [listing("a"), listing("b")],
+      pagesFetched: 2,
+      reachedEnd: true,
+    });
+    const advanceCursorFn = vi.fn(
+      async (_conn: unknown, _u: string, _b: string, _sig: string, _nextPage: number) => {},
+    );
+
+    const report = await runFilterApply({
+      userId: "u1",
+      dailyCap: 1,
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile: async () => ({
+        profile,
+        prefs: { categorySlugs: ["software"], sort: "published_at_desc", unlimitedApply: true },
+      }),
+      readCursorFn: async () => 1,
+      advanceCursorFn,
+    });
+
+    expect(report.queued).toBe(2);
+    expect(calls[0]).toMatchObject({
+      maxPages: Number.POSITIVE_INFINITY,
+      stopWhenStaleDays: 45,
+    });
+    expect(calls[0]?.targetCount).toBeUndefined();
+    expect(advanceCursorFn.mock.calls[0]?.[4]).toBe(1);
+  });
+
+  it("پروفایل مردانه: آگهی‌های مخصوص خانم را صف نمی‌کند", async () => {
+    const conn = makeFakeDb({});
+    const { connector } = pagedConnector({
+      listings: [
+        listing("female", { title: "کارشناس فروش (خانم-دورکاری)" }),
+        listing("open", { title: "کارشناس فروش دورکاری" }),
+      ],
+      pagesFetched: 1,
+      reachedEnd: true,
+    });
+
+    const report = await runFilterApply({
+      userId: "u1",
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile: async () => ({
+        profile,
+        prefs: { categorySlugs: ["marketing-sales"], gender: "male" },
+      }),
+      readCursorFn: async () => 1,
+      advanceCursorFn: vi.fn(),
+    });
+
+    expect(report.queued).toBe(1);
+    expect(enqueueFn.mock.calls[0]?.[0]).toMatchObject({ matchId: "match-open" });
+  });
+
+  it("پروفایل زنانه: آگهی‌های مخصوص آقا را صف نمی‌کند", async () => {
+    const conn = makeFakeDb({});
+    const { connector } = pagedConnector({
+      listings: [
+        listing("male", { title: "کارشناس فروش (آقا-دورکاری)" }),
+        listing("open", { title: "کارشناس فروش دورکاری" }),
+      ],
+      pagesFetched: 1,
+      reachedEnd: true,
+    });
+
+    const report = await runFilterApply({
+      userId: "u1",
+      connectors: { jobinja: connector },
+      enqueueFn: enqueueFn as never,
+      db: conn as never,
+      loadProfile: async () => ({
+        profile,
+        prefs: { categorySlugs: ["marketing-sales"], gender: "female" },
+      }),
+      readCursorFn: async () => 1,
+      advanceCursorFn: vi.fn(),
+    });
+
+    expect(report.queued).toBe(1);
+    expect(enqueueFn.mock.calls[0]?.[0]).toMatchObject({ matchId: "match-open" });
   });
 
   it("aiFilter: آگهیِ از-قبل-صف‌شده دوباره امتیاز/شارژ نمی‌شود (dedupe پیش از هزینه)", async () => {

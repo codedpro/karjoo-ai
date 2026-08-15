@@ -53,8 +53,10 @@ const DEFAULTS = {
   headless: false,
   claimLimit: 5,
   loopIntervalSec: 60,
-  politenessBaseMs: 4000,
-  politenessJitterMs: 6000,
+  // Server IPs are deliberately conservative. Extension execution has no
+  // artificial delay because it uses the user's own foreground browser/IP.
+  politenessBaseMs: 45_000,
+  politenessJitterMs: 45_000,
   stepTimeoutMs: 15000,
   updateScript: "./update.sh",
 } as const;

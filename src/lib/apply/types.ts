@@ -37,6 +37,16 @@ export interface JobPreferences {
   jobTypes?: string[];
   /** Remote-only jobs (Jobinja `filters[remote]=1`). */
   remoteOnly?: boolean;
+  /** Pause non-AI discovery/queueing for this user. */
+  paused?: boolean;
+  /** User-level queue cap per day for filter discovery. */
+  dailyLimit?: number;
+  /** User-level queue cap per week for filter discovery. */
+  weeklyLimit?: number;
+  /** Unlimited queueing for trusted/server-managed profiles; freshness filters still apply. */
+  unlimitedApply?: boolean;
+  /** Candidate gender for hard exclusion of gender-specific jobs. */
+  gender?: "male" | "female" | "unspecified";
   /**
    * Result ordering (Jobinja `sort=`): "relevance_desc" | "published_at_desc"
    * (newest) | "salary_from_desc" (highest pay). Free-form to stay forward-compatible.

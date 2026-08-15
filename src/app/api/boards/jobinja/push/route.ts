@@ -33,7 +33,7 @@ const pushSchema = z
           company: z.string().max(200).nullish(),
           url: z.string().max(500).nullish(),
           statusRaw: z.string().max(120).nullish(),
-          statusCategory: z.enum(["pending", "review", "interview", "rejected", "other"]).nullish(),
+          statusCategory: z.enum(["pending", "review", "interview", "hired", "rejected", "other"]).nullish(),
         }),
       )
       .max(2000)
@@ -49,14 +49,20 @@ export async function POST(request: Request): Promise<Response> {
 
     let applications = 0;
     if (body.applications?.length) {
-      const apps = body.applications.map((a) => ({
-        externalId: a.externalId,
-        title: a.title ?? null,
-        company: a.company ?? null,
-        url: a.url ?? null,
-        statusRaw: a.statusRaw ?? null,
-        statusCategory: a.statusCategory ?? normalizeApplicationStatus(a.statusRaw),
-      }));
+      const apps = body.applications.map((a) => {
+        const categoryFromRaw = a.statusRaw ? normalizeApplicationStatus(null, a.statusRaw) : null;
+        return {
+          externalId: a.externalId,
+          title: a.title ?? null,
+          company: a.company ?? null,
+          url: a.url ?? null,
+          statusRaw: a.statusRaw ?? null,
+          statusCategory:
+            categoryFromRaw && categoryFromRaw !== "other"
+              ? categoryFromRaw
+              : (a.statusCategory ?? normalizeApplicationStatus(a.statusRaw)),
+        };
+      });
       applications = await upsertApplications(userId, "jobinja", apps);
     }
 

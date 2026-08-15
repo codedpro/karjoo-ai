@@ -89,6 +89,7 @@ describe("mergeApplyFilters", () => {
       jobTypes: [],
       remoteOnly: true,
       aiFilterEnabled: true,
+      paused: false,
     });
     // مشتقاتِ interests دست‌نخورده.
     expect(merged.titles).toEqual(["برنامه‌نویس"]);
@@ -125,6 +126,9 @@ describe("mergeApplyFilters", () => {
       minSalary: 12_000_000,
       sort: "salary_from_desc",
       aiFilterEnabled: true,
+      paused: true,
+      dailyLimit: 100,
+      weeklyLimit: 500,
     };
     expect(parseApplyFilters(mergeApplyFilters(null, filters))).toEqual(filters);
   });

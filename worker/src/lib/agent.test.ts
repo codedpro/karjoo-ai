@@ -128,6 +128,25 @@ describe("runTick — §10 daily cap (429)", () => {
   });
 });
 
+describe("runTick — site security challenge", () => {
+  it("stops draining after the first Jobinja security-check page", async () => {
+    const { launcher } = makeFakeBrowser({
+      bodyText: "Checking your browser before accessing the website... Please complete the security check before accessing the website.",
+      selectors: { "#apply-form": { waitForThrows: true } },
+    });
+    const { api, reported } = fakeApi({
+      jobs: [jobinjaJob("t1"), jobinjaJob("t2"), jobinjaJob("t3")],
+    });
+
+    const res = await runTick(deps(api, { launchBrowser: launcher }));
+
+    expect(res.claimed).toBe(3);
+    expect(res.failed).toBe(0);
+    expect(res.blocked).toBe(1);
+    expect(reported).toEqual([{ taskId: "t1", status: "blocked" }]);
+  });
+});
+
 describe("runTick — scaffold board", () => {
   it("reports a scaffold-board job as skipped (never submitted)", async () => {
     const { api, reported } = fakeApi({

@@ -12,8 +12,8 @@ import "server-only";
  * ارکستریتور می‌تواند این را به‌عنوانِ `scoreFn` تزریق کند (با userId بسته‌شده) تا
  * مسیرِ تطبیقِ تولید مترشده شود، بی‌آنکه امضای ScoreAndDraftFn تغییر کند.
  */
-import { buildScoreAndDraftPrompt } from "@/lib/ai/prompts";
-import { scoreAndDraftSchema } from "@/lib/ai/schema";
+import { buildMatchScorePrompt, buildScoreAndDraftPrompt } from "@/lib/ai/prompts";
+import { matchScoreSchema, scoreAndDraftSchema } from "@/lib/ai/schema";
 import { ScoringError, type ScoreAndDraftResult } from "@/lib/apply/scoring";
 import { sanitizePgText } from "@/lib/apply/pg-text";
 import type { CandidateProfile, JobListing } from "@/lib/apply/types";
@@ -71,6 +71,45 @@ export async function meteredScoreAndDraft(
   return {
     matchScore: parsed.data.matchScore,
     coverLetter: sanitizePgText(parsed.data.coverLetter) ?? "",
+    reason: sanitizePgText(reason ?? null) ?? undefined,
+  };
+}
+
+/** نسخه‌ی مترشده‌ی امتیازدهیِ بدون انگیزه‌نامه؛ مسیر پیش‌فرض Jobinja برای جلوگیری از مصرف توکن اضافی. */
+export async function meteredScoreOnly(
+  userId: string,
+  job: JobListing,
+  profile: CandidateProfile,
+  opts: MeteringOptions = {},
+): Promise<ScoreAndDraftResult> {
+  const messages = buildMatchScorePrompt(job, profile);
+
+  let data: unknown;
+  try {
+    const out = await meteredChatJson(userId, "match", { messages, temperature: 0.25 }, opts);
+    data = out.result.data;
+  } catch (cause) {
+    if (cause instanceof ScoringError) throw cause;
+    if (isInsufficientBalance(cause)) throw cause;
+    throw new ScoringError("فراخوانیِ مترشده‌ی گیت‌وی هوش مصنوعی برای امتیازدهی ناموفق بود.", cause);
+  }
+
+  const parsed = matchScoreSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new ScoringError(
+      `خروجیِ مدل با اسکیمای موردانتظار هم‌خوان نبود: ${parsed.error.issues
+        .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("؛ ")}`,
+      parsed.error,
+    );
+  }
+
+  const reason =
+    parsed.data.reasons.length > 0 ? parsed.data.reasons.join("؛ ") : undefined;
+
+  return {
+    matchScore: parsed.data.matchScore,
+    coverLetter: "",
     reason: sanitizePgText(reason ?? null) ?? undefined,
   };
 }

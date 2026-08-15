@@ -21,10 +21,10 @@ import "server-only";
  *
  * همه‌ی وابستگی‌ها تزریق‌پذیرند تا بدونِ DB/شبکه/رمزِ واقعی تست شوند.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
-import { applications, candidateProfiles, resumes, users, type Plan } from "@/db/schema";
+import { applications, candidateProfiles, resumes, tasks, users, type Plan } from "@/db/schema";
 import {
   assertServerAutoApplyAllowed,
   recordAutoApplyAudit,
@@ -41,6 +41,10 @@ import { decryptSession } from "@/lib/vault/crypto";
 import { readSessionBlob, type Board } from "@/lib/vault/store";
 import { listUserIdsForNode } from "@/lib/fleet/assign";
 import { logger } from "@/lib/observability/logger";
+import {
+  canServerExecute,
+  markServerExecutionRunning,
+} from "@/lib/apply/execution-run";
 
 /** هندلِ DB که این لایه نیاز دارد — کلاینتِ کاملِ Drizzle. */
 export type FleetDispatchDb = typeof defaultDb;
@@ -96,6 +100,14 @@ export interface ClaimFleetDeps {
   loadSession?: (userId: string, board: Board) => Promise<string | null>;
   /** خواننده‌ی HTMLِ رزومه‌ی سفارشیِ این آگهی (پیش‌فرض از جدولِ resumes؛ نبود → null). */
   loadResumeHtml?: (userId: string, listingId: string) => Promise<string | null>;
+  /** آزادسازی task وقتی رزومه‌ی هدف‌گیری‌شده ساخته/خوانده نشد. */
+  releaseMissingResumeTask?: (taskId: string) => Promise<void>;
+  /** Shared queue ownership gate. */
+  canExecute?: (userId: string) => Promise<boolean>;
+  /** Marks this node as the active server owner before claiming. */
+  markExecuting?: (userId: string, nodeId: string) => Promise<boolean>;
+  /** Persists leased_by for challenge-safe release/ownership validation. */
+  markTaskLeases?: (taskIds: string[], nodeId: string) => Promise<void>;
 }
 
 /** پلنِ کاربر را از جدولِ users می‌خواند (یا null اگر کاربر نباشد). */
@@ -132,19 +144,10 @@ async function defaultLoadSession(
 }
 
 /**
- * HTMLِ رزومه‌ی سفارشیِ (user × listing × isBase=false) را برمی‌گرداند — و اگر نبود،
- * **همان‌جا می‌سازدش**.
+ * HTMLِ رزومه‌ی سفارشیِ (user × listing × isBase=false) را برمی‌گرداند.
  *
- * چرا ساختنِ درجا: وعده‌ی محصول «رزومه‌ی سفارشی برای هر آگهی» است، ولی این تابع فقط
- * رزومه‌ی *از پیش‌ساخته* را می‌خواند؛ و رزومه فقط وقتی ساخته می‌شد که کاربر دستی روی
- * دکمه‌اش بزند. یعنی در «اپلای در خواب» عملاً هیچ‌وقت رزومه‌ی سفارشی نمی‌رفت و همیشه
- * رزومه‌ی پروفایلِ خودِ بورد ارسال می‌شد (زنده تأیید شد ۱۴۰۵/۰۵/۱۶: ۹ اپلای، صفر رزومه‌ی
- * سفارشی). حالا ورکر همان چیزی را می‌فرستد که محصول قول داده، و بایگانی هم دقیقاً همان
- * نسخه را نگه می‌دارد.
- *
- * هزینه/ایمنی: ساخت، AIِ مترشده است و به کیف‌پولِ خودِ کاربر خرج می‌خورد (kind=resume_tailor).
- * کاملاً fail-soft — هر خطایی (موجودیِ ناکافی، گیت‌وی، پروفایلِ ناقص) `null` می‌دهد و اپلای
- * با رزومه‌ی پروفایل ادامه پیدا می‌کند؛ نبودِ رزومه‌ی سفارشی هرگز نباید اپلای را بشکند.
+ * این مسیر هرگز به رزومه‌ی عمومیِ پروفایل fallback نمی‌کند. رزومه‌های هدف‌گیری‌شده در
+ * مرحله‌ی prepare ساخته می‌شوند؛ claim فقط HTML موجود را می‌خواند.
  */
 async function defaultLoadResumeHtml(
   userId: string,
@@ -161,22 +164,33 @@ async function defaultLoadResumeHtml(
       columns: { content: true },
     });
     if (row?.content) return row.content;
-  } catch {
-    return null;
-  }
-
-  // هنوز ساخته نشده → همین حالا بساز (importِ پویا تا چرخه‌ی import پیش نیاید).
-  try {
-    const { generateTailoredResume } = await import("@/lib/resume/custom-resume-service");
-    // این آگهی از فیلترهای خودِ کاربر و امتیازِ تطبیق‌دهنده رد شده و اپلای خودکار روشن است.
-    const built = await generateTailoredResume(userId, listingId, {
-      db: db as never,
-      source: "auto_apply",
+  } catch (err) {
+    logger.warn("fleet dispatch tailored resume unavailable", {
+      path: "fleet/dispatch",
+      userId,
+      listingId,
+      err: err instanceof Error ? err : new Error(String(err)),
     });
-    return built?.html ?? null;
-  } catch {
     return null;
   }
+  return null;
+}
+
+async function releaseTaskForMissingResume(
+  taskId: string,
+  db: FleetDispatchDb,
+): Promise<void> {
+  await db
+    .update(tasks)
+    .set({
+      status: "pending",
+      leasedBy: null,
+      leasedAt: null,
+      lastError: "tailored_resume_unavailable",
+      runAfter: sql`now() + interval '30 minutes'`,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(tasks.id, taskId), eq(tasks.status, "leased")));
 }
 
 /**
@@ -210,13 +224,35 @@ export async function claimFleetJobs(
   const claimItems =
     deps.claimItems ??
     ((userId: string, lim: number, minScore: number) =>
-      claimUserApplyItems(userId, lim, db, { minScore }));
+      claimUserApplyItems(userId, lim, db, { minScore, requireTailoredResume: true }));
   const loadSession =
     deps.loadSession ??
     ((userId: string, board: Board) => defaultLoadSession(userId, board, db));
   const loadResumeHtml =
     deps.loadResumeHtml ??
     ((userId: string, listingId: string) => defaultLoadResumeHtml(userId, listingId, db));
+  const releaseMissingResumeTask =
+    deps.releaseMissingResumeTask ?? ((taskId: string) => releaseTaskForMissingResume(taskId, db));
+  const isolatedTestDeps = deps.readAssignedUserIds !== undefined;
+  const canExecute =
+    deps.canExecute ??
+    (isolatedTestDeps ? async () => true : (userId: string) => canServerExecute(userId, db));
+  const markExecuting =
+    deps.markExecuting ??
+    (isolatedTestDeps
+      ? async () => true
+      : (userId: string, id: string) => markServerExecutionRunning(userId, id, db));
+  const markTaskLeases =
+    deps.markTaskLeases ??
+    (isolatedTestDeps
+      ? async () => {}
+      : async (taskIds: string[], id: string) => {
+          if (taskIds.length === 0) return;
+          await db
+            .update(tasks)
+            .set({ leasedBy: id, updatedAt: sql`now()` })
+            .where(and(eq(tasks.status, "leased"), inArray(tasks.id, taskIds)));
+        });
 
   const safeLimit = Math.max(0, Math.floor(limit));
   if (safeLimit === 0) return [];
@@ -228,6 +264,10 @@ export async function claimFleetJobs(
 
   for (const userId of userIds) {
     if (jobs.length >= safeLimit) break;
+
+    // Shared ownership: an active/paused extension run owns this account until
+    // the user explicitly switches back. A blocked server run also stays stopped.
+    if (!(await canExecute(userId))) continue;
 
     // ۱) پلن.
     const plan = await readPlan(userId);
@@ -253,22 +293,30 @@ export async function claimFleetJobs(
       continue;
     }
 
+    if (!(await markExecuting(userId, nodeId))) continue;
+
     // ۳) claimِ بالای آستانه — فقط به‌اندازه‌ی ظرفیتِ باقی‌مانده.
     const remaining = safeLimit - jobs.length;
     const items = await claimItems(userId, remaining, minScore);
+    await markTaskLeases(items.map((item) => item.taskId), nodeId);
 
     // ۴) برای هر آیتم نشست را رمزگشایی کن (فقط چون نود به این کاربر تخصیص دارد).
     for (const item of items) {
       if (jobs.length >= safeLimit) break;
       const session = await loadSession(userId, item.board as Board);
       if (!session) continue; // بدونِ نشست، کار اجراشدنی نیست — رد.
+      const resumeHtml = await loadResumeHtml(userId, item.listingId);
+      if (!resumeHtml) {
+        await releaseMissingResumeTask(item.taskId);
+        continue;
+      }
       jobs.push({
         taskId: item.taskId,
         userId,
         board: item.board,
         listingUrl: item.listing.url,
         coverLetter: item.coverLetter,
-        resumeHtml: await loadResumeHtml(userId, item.listingId),
+        resumeHtml,
         resumeFileName: await buildResumeFileName(userId, item.listing.company, db),
         session,
       });

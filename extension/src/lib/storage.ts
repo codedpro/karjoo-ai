@@ -174,3 +174,31 @@ export async function setSessionSnapshot(
 export async function clearSessionSnapshots(area: StorageArea = defaultArea()): Promise<void> {
   await area.remove([STORAGE_KEYS.sessionSnapshots]);
 }
+
+/* ── queue executor identity + notification dedupe ───────────────────────── */
+
+export async function getOrCreateExecutorId(
+  area: StorageArea = defaultArea(),
+): Promise<string> {
+  const out = await area.get(STORAGE_KEYS.executorId);
+  const existing = out[STORAGE_KEYS.executorId];
+  if (typeof existing === "string" && existing.length > 0) return existing;
+  const id = crypto.randomUUID();
+  await area.set({ [STORAGE_KEYS.executorId]: id });
+  return id;
+}
+
+export async function getNotifiedBlockedAt(
+  area: StorageArea = defaultArea(),
+): Promise<string | null> {
+  const out = await area.get(STORAGE_KEYS.notifiedBlockedAt);
+  const value = out[STORAGE_KEYS.notifiedBlockedAt];
+  return typeof value === "string" ? value : null;
+}
+
+export async function setNotifiedBlockedAt(
+  value: string,
+  area: StorageArea = defaultArea(),
+): Promise<void> {
+  await area.set({ [STORAGE_KEYS.notifiedBlockedAt]: value });
+}

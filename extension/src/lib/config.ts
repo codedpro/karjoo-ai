@@ -46,6 +46,10 @@ export const STORAGE_KEYS = {
    * /api/session/refresh. Free/Pro: stays here, never leaves the device.
    */
   sessionSnapshots: "karjoo.session.snapshots",
+  /** Stable UUID identifying this browser installation as a queue executor. */
+  executorId: "karjoo.executorId",
+  /** Last blocked timestamp already shown as a browser notification. */
+  notifiedBlockedAt: "karjoo.notifiedBlockedAt",
 } as const;
 
 /**

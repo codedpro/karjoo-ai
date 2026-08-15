@@ -80,6 +80,7 @@ describe("applyFiltersInputSchema", () => {
       cities: [],
       jobTypes: [],
       remoteOnly: false,
+      paused: false,
     });
   });
 

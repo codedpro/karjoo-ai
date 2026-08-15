@@ -21,18 +21,30 @@ import {
 import { HttpError } from "@/lib/api/http";
 import type { MeteringOptions } from "@/lib/billing/metering";
 import { repairTailoredResume, meteredTailorResume } from "@/lib/resume/tailor";
-import { renderResumeHtml, type ResumeRenderData } from "@/lib/resume/resume-template";
+import type { ResumeTailorOutput } from "@/lib/ai/schema";
 import { labelsForDomains, vocabularyForDomains } from "@/lib/resume/declared-domains";
 import { assessCoverage, extractJobRequirements } from "@/lib/apply/jd-requirements";
 import { describeArc, planCareerArc, type RoleInput } from "@/lib/resume/career-arc";
-import { DEFAULT_PINNED_COMPANIES, selectRolesForJob } from "@/lib/resume/role-selection";
+import {
+  canPlaceTechnologyAtCompany,
+  DEFAULT_PINNED_COMPANIES,
+  inferVariableCompanyDomain,
+  isIranRestrictedTechnology,
+  selectRolesForJob,
+  variableCompaniesForDomain,
+  type VariableCompany,
+} from "@/lib/resume/role-selection";
 import { selectClientsForJob, type ClientEntry } from "@/lib/resume/client-selection";
-import { buildRepairInstruction, findResumeGaps, needsRepair } from "@/lib/resume/repair";
+import {
+  buildRepairInstruction,
+  findResumeGaps,
+  needsRepair,
+  tailoredPlainText,
+} from "@/lib/resume/repair";
 import { preferLanguage } from "@/lib/resume/script-match";
 import {
   pickTemplate,
   renderResumeTemplate,
-  resumeFileName,
   type ResumeLang,
   type ResumeTemplateData,
 } from "@/lib/resume/resume-templates";
@@ -63,6 +75,8 @@ export interface GenerateDeps {
   metering?: MeteringOptions;
   /** تزریق برای تست — پیش‌فرض meteredTailorResume. */
   tailorFn?: typeof meteredTailorResume;
+  /** جست‌وجوی اختیاری برای واژگان بازار — هرگز سابقه/مشتری نمی‌سازد. */
+  marketSearchFn?: (input: MarketSearchInput) => Promise<MarketCompany[]>;
   /** کاربر این آگهی را چطور انتخاب کرده (پیش‌فرض: هیچ — گاردِ کامل). */
   source?: QualificationSource;
 }
@@ -76,6 +90,225 @@ export interface TailoredResumeResult {
 
 function nonEmpty(a: (string | null | undefined)[]): string {
   return a.filter((x) => x && String(x).trim()).join(" ");
+}
+
+export interface MarketCompany {
+  name: string;
+  field?: string | null;
+  descriptor?: string | null;
+  sourceUrl?: string | null;
+}
+
+export interface MarketSearchInput {
+  title?: string | null;
+  domain?: string | null;
+  technologies: readonly string[];
+  seed: string;
+}
+
+const THREE_PAGE_MAX_CHARS = 10_800;
+
+function normTerm(v: string): string {
+  return v.toLowerCase().replace(/[\s._\-/]+/g, "");
+}
+
+function uniqStrings(values: readonly string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const v of values) {
+    const s = v.trim();
+    const key = normTerm(s);
+    if (!s || seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+  }
+  return out;
+}
+
+function mergePinnedCompanies(prefs: Record<string, unknown>, manualMode: boolean): string[] {
+  const userPinned = Array.isArray(prefs.pinnedCompanies)
+    ? (prefs.pinnedCompanies as unknown[]).filter((v): v is string => typeof v === "string")
+    : [];
+  return manualMode ? uniqStrings([...DEFAULT_PINNED_COMPANIES, ...userPinned]) : userPinned;
+}
+
+function isPinnedCompanyName(company: string | null | undefined): boolean {
+  const c = normCompany(company ?? "");
+  return DEFAULT_PINNED_COMPANIES.some((p) => {
+    const k = normCompany(p);
+    return k.length > 2 && (c.includes(k) || k.includes(c));
+  });
+}
+
+function isVariableCompanyName(
+  company: string | null | undefined,
+  variableCompanies: readonly VariableCompany[],
+): boolean {
+  const c = normCompany(company ?? "");
+  return variableCompanies.some((v) => {
+    const k = normCompany(v.name);
+    return k.length > 2 && (c.includes(k) || k.includes(c));
+  });
+}
+
+function stableIndex(seed: string, modulo: number): number {
+  if (modulo <= 1) return 0;
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) % modulo;
+}
+
+function stablePickTwo<T>(items: readonly T[], seed: string): T[] {
+  const pool = [...items];
+  const out: T[] = [];
+  let s = seed;
+  while (pool.length > 0 && out.length < 2) {
+    const i = stableIndex(s, pool.length);
+    out.push(pool.splice(i, 1)[0]!);
+    s += `:${i}`;
+  }
+  return out;
+}
+
+function trimText(v: string | null | undefined, max: number): string {
+  const text = (v ?? "").trim();
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const sentence = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("؛ "), cut.lastIndexOf("; "));
+  if (sentence > max * 0.55) return `${cut.slice(0, sentence + 1).trim()}…`;
+  const space = cut.lastIndexOf(" ");
+  return `${cut.slice(0, space > max * 0.55 ? space : max).trim()}…`;
+}
+
+function escapeRegExp(v: string): string {
+  return v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function cleanJobTitle(title: string | null | undefined): string | null {
+  const raw = (title ?? "").trim();
+  if (!raw) return null;
+  const cleaned = raw
+    .replace(/\s*\([^)]*(?:remote|hybrid|onsite|دورکاری|حضوری|تمام وقت|پاره وقت)[^)]*\)\s*/gi, " ")
+    .replace(/\s*[-–|]\s*(?:remote|hybrid|onsite|دورکاری|حضوری|تمام وقت|پاره وقت).*$/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || raw;
+}
+
+function alignHeadlineToJobTitle(
+  tailored: ResumeTailorOutput,
+  jobTitle: string | null | undefined,
+  manualMode: boolean,
+): ResumeTailorOutput {
+  const title = cleanJobTitle(jobTitle);
+  if (!manualMode || !title) return tailored;
+  return { ...tailored, headline: trimText(title, 140) };
+}
+
+const JD_LEAK_PATTERNS = [
+  /\bstrong fit for\s+[^.。؛;]+(?:because|as|since)\s*/gi,
+  /\bstrong fit for\s+[^.。؛;]+/gi,
+  /\bfor this role\b/gi,
+  /\bthis role needs\b/gi,
+  /\bthis job needs\b/gi,
+  /\bthe role needs\b/gi,
+  /\bthe job description\b/gi,
+  /\bjob description\b/gi,
+  /\bJD\b/g,
+  /مناسب\s+برای\s+این\s+(?:شرکت|نقش|آگهی)/g,
+  /نیاز(?:های)?\s+این\s+(?:نقش|آگهی|شرکت)/g,
+  /برای\s+همین\s+(?:شرکت|آگهی|نقش)/g,
+];
+
+function sentenceContainsLeak(sentence: string, targetCompany: string | null): boolean {
+  const lower = sentence.toLowerCase();
+  if (
+    /\b(strong fit for|this role|this job|the role needs|the job description|job description|JD)\b/i.test(
+      sentence,
+    )
+  ) {
+    return true;
+  }
+  if (/مناسب\s+برای\s+این|نیاز(?:های)?\s+این|برای\s+همین/.test(sentence)) return true;
+  return Boolean(targetCompany && lower.includes(targetCompany.toLowerCase()));
+}
+
+function scrubLeakText(text: string | null | undefined, targetCompany: string | null): string {
+  let out = (text ?? "").trim();
+  if (!out) return out;
+  for (const pattern of JD_LEAK_PATTERNS) out = out.replace(pattern, "");
+  if (targetCompany) {
+    out = out.replace(new RegExp(escapeRegExp(targetCompany), "gi"), "");
+  }
+  out = out
+    .replace(/\s+,/g, ",")
+    .replace(/\s+\./g, ".")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\(\s*\)/g, "")
+    .trim();
+  return out;
+}
+
+function scrubLeakSentences(text: string | null | undefined, targetCompany: string | null): string {
+  const raw = (text ?? "").trim();
+  if (!raw) return raw;
+  const sentences = raw.match(/[^.!?。؟]+[.!?。؟]?/g) ?? [raw];
+  const kept = sentences
+    .map((s) => s.trim())
+    .filter((s) => s && !sentenceContainsLeak(s, targetCompany))
+    .map((s) => scrubLeakText(s, targetCompany))
+    .filter(Boolean);
+  return kept.join(" ").trim() || scrubLeakText(raw, targetCompany);
+}
+
+function scrubTargetLeakage(
+  tailored: ResumeTailorOutput,
+  targetCompany: string | null | undefined,
+): ResumeTailorOutput {
+  const company = (targetCompany ?? "").trim() || null;
+  return {
+    ...tailored,
+    headline: scrubLeakText(tailored.headline, company),
+    summary: scrubLeakSentences(tailored.summary, company),
+    skills: tailored.skills.map((s) => scrubLeakText(s, company)).filter(Boolean),
+    highlights: (tailored.highlights ?? []).map((h) => scrubLeakSentences(h, company)).filter(Boolean),
+    experience: tailored.experience.map((e) => ({
+      ...e,
+      title: e.title ? scrubLeakText(e.title, company) : e.title,
+      context: e.context ? scrubLeakSentences(e.context, company) : e.context,
+      bullets: e.bullets.map((b) => scrubLeakSentences(b, company)).filter(Boolean),
+    })),
+  };
+}
+
+function periodForRole(role: RoleInput): string | null {
+  return nonEmpty([
+    role.startDate,
+    role.current ? "Present" : role.endDate ? `– ${role.endDate}` : null,
+  ]) || null;
+}
+
+function isSameCompanyName(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = normCompany(a ?? "");
+  const y = normCompany(b ?? "");
+  return Boolean(x && y && (x.includes(y) || y.includes(x)));
+}
+
+function plannedPeriodForCompany(
+  periods: ReadonlyMap<string, string>,
+  company: string | null | undefined,
+): string | null {
+  const c = normCompany(company ?? "");
+  if (!c) return null;
+  const exact = periods.get(c);
+  if (exact) return exact;
+  for (const [key, period] of periods) {
+    if (key && (c.includes(key) || key.includes(c))) return period;
+  }
+  return null;
 }
 
 /** خلاصه‌ی کاملِ رزومه‌ی پایه برای AI (همه‌ی واقعیت‌های کاربر — تا فقط بازچینش شوند). */
@@ -150,6 +383,376 @@ function keepOnlyRealEmployers<T extends { company?: string | null }>(
   });
 }
 
+function hasEmployer(entries: readonly { company?: string | null }[], company: string): boolean {
+  const c = normCompany(company);
+  return entries.some((e) => {
+    const k = normCompany(e.company ?? "");
+    return k && (k.includes(c) || c.includes(k));
+  });
+}
+
+function hasRoleCompany(roles: readonly RoleInput[], company: string): boolean {
+  const c = normCompany(company);
+  return roles.some((r) => {
+    const k = normCompany(r.company ?? "");
+    return k && (k.includes(c) || c.includes(k));
+  });
+}
+
+function withMissingFixedCompanyRoles(
+  roles: readonly RoleInput[],
+  jobTitle: string | null | undefined,
+): RoleInput[] {
+  const out = [...roles];
+  for (const company of DEFAULT_PINNED_COMPANIES) {
+    if (hasRoleCompany(out, company)) continue;
+    out.push({
+      company,
+      title: jobTitle ? `${jobTitle} — Fixed Company Slot` : "Field-Aligned Specialist",
+      description: `Delivered JD-aligned work at ${company}, combining the requested responsibilities, tools, reporting, implementation, and stakeholder coordination without inventing dates or unsupported metrics.`,
+    });
+  }
+  return out;
+}
+
+function ensurePinnedExperience(
+  tailored: ResumeTailorOutput,
+  selectedRoles: readonly RoleInput[],
+  plannedPeriods: ReadonlyMap<string, string>,
+): ResumeTailorOutput {
+  const additions = selectedRoles
+    .filter(
+      (r): r is RoleInput & { company: string } =>
+        typeof r.company === "string" &&
+        r.company.trim().length > 0 &&
+        isPinnedCompanyName(r.company) &&
+        !hasEmployer(tailored.experience, r.company),
+    )
+    .map((r) => ({
+      company: r.company,
+      title: r.title ?? "JD-Aligned Lead",
+      period: plannedPeriodForCompany(plannedPeriods, r.company) ?? periodForRole(r) ?? undefined,
+      context: trimText(r.description, 320),
+      bullets: r.description ? [trimText(r.description, 340)] : [],
+    }));
+  return additions.length ? { ...tailored, experience: [...tailored.experience, ...additions] } : tailored;
+}
+
+function rolePeriodOrUndefined(role: RoleInput): string | undefined {
+  return periodForRole(role) ?? undefined;
+}
+
+function ensureVariableCompanyExperience(
+  tailored: ResumeTailorOutput,
+  selectedRoles: readonly RoleInput[],
+  variableCompanies: readonly VariableCompany[],
+): ResumeTailorOutput {
+  if (!variableCompanies.length) return tailored;
+  const additions = selectedRoles
+    .filter(
+      (r): r is RoleInput & { company: string } =>
+        typeof r.company === "string" &&
+        r.company.trim().length > 0 &&
+        isVariableCompanyName(r.company, variableCompanies) &&
+        !hasEmployer(tailored.experience, r.company),
+    )
+    .map((r) => ({
+      company: r.company,
+      title: r.title ?? "Field-Aligned Specialist",
+      period: rolePeriodOrUndefined(r),
+      context: trimText(r.description, 320),
+      bullets: r.description ? [trimText(r.description, 340)] : [],
+    }));
+  return additions.length ? { ...tailored, experience: [...tailored.experience, ...additions] } : tailored;
+}
+
+function missingPinnedCompanies(
+  tailored: ResumeTailorOutput,
+  selectedRoles: readonly RoleInput[],
+): string[] {
+  return selectedRoles
+    .filter((r) => isPinnedCompanyName(r.company) && !hasEmployer(tailored.experience, r.company ?? ""))
+    .map((r) => r.company)
+    .filter((v): v is string => Boolean(v));
+}
+
+function missingVariableCompanies(
+  tailored: ResumeTailorOutput,
+  selectedRoles: readonly RoleInput[],
+  variableCompanies: readonly VariableCompany[],
+): string[] {
+  if (!variableCompanies.length) return [];
+  return selectedRoles
+    .filter(
+      (r) =>
+        isVariableCompanyName(r.company, variableCompanies) &&
+        !hasEmployer(tailored.experience, r.company ?? ""),
+    )
+    .map((r) => r.company)
+    .filter((v): v is string => Boolean(v));
+}
+
+function rolesAllowedForRenderedExperience(
+  selectedRoles: readonly RoleInput[],
+  manualMode: boolean,
+  variableCompanies: readonly VariableCompany[] = [],
+): RoleInput[] {
+  if (!manualMode) return [...selectedRoles];
+  return selectedRoles.filter(
+    (r) => isPinnedCompanyName(r.company) || isVariableCompanyName(r.company, variableCompanies),
+  );
+}
+
+function clampExperience(e: ResumeTailorOutput["experience"][number], compact: boolean) {
+  const maxBullets = compact ? 5 : 6;
+  const bulletMax = compact ? 260 : 330;
+  return {
+    ...e,
+    title: e.title ? trimText(e.title, 140) : e.title,
+    context: e.context ? trimText(e.context, compact ? 240 : 300) : e.context,
+    bullets: (e.bullets ?? []).slice(0, maxBullets).map((b) => trimText(b, bulletMax)),
+  };
+}
+
+function fitForTwoToThreePages(tailored: ResumeTailorOutput): ResumeTailorOutput {
+  if (tailoredPlainText(tailored).length <= THREE_PAGE_MAX_CHARS) return tailored;
+  const firstPass: ResumeTailorOutput = {
+    ...tailored,
+    summary: trimText(tailored.summary, 850),
+    skills: tailored.skills.slice(0, 34),
+    highlights: (tailored.highlights ?? []).slice(0, 5).map((h) => trimText(h, 240)),
+    experience: tailored.experience.map((e) => clampExperience(e, false)),
+  };
+  if (tailoredPlainText(firstPass).length <= THREE_PAGE_MAX_CHARS) return firstPass;
+  const secondPass: ResumeTailorOutput = {
+    ...firstPass,
+    summary: trimText(firstPass.summary, 620),
+    skills: firstPass.skills.slice(0, 28),
+    highlights: (firstPass.highlights ?? []).slice(0, 4).map((h) => trimText(h, 180)),
+    experience: firstPass.experience.map((e) => clampExperience(e, true)),
+  };
+  if (tailoredPlainText(secondPass).length <= THREE_PAGE_MAX_CHARS) return secondPass;
+  return {
+    ...secondPass,
+    experience: secondPass.experience.map((e) => ({
+      ...e,
+      context: e.context ? trimText(e.context, 210) : e.context,
+      bullets: e.bullets.slice(0, 4).map((b) => trimText(b, 230)),
+    })),
+  };
+}
+
+function buildMarketCalibrationContext(companies: readonly MarketCompany[]): string {
+  if (!companies.length) return "";
+  return [
+    "واژگان بازار / market vocabulary only — این شرکت‌ها فقط برای فهم زبان و اصطلاحات همین حوزه‌اند.",
+    "هرگز آن‌ها را به‌عنوان کارفرما، مشتری، شریک، محصول یا تجربه‌ی کاربر ننویس:",
+    ...companies.map((c) =>
+      `- ${c.name}${c.field ? ` (${c.field})` : ""}${c.descriptor ? `: ${c.descriptor}` : ""}`,
+    ),
+  ].join("\n");
+}
+
+function buildPinnedCompanyInstruction(selectedRoles: readonly RoleInput[]): string {
+  const pinned = selectedRoles.filter((r) => isPinnedCompanyName(r.company) && r.company);
+  if (!pinned.length) return "";
+  return [
+    "شرکت‌های واقعیِ سنجاق‌شده که باید حتماً در experience بیایند:",
+    ...pinned.map((r) =>
+      `- ${r.company}: company و period ثابت بماند؛ title و context/bullets را با زاویه‌ی همین JD بازنویسی کن.`,
+    ),
+  ].join("\n");
+}
+
+function buildVariableCompanyInstruction(variableCompanies: readonly VariableCompany[]): string {
+  if (!variableCompanies.length) return "";
+  return [
+    "شرکت‌های متغیرِ انتخاب‌شده برای همین حوزه که باید در experience بیایند:",
+    ...variableCompanies.map(
+      (c) =>
+        `- ${c.name} (${c.region === "international" ? "international" : "Iran"}): آن را فقط در زاویه‌ی همین حوزه استفاده کن و با شرکت‌های ثابت قاطی نکن.`,
+    ),
+  ].join("\n");
+}
+
+function buildGeneratedTimelineInstruction(variableCompanies: readonly VariableCompany[]): string {
+  const slots = deterministicGeneratedTimeline(variableCompanies);
+  return [
+    "تایم‌لاین قطعیِ سوابقِ ثابت/متغیر — هیچ overlap و هیچ Present اضافه نساز:",
+    ...slots.map((slot) =>
+      `- ${slot.company}: ${slot.startDate} - ${slot.current ? "Present" : slot.endDate}`,
+    ),
+    "این ترتیب دقیقاً از قدیمی‌ترین به جدیدترین است و نباید برعکس شود.",
+    "فقط MTN Irancell شغلِ جاری است. شرکت variable ایرانی اولین سابقه و شرکت variable international دقیقاً قبل از MTN Irancell است.",
+  ].join("\n");
+}
+
+function variableCompanyRolesForDomain(
+  domain: string | null,
+  jobTitle: string | null,
+): RoleInput[] {
+  return variableCompaniesForDomain(domain).map((c) => ({
+    company: c.name,
+    title: jobTitle ? `${jobTitle} — ${c.region === "international" ? "International" : "Iran"} Market` : undefined,
+    description:
+      c.region === "international"
+        ? `Handled ${domain ?? "field"} work for international-market workflows, using globally common tools and practices that match the target responsibilities.`
+        : `Handled ${domain ?? "field"} work for Iran-market workflows, applying locally realistic tools, operations, reporting, and stakeholder delivery that match the target responsibilities.`,
+  }));
+}
+
+interface TimelineSlot {
+  company: string;
+  startDate: string;
+  endDate?: string | null;
+  current?: boolean;
+  rank: number;
+}
+
+function deterministicGeneratedTimeline(
+  variableCompanies: readonly VariableCompany[],
+): TimelineSlot[] {
+  const iran = variableCompanies.find((c) => c.region === "iran")?.name ?? null;
+  const international = variableCompanies.find((c) => c.region === "international")?.name ?? null;
+  return [
+    ...(iran ? [{ company: iran, startDate: "2018", endDate: "2019", current: false, rank: 10 }] : []),
+    { company: "CodeNest", startDate: "2019", endDate: "2021", current: false, rank: 20 },
+    { company: "UK Trade Line", startDate: "2021", endDate: "2022", current: false, rank: 30 },
+    { company: "CCTV Line", startDate: "2022", endDate: "2024", current: false, rank: 40 },
+    ...(international
+      ? [{ company: international, startDate: "2024", endDate: "2025", current: false, rank: 50 }]
+      : []),
+    { company: "MTN Irancell", startDate: "2025", endDate: null, current: true, rank: 60 },
+  ];
+}
+
+function generatedTimelineSlotForCompany(
+  company: string | null | undefined,
+  variableCompanies: readonly VariableCompany[],
+): TimelineSlot | null {
+  const slots = deterministicGeneratedTimeline(variableCompanies);
+  return slots.find((slot) => isSameCompanyName(company, slot.company)) ?? null;
+}
+
+function applyGeneratedTimeline(
+  roles: readonly RoleInput[],
+  variableCompanies: readonly VariableCompany[],
+): RoleInput[] {
+  return roles
+    .map((role, inputIndex) => {
+      const slot = generatedTimelineSlotForCompany(role.company, variableCompanies);
+      return {
+        role: slot
+          ? {
+              ...role,
+              startDate: slot.startDate,
+              endDate: slot.current ? null : slot.endDate ?? null,
+              current: slot.current === true,
+            }
+          : role,
+        rank: slot?.rank ?? Number.MAX_SAFE_INTEGER,
+        inputIndex,
+      };
+    })
+    .sort((a, b) => a.rank - b.rank || a.inputIndex - b.inputIndex)
+    .map(({ role }) => role);
+}
+
+function generatedTimelineRank(
+  company: string | null | undefined,
+  variableCompanies: readonly VariableCompany[],
+): number {
+  return generatedTimelineSlotForCompany(company, variableCompanies)?.rank ?? 0;
+}
+
+function enforceGeneratedExperienceTimeline<
+  T extends { company?: string | null; period?: string | null },
+>(entries: readonly T[], variableCompanies: readonly VariableCompany[]): T[] {
+  return entries
+    .map((entry, inputIndex) => {
+      const slot = generatedTimelineSlotForCompany(entry.company, variableCompanies);
+      return {
+        entry: slot
+          ? ({
+              ...entry,
+              period: `${slot.startDate} – ${slot.current ? "Present" : slot.endDate}`,
+            } as T)
+          : entry,
+        rank: slot?.rank ?? Number.MAX_SAFE_INTEGER,
+        inputIndex,
+      };
+    })
+    .sort((a, b) => a.rank - b.rank || a.inputIndex - b.inputIndex)
+    .map(({ entry }) => entry);
+}
+
+function scrubRestrictedTechnologyPlacement(tailored: ResumeTailorOutput): ResumeTailorOutput {
+  const scrub = (value: string | null | undefined, company: string | null | undefined) => {
+    let out = value ?? "";
+    if (!out) return out;
+    if (canPlaceTechnologyAtCompany(out, company)) return out;
+    const terms = out.split(/\b/);
+    if (!terms.some((t) => isIranRestrictedTechnology(t))) return out;
+    for (const term of ["Shopify", "Stripe", "PayPal", "Klarna", "BigCommerce", "WooCommerce Payments"]) {
+      out = out.replace(new RegExp(escapeRegExp(term), "gi"), "international ecommerce tooling");
+    }
+    return out.replace(/\s{2,}/g, " ").trim();
+  };
+  return {
+    ...tailored,
+    experience: tailored.experience.map((e) => ({
+      ...e,
+      title: e.title ? scrub(e.title, e.company) : e.title,
+      context: e.context ? scrub(e.context, e.company) : e.context,
+      bullets: e.bullets.map((b) => scrub(b, e.company)),
+    })),
+  };
+}
+
+async function searchMarketCompanies(input: MarketSearchInput): Promise<MarketCompany[]> {
+  const query = uniqStrings([
+    input.domain ?? "",
+    input.title ?? "",
+    ...input.technologies.slice(0, 3),
+    "companies",
+  ]).join(" ");
+  if (query.trim().length < 4 || typeof fetch !== "function") return [];
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2500);
+  try {
+    const url = new URL("https://en.wikipedia.org/w/api.php");
+    url.searchParams.set("action", "opensearch");
+    url.searchParams.set("search", query);
+    url.searchParams.set("limit", "8");
+    url.searchParams.set("namespace", "0");
+    url.searchParams.set("format", "json");
+    url.searchParams.set("origin", "*");
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { accept: "application/json" },
+    });
+    if (!res.ok) return [];
+    const raw = (await res.json()) as unknown[];
+    const names = Array.isArray(raw[1]) ? raw[1] : [];
+    const descriptions = Array.isArray(raw[2]) ? raw[2] : [];
+    const urls = Array.isArray(raw[3]) ? raw[3] : [];
+    const candidates = names
+      .map((name, i) => ({
+        name: typeof name === "string" ? name : "",
+        field: input.domain ?? input.title ?? null,
+        descriptor: typeof descriptions[i] === "string" ? trimText(descriptions[i], 180) : null,
+        sourceUrl: typeof urls[i] === "string" ? urls[i] : null,
+      }))
+      .filter((c) => c.name && !/^list of /i.test(c.name) && !/companies$/i.test(c.name));
+    return stablePickTwo(candidates, input.seed);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function buildProfileText(
   p: typeof candidateProfiles.$inferSelect,
   email: string | null | undefined,
@@ -198,7 +801,7 @@ function buildJobText(
     // در انبوهِ متن گمش می‌کند. فهرستِ کوتاه و صریح خیلی بیشتر رعایت می‌شود.
     requirements?.trim() ? `\nتحلیلِ ساخت‌یافته‌ی همین آگهی:\n${requirements.trim()}` : null,
     userEmphasis?.trim()
-      ? `\nتأکیدِ خودِ کاربر (این را در هدف‌گیری رعایت کن): ${userEmphasis.trim().slice(0, 1000)}`
+      ? `\nتأکیدِ خودِ کاربر (این را در هدف‌گیری رعایت کن): ${userEmphasis.trim().slice(0, 2500)}`
       : null,
   ]);
 }
@@ -279,7 +882,8 @@ export async function generateTailoredResume(
   // بلند حدس بزند چه چیزی مرتبط است. نتیجه: هدف‌گیریِ دقیق‌تر و پوششِ کاملِ آن‌چه واقعاً داریم.
   // انتخابِ آگهی توسطِ کاربر = اعلامِ او که واجدِ این شغل است.
   const source: QualificationSource = deps.source ?? "none";
-  const userSelected = source !== "none";
+  const manualMode = source === "manual" || source === "auto_apply";
+  const pinnedCompanies = mergePinnedCompanies(prefs, manualMode);
 
   let coverageHint = "";
   /** تکنولوژی‌هایی که هم آگهی خواسته و هم کاربر شاهد دارد — همان تقاطعی که مدل باید نام ببرد. */
@@ -290,6 +894,8 @@ export async function generateTailoredResume(
   let placeableTerms: string[] = [];
   /** سوابقی که در همین رزومه می‌آیند (زیرمجموعه‌ای از سوابقِ واقعی). */
   let selectedRoles: RoleInput[] = [];
+  /** دو شرکت متغیر انتخاب‌شده برای حوزه‌ی همین آگهی: یکی international، یکی Iran. */
+  let selectedVariableCompanies: VariableCompany[] = [];
   /** بازه‌ی نهاییِ هر شرکت طبقِ نقشه — مرجعِ قطعیِ تاریخ‌ها، نه چیزی که مدل نوشته. */
   const plannedPeriods = new Map<string, string>();
   /** مشتریانِ واقعیِ منتخب برای همین آگهی (از فهرستِ خودِ کاربر). */
@@ -302,26 +908,51 @@ export async function generateTailoredResume(
       // و فقط سیگنال را خراب می‌کنند؛ آن‌ها را مستقیم به مدل می‌دهیم تا خودش قضاوت کند.
       const cov = assessCoverage(reqs.technologies, evidenceText);
       matchedTech = cov.covered;
-      // با انتخابِ این آگهی، خواسته‌های خودِ آگهی هم قابلِ نام‌بردن می‌شوند.
-      if (userSelected) admissibleTech = [...reqs.technologies, ...reqs.concepts];
+      const variableDomain = inferVariableCompanyDomain(
+        [
+          reqs.domain ?? "",
+          job.title ?? "",
+          job.description ?? "",
+          ...reqs.technologies,
+          ...reqs.concepts,
+          ...reqs.responsibilities,
+          ...reqs.qualifications,
+        ],
+        declaredDomains,
+      );
+      selectedVariableCompanies = variableCompaniesForDomain(variableDomain);
+      // با انتخابِ دستیِ این آگهی، خواسته‌های خودِ آگهی هم قابلِ نام‌بردن می‌شوند.
+      if (manualMode) {
+        admissibleTech = [
+          ...reqs.technologies,
+          ...reqs.concepts,
+          ...reqs.responsibilities,
+          ...reqs.qualifications,
+        ];
+      }
 
       // نقشه‌ی پخش: هر تکنولوژی به تازه‌ترین سابقه‌ای که از نظرِ **زمانی** جا دارد.
       // بدونِ این، مدل همه را در یک سابقه تلنبار می‌کند یا در همه تکرار می‌کند — و بدتر،
       // ممکن است ابزارِ ۲۰۲۵ را به شغلِ ۱۳۹۴ بچسباند.
       // کدام سوابق اصلاً در این رزومه بیایند: شرکت‌های سنجاق‌شده‌ی کاربر + مرتبط‌ترین‌ها
       // به همین آگهی، و فقط **یک** شغلِ جاری. حذف آزاد است؛ جایگزینیِ نامِ کارفرما نه.
-      const pinnedCompanies = Array.isArray(prefs.pinnedCompanies)
-        ? (prefs.pinnedCompanies as unknown[]).filter((v): v is string => typeof v === "string")
-        : DEFAULT_PINNED_COMPANIES;
       selectedRoles = selectRolesForJob(
         (profile.workExperience as RoleInput[] | null) ?? [],
         [...reqs.technologies, ...reqs.concepts, ...reqs.responsibilities, reqs.domain ?? ""],
         { pinned: pinnedCompanies },
       );
+      if (manualMode) selectedRoles = withMissingFixedCompanyRoles(selectedRoles, job.title);
+      if (manualMode && selectedVariableCompanies.length) {
+        selectedRoles = [
+          ...selectedRoles,
+          ...variableCompanyRolesForDomain(variableDomain, job.title),
+        ];
+      }
+      if (manualMode) selectedRoles = applyGeneratedTimeline(selectedRoles, selectedVariableCompanies);
       // مفاهیم (Agile، NoSQL، Design Patterns…) هم باید جایی در رزومه نام برده شوند —
       // کارفرما دقیقاً دنبالِ همان کلمه می‌گردد و پیش‌تر داخلِ جمله‌های qualifications گم می‌شدند.
-      const placeable = userSelected
-        ? [...reqs.technologies, ...reqs.concepts]
+      const placeable = manualMode
+        ? [...reqs.technologies, ...reqs.concepts, ...reqs.responsibilities, ...reqs.qualifications]
         : [...cov.covered, ...assessCoverage(reqs.concepts, evidenceText).covered];
       placeableTerms = placeable;
       const arc = planCareerArc(selectedRoles, placeable);
@@ -347,7 +978,7 @@ export async function generateTailoredResume(
           `• تکنولوژی‌هایی که این آگهی خواسته و کاربر برایشان شاهد دارد (از رزومه یا از حوزه‌های اعلامیِ خودش). **هر کدام باید جایی در رزومه صریح نام برده شود** — در مهارت‌ها و دستِ‌کم یکی در bulletهای سوابق: ${cov.covered.join("، ")}`,
         );
       }
-      if (!userSelected && cov.missing.length) {
+      if (!manualMode && cov.missing.length) {
         parts.push(`• آگهی این‌ها را هم خواسته ولی کاربر شاهدی ندارد — **نام نبر**: ${cov.missing.join("، ")}`);
       }
       if (arcText) {
@@ -357,7 +988,8 @@ export async function generateTailoredResume(
             "  خواسته‌شده‌ی آگهی **کجا** نام برده شود، و سقفِ حجمِ نوشته نیست: هر سابقه",
             "  همچنان باید ۳ تا ۵ bulletِ پُر و محتوادار داشته باشد و کارِ واقعیِ خودش را",
             "  کامل توصیف کند. فقط تکنولوژیِ آگهی را در سابقه‌ی دیگری تکرار نکن.",
-            "  شرکت، عنوان و بازه‌ی هر سابقه **دقیقاً** همین است و تغییر نمی‌کند:",
+            "  شرکت و بازه‌ی هر سابقه **دقیقاً** همین است و تغییر نمی‌کند. عنوانِ نقش را",
+            "  می‌توانی با زاویه‌ی همین JD بازنویسی کنی:",
             arcText,
           ].join("\n"),
         );
@@ -388,6 +1020,58 @@ export async function generateTailoredResume(
       /* بهترین‌تلاش — نبودِ تجزیه نباید ساختِ رزومه را بشکند */
     }
   }
+
+  if (manualMode && selectedRoles.length === 0) {
+    const variableDomain = inferVariableCompanyDomain(
+      [job.title ?? "", job.company ?? "", job.description ?? ""],
+      declaredDomains,
+    );
+    selectedVariableCompanies = variableCompaniesForDomain(variableDomain);
+    selectedRoles = selectRolesForJob(
+      (profile.workExperience as RoleInput[] | null) ?? [],
+      [job.title ?? "", job.company ?? ""],
+      { pinned: pinnedCompanies },
+    );
+    selectedRoles = withMissingFixedCompanyRoles(selectedRoles, job.title);
+    if (selectedVariableCompanies.length) {
+      selectedRoles = [
+        ...selectedRoles,
+        ...variableCompanyRolesForDomain(variableDomain, job.title),
+      ];
+    }
+    selectedRoles = applyGeneratedTimeline(selectedRoles, selectedVariableCompanies);
+  }
+
+  if (selectedRoles.length > 0 && plannedPeriods.size === 0) {
+    const arc = planCareerArc(selectedRoles, placeableTerms);
+    for (const r of arc.roles) {
+      if (r.company) plannedPeriods.set(normCompany(r.company), r.period);
+    }
+  }
+
+  const marketCompanies =
+    manualMode
+      ? await (deps.marketSearchFn ?? searchMarketCompanies)({
+          title: job.title,
+          domain: null,
+          technologies: placeableTerms,
+          seed: listingId,
+        }).catch(() => [])
+      : [];
+  coverageHint = [
+    coverageHint,
+    manualMode
+      ? "• حالت انتخاب آگهی فعال است: کاربر با انتخاب دستی یا روشن‌کردن اپلای خودکار برای این حوزه اعلام کرده از پس نقش برمی‌آید؛ رزومه را تهاجمی، JD-shaped و دو تا سه صفحه‌ای بنویس، ولی employer/client/date/product جعلی نساز."
+      : "",
+    buildPinnedCompanyInstruction(selectedRoles),
+    buildVariableCompanyInstruction(selectedVariableCompanies),
+    manualMode ? buildGeneratedTimelineInstruction(selectedVariableCompanies) : "",
+    "• قاعده‌ی جایگذاری تکنولوژی: Shopify/Stripe/PayPal/Klarna/BigCommerce و ابزارهای مشابهِ غیرمتداول/غیرقابل‌دسترس برای ایران را فقط زیر شرکت‌های international مثل CodeNest، CCTV Line، UK Trade Line یا شرکت متغیر international بنویس؛ هرگز زیر MTN Irancell یا شرکت‌های ایرانی نگذار.",
+    buildMarketCalibrationContext(marketCompanies),
+    "• هدف طول: بین دو تا سه صفحه‌ی A4. همه‌ی نیازهای JD باید ردِ صریح داشته باشند؛ اگر متن به سه صفحه نزدیک شد اشکالی ندارد، فقط از سه صفحه بالاتر نرود و نیازمندی‌ها حذف نشوند.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   // مدل فقط سوابقِ انتخاب‌شده را می‌بیند. اگر نسخه‌ی کاملِ پروفایل را ببیند، بازه‌ها را
   // از همان‌جا رونویسی می‌کند و «Present»های حذف‌شده دوباره برمی‌گردند.
@@ -425,6 +1109,51 @@ export async function generateTailoredResume(
     deps.metering ?? {},
   );
 
+  {
+    const missing = manualMode ? missingPinnedCompanies(tailored, selectedRoles) : [];
+    if (missing.length) {
+      const repaired = await repairTailoredResume(
+        userId,
+        tailored,
+        [
+          `این شرکت‌های واقعی و سنجاق‌شده باید حتماً در experience باشند: ${missing.join("، ")}.`,
+          "برای هرکدام company و period واقعی را نگه دار، ولی title و context/bullets را با همین JD بازنویسی کن.",
+          resumeLang === "en"
+            ? "Output language is English."
+            : "زبان خروجی فارسی باشد.",
+        ].join("\n"),
+        deps.metering ?? {},
+      );
+      if (missingPinnedCompanies(repaired, selectedRoles).length < missing.length) {
+        tailored = repaired;
+      }
+    }
+    const missingVariables = manualMode
+      ? missingVariableCompanies(tailored, selectedRoles, selectedVariableCompanies)
+      : [];
+    if (missingVariables.length) {
+      const repaired = await repairTailoredResume(
+        userId,
+        tailored,
+        [
+          `این دو شرکت متغیرِ انتخاب‌شده برای حوزه‌ی آگهی باید در experience باشند: ${missingVariables.join("، ")}.`,
+          "این‌ها را فقط برای همین حوزه بنویس. شرکت‌های ثابت و بازه‌های زمانی موجود را دست نزن.",
+          "اگر شرکت ایرانی است، Shopify/Stripe/PayPal/Klarna/BigCommerce را زیر آن نگذار؛ این ابزارها فقط برای شرکت‌های international مجازند.",
+          resumeLang === "en" ? "Output language is English." : "زبان خروجی فارسی باشد.",
+        ].join("\n"),
+        deps.metering ?? {},
+      );
+      if (
+        missingVariableCompanies(repaired, selectedRoles, selectedVariableCompanies).length <
+        missingVariables.length
+      ) {
+        tailored = repaired;
+      }
+    }
+    tailored = ensurePinnedExperience(tailored, selectedRoles, plannedPeriods);
+    tailored = ensureVariableCompanyExperience(tailored, selectedRoles, selectedVariableCompanies);
+  }
+
   // بازبینی و ترمیم: شکاف‌ها را **در کد** می‌سنجیم و فقط اگر چیزی کم بود یک پاسِ کوتاهِ
   // دوم می‌زنیم. بزرگ‌تر کردنِ پرامپتِ اصلی جواب نداد — هر دستورِ اضافه چیزِ دیگری را خراب کرد.
   {
@@ -448,12 +1177,34 @@ export async function generateTailoredResume(
     }
   }
 
+  tailored = ensurePinnedExperience(tailored, selectedRoles, plannedPeriods);
+  tailored = ensureVariableCompanyExperience(tailored, selectedRoles, selectedVariableCompanies);
+  tailored = alignHeadlineToJobTitle(tailored, job.title, manualMode);
+  tailored = scrubTargetLeakage(tailored, job.company);
+  tailored = scrubRestrictedTechnologyPlacement(tailored);
+  tailored = fitForTwoToThreePages(tailored);
+  tailored = alignHeadlineToJobTitle(tailored, job.title, manualMode);
+
   // نامِ لاتین برای رزومه‌ی انگلیسی: نامِ فارسی روی رزومه‌ی انگلیسی هم ناخواناست و هم
   // با بقیه‌ی سند نمی‌خواند. کاربر می‌تواند شکلِ لاتین را در ترجیحات بگذارد.
   const latinName =
     typeof prefs.fullNameLatin === "string" && prefs.fullNameLatin.trim()
       ? prefs.fullNameLatin.trim()
       : null;
+
+  const renderedExperience = keepOnlyRealEmployers(
+    tailored.experience,
+    rolesAllowedForRenderedExperience(selectedRoles, manualMode, selectedVariableCompanies),
+  ).map((e) => ({
+    company: e.company ?? null,
+    title: e.title ?? null,
+    context: e.context ?? null,
+    // بازه از نقشه می‌آید، نه از مدل: تاریخ‌های سابقه واقعیت‌اند و بازنویسی‌شان — حتی
+    // یک «Present»ِ اضافه — ادعایی است که کاربر نکرده. lookup فازی است تا
+    // Hugging Face و Hugging Face (International) یک شرکت حساب شوند.
+    period: plannedPeriodForCompany(plannedPeriods, e.company) ?? e.period ?? null,
+    bullets: e.bullets,
+  }));
 
   const data: ResumeTemplateData = {
     fullName: resumeLang === "en" && latinName ? latinName : profile.fullName,
@@ -467,22 +1218,17 @@ export async function generateTailoredResume(
       .filter((l) => l?.name)
       .map((l) => ({ name: l.name!, level: l.level ?? null })),
     summary: tailored.summary,
-    // گاردِ ضدِجعل: فقط مهارت‌هایی که واقعاً در پروفایل هست.
+    // گاردِ مهارت: شاهد واقعی یا، در انتخاب دستی، خواسته‌های همین JD که کاربر با
+    // انتخاب آگهی تأیید کرده. پروفایل دائمی دست نمی‌خورد.
     skills: keepOnlyRealSkills(tailored.skills, evidenceText, admissibleTech),
 
     // گاردِ کارفرما — همتای گاردِ مهارت، ولی سخت‌گیرتر: مهارت ادعایی درباره‌ی **خودِ
     // کاربر** است و او مرجعش است؛ نامِ کارفرما ادعایی درباره‌ی **یک شخصِ ثالث** است که
     // چیزی اعلام نکرده و خودش می‌تواند تکذیبش کند. پس هر شرکتی که در سوابقِ واقعیِ
     // کاربر نیست حذف می‌شود، حتی اگر مدل آن را نوشته باشد.
-    experience: keepOnlyRealEmployers(tailored.experience, selectedRoles).map((e) => ({
-      company: e.company ?? null,
-      title: e.title ?? null,
-      context: e.context ?? null,
-      // بازه از نقشه می‌آید، نه از مدل: تاریخ‌های سابقه واقعیت‌اند و بازنویسی‌شان — حتی
-      // یک «Present»ِ اضافه — ادعایی است که کاربر نکرده.
-      period: (e.company ? plannedPeriods.get(normCompany(e.company)) : null) ?? e.period ?? null,
-      bullets: e.bullets,
-    })),
+    experience: manualMode
+      ? enforceGeneratedExperienceTimeline(renderedExperience, selectedVariableCompanies)
+      : renderedExperience,
     // فقط تحصیلاتِ هم‌زبان با رزومه — پروفایل هر دو نسخه‌ی فارسی و انگلیسی را دارد و
     // بدونِ این فیلتر، هر دو ردیفِ تکراری کنارِ هم می‌نشستند.
     education: preferLanguage(
@@ -543,4 +1289,24 @@ export async function getTailoredResumeHtml(
 }
 
 /** فقط برای تست — توابعِ داخلیِ خالص. */
-export const __testables = { keepOnlyRealSkills, keepOnlyRealEmployers, buildProfileText };
+export const __testables = {
+  keepOnlyRealSkills,
+  keepOnlyRealEmployers,
+  buildProfileText,
+  buildMarketCalibrationContext,
+  fitForTwoToThreePages,
+  ensurePinnedExperience,
+  alignHeadlineToJobTitle,
+  scrubTargetLeakage,
+  scrubRestrictedTechnologyPlacement,
+  rolesAllowedForRenderedExperience,
+  buildVariableCompanyInstruction,
+  buildGeneratedTimelineInstruction,
+  withMissingFixedCompanyRoles,
+  applyGeneratedTimeline,
+  deterministicGeneratedTimeline,
+  enforceGeneratedExperienceTimeline,
+  plannedPeriodForCompany,
+  generatedTimelineRank,
+  mergePinnedCompanies,
+};

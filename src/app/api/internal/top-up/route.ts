@@ -9,7 +9,7 @@ import "server-only";
  * سپس صف را مصرف و اپلای می‌کند.
  *
  * مسیرِ «داخلی»: با هدرِ رازِ مشترک محافظت می‌شود و اگر رازِ سرور تنظیم نشده باشد fail-closed
- * می‌شود (۵۰۳). خودِ این مسیر هیچ اپلایی نمی‌کند — فقط کشف/صف‌گذاری (با فیلترِ کیفیِ AI).
+ * می‌شود (۵۰۳). خودِ این مسیر هیچ اپلایی نمی‌کند — فقط کشف/صف‌گذاری بر اساس فیلترهای کاربر.
  *
  * هدر: X-Internal-Secret: <INTERNAL_API_SECRET>   ·   بدنه: ندارد.
  */
@@ -41,6 +41,7 @@ export async function POST(request: Request): Promise<Response> {
         skipped: 0,
         errors: 0,
         totalQueued: 0,
+        totalPreparedResumes: 0,
         outcomes: [],
       }),
     );

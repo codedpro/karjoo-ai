@@ -7,6 +7,11 @@
  * لحن‌ها با تصمیمِ محصول هم‌راستا هستند: مصاحبه = مثبت/سبز، رد = خطر/رُز، بررسی = کهربایی،
  * در انتظار = خنثی/muted. کلاس‌های رنگ روی توکن‌های `globals.css`/tailwind سوارند تا با بقیه‌ی
  * داشبورد یکدست بمانند (نه رنگِ خام و پراکنده).
+ *
+ * برچسب‌ها **تنها منبعِ حقیقتِ نمایشیِ وضعیت** هستند: نشانِ هر ردیف هم از همین‌جا می‌آید، نه
+ * از متنِ خامِ جابینجا. جابینجا برای یک معنی چند عبارتِ متفاوت می‌نویسد («در انتظارِ بررسی»،
+ * «بررسی نشده»، …) و اگر خام نشان داده شود، فهرست از ردیفی به ردیفِ بعد بی‌قاعده می‌شود؛
+ * عبارتِ دقیقِ سایت روی `title` نشان باقی می‌ماند تا چیزی گم نشود.
  */
 import type { ApplicationFunnel } from "@/lib/apply/boards/jobinja-read";
 
@@ -36,13 +41,13 @@ export interface CategoryMeta {
 /** متادیتای نمایشیِ هر دسته — منبعِ حقیقتِ برچسب/رنگِ قیف و نشانِ آیتم‌ها. */
 export const CATEGORY_META: Record<FunnelCategory, CategoryMeta> = {
   pending: {
-    label: "در انتظار",
+    label: "هنوز بررسی نشده",
     tone: "muted",
     barClass: "bg-foreground/25",
     textClass: "text-foreground",
   },
   review: {
-    label: "بررسی",
+    label: "در حالِ بررسی",
     tone: "amber",
     barClass: "bg-amber-500",
     textClass: "text-amber-600 dark:text-amber-400",
@@ -54,19 +59,19 @@ export const CATEGORY_META: Record<FunnelCategory, CategoryMeta> = {
     textClass: "text-emerald-600 dark:text-emerald-400",
   },
   interview: {
-    label: "مصاحبه",
+    label: "دعوت به مصاحبه",
     tone: "green",
     barClass: "bg-emerald-500",
     textClass: "text-emerald-600 dark:text-emerald-400",
   },
   rejected: {
-    label: "رد",
+    label: "رد شده",
     tone: "rose",
     barClass: "bg-rose-500",
     textClass: "text-rose-600 dark:text-rose-400",
   },
   other: {
-    label: "سایر",
+    label: "نامشخص",
     tone: "muted",
     barClass: "bg-foreground/15",
     textClass: "text-muted",

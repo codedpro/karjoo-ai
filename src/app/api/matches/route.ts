@@ -11,7 +11,7 @@ import "server-only";
  * خوانده می‌شد که به هر صدازننده‌ی ناشناس اجازه می‌داد با حدسِ UUID تطبیق‌های هر کاربری
  * را بخواند؛ آن حفره با مقیدکردنِ کوئری به userIdِ نشست بسته شد.
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import { jobListings, matches } from "@/db/schema";
@@ -33,9 +33,10 @@ export async function GET(request: Request): Promise<Response> {
     const query = parseSearchParams(searchParams, matchesQuerySchema);
 
     // ۳) شرطِ where: همیشه userIdِ نشست؛ به‌علاوه‌ی status در صورت وجود (قاعده‌ی ۴).
+    const freshness = sql`${jobListings.postedAt} >= now() - interval '45 days'`;
     const where = query.status
-      ? and(eq(matches.userId, userId), eq(matches.status, query.status))
-      : eq(matches.userId, userId);
+      ? and(eq(matches.userId, userId), eq(matches.status, query.status), freshness)
+      : and(eq(matches.userId, userId), freshness);
 
     // ۴) خواندن با join به آگهی — فقط ستون‌های لازم و غیرحساس.
     const rows = await db

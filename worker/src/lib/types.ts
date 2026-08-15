@@ -75,7 +75,7 @@ export interface SessionBundle {
 }
 
 /** The terminal outcome the node reports for a job (mirrors the server enum). */
-export type ApplyStatus = "submitted" | "skipped" | "failed";
+export type ApplyStatus = "submitted" | "skipped" | "failed" | "blocked";
 
 /**
  * The result payload POSTed to /api/fleet/result. Carries NO secret material — the

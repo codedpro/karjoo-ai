@@ -13,7 +13,7 @@ import "server-only";
  *
  * همه‌ی وابستگی‌ها قابلِ تزریق‌اند (db) تا بدونِ DB/شبکه‌ی زنده تست شوند.
  */
-import { and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
+import { and, eq, exists, gte, inArray, lte, or, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import {
@@ -63,6 +63,12 @@ export interface ClaimOptions {
    * undefined ⇒ بدونِ فیلترِ آستانه (سازگاریِ عقب‌رو با مسیرِ کمکیِ حاضرِ کاربر).
    */
   minScore?: number;
+  /**
+   * اگر true باشد، فقط taskهایی claim می‌شوند که رزومه‌ی هدف‌گیری‌شده‌ی همان آگهی از قبل
+   * در `resumes` وجود دارد. مسیر ناوگان سرور از این استفاده می‌کند تا claim درگیر AI/ساخت
+   * رزومه نشود و task بدون رزومه در وضعیت leased گیر نکند.
+   */
+  requireTailoredResume?: boolean;
 }
 
 /** آیا payloadِ این task فیلترمود است؟ (اپلای بر اساسِ فیلترِ سایت، بدونِ AI). */
@@ -95,14 +101,34 @@ export async function claimUserApplyItems(
   const safeLimit = Math.max(1, Math.min(Math.floor(limit), 25));
 
   // شرطِ گیت (قاعده‌ی ۱): اگر minScore داده شده، task‌های AIمود فقط بالای آستانه.
-  // اما task‌های فیلترمود (payload.mode='filter') همیشه عبور می‌کنند — گیتِ آستانه فقط
-  // برای AIمود است (پیوُت محصول). NULL score هرگز از gte عبور نمی‌کند؛ پس در فیلترمود
-  // شرطِ OR لازم است تا آگهیِ امتیازنخورده هم claim شود.
-  const filterModeCond = sql`${tasks.payload} ->> 'mode' = 'filter'`;
+  //
+  // دو مود از این گیت **معاف**‌اند، چون در هر دو، انتخاب را خودِ کاربر کرده:
+  //   • `filter` — آگهی از فیلترهای خودِ او رد شده.
+  //   • `manual` — او مستقیماً روی همین آگهی «اپلای» زده.
+  //
+  // آستانه‌ی امتیاز برای جایی است که **هیچ‌کس انتخاب نکرده**: کشفِ خودکار نباید سرِخود
+  // به شغلِ نامرتبط اپلای کند. ولی وقتی کاربر خودش آگهی را برداشته، عددِ heuristic ما
+  // نباید جلوی تصمیمِ او را بگیرد — او درباره‌ی شغلی که می‌خواهد مرجع است، نه ما.
+  // NULL score هرگز از gte عبور نمی‌کند؛ پس شرطِ OR لازم است.
+  const filterModeCond = sql`${tasks.payload} ->> 'mode' in ('filter', 'manual')`;
   const gate =
     opts.minScore === undefined
       ? undefined
       : or(filterModeCond, gte(matches.score, opts.minScore));
+  const tailoredResumeGate = opts.requireTailoredResume
+    ? exists(
+        conn
+          .select({ one: sql`1` })
+          .from(resumes)
+          .where(
+            and(
+              eq(resumes.userId, userId),
+              eq(resumes.listingId, matches.listingId),
+              eq(resumes.isBase, false),
+            ),
+          ),
+      )
+    : undefined;
 
   // ۱) task‌های آماده‌ی همین کاربر را با join به match پیدا کن.
   // ترتیب: امتیازِ بالاتر اول (NULLS LAST تا آیتم‌های فیلترمودِ بی‌امتیاز آیتم‌های AI را
@@ -111,15 +137,19 @@ export async function claimUserApplyItems(
     .select({ taskId: tasks.id })
     .from(tasks)
     .innerJoin(matches, eq(tasks.matchId, matches.id))
+    .innerJoin(jobListings, eq(matches.listingId, jobListings.id))
     .where(
       and(
         eq(matches.userId, userId),
         eq(tasks.status, "pending"),
         lte(tasks.runAfter, sql`now()`),
         ...(gate ? [gate] : []),
+        ...(tailoredResumeGate ? [tailoredResumeGate] : []),
       ),
     )
-    .orderBy(sql`${matches.score} DESC NULLS LAST`, tasks.runAfter)
+    // Queue execution is filter-authoritative, not score-authoritative. Apply the
+    // newest real postings first; ingestion/run time is only a stable fallback.
+    .orderBy(sql`${jobListings.postedAt} DESC NULLS LAST`, tasks.createdAt)
     .limit(safeLimit);
 
   if (ready.length === 0) return [];
@@ -129,7 +159,7 @@ export async function claimUserApplyItems(
   //    اطمینان از مالکیت، دوباره با join به همین userId مقید می‌کنیم.
   const leasedRows = await conn
     .update(tasks)
-    .set({ status: "leased", leasedAt: sql`now()`, updatedAt: sql`now()` })
+    .set({ status: "leased", leasedBy: null, leasedAt: sql`now()`, updatedAt: sql`now()` })
     .where(and(eq(tasks.status, "pending"), inArray(tasks.id, ids)))
     .returning({ id: tasks.id });
 

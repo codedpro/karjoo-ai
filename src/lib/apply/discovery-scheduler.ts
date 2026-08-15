@@ -18,6 +18,11 @@ import { runFilterApply, type RunFilterApplyReport } from "@/lib/apply/orchestra
 import { liveBoardIds } from "@/lib/apply/registry";
 import { assertCanUsePaidAi } from "@/lib/billing/entitlement";
 import { applyQuotaFor } from "@/lib/billing/plans";
+import {
+  prepareTailoredResumesForQueue,
+  type QueueResumePrepResult,
+} from "@/lib/resume/queue-prep";
+import { canServerExecute } from "@/lib/apply/execution-run";
 
 /**
  * زمان‌بندِ کشفِ سطحِ سرور (top-up).
@@ -25,11 +30,12 @@ import { applyQuotaFor } from "@/lib/billing/plans";
  * پُرکننده‌ی صفِ اپلایِ خودکارِ سرور: کاربرانی که (۱) تاگلِ اپلای خودکارِ سرور را روشن
  * کرده‌اند، (۲) پلنشان حقِ ورکر دارد و سقفِ روزانه‌شان پر نشده، و (۳) نشستِ معتبرِ یک
  * سایتِ زنده دارند (تا ناوگان بتواند واقعاً اپلای کند) را می‌یابد و برای هرکدام یک
- * `runFilterApply` با **فیلترِ هوشمند (AI)** اجرا می‌کند.
+ * `runFilterApply` را با فیلترهای ذخیره‌شده‌ی پروفایل اجرا می‌کند.
  *
- * چرا فقط AI؟ اپلای خودکارِ سرور واقعاً *ثبت* می‌کند؛ پس فقط آگهی‌های بالای آستانه‌ی
- * کیفیتِ کاربر باید صف شوند. بی‌موجودیِ AI → هیچ اپلایی صف نمی‌شود (fail-closed روی پول،
- * بی‌اسپندِ ناخواسته). هزینه‌ی امتیازدهی به کیف‌پولِ *همان کاربر* با نرخِ 1xai بسته می‌شود.
+ * نکته‌ی محصولی: در اپلای خودکارِ سرور، «فیلترها» منبع اعتبار هستند، نه امتیاز AI. امتیازدهی
+ * می‌تواند به‌صورت اختیاری برای توضیح/نمایش استفاده شود، اما نباید جلوی صف‌شدنِ شغل‌های داخل
+ * niche کاربر را بگیرد. بی‌موجودیِ AI همچنان fail-closed است چون هر آیتمِ صف‌شده به رزومه‌ی
+ * هدف‌گیری‌شده نیاز دارد و نباید بی‌اسپندِ ناخواسته بسازیم.
  *
  * ایزوله‌سازیِ خطا: شکستِ یک کاربر کلِ دسته را متوقف نمی‌کند. مسیر با رازِ داخلی محافظت
  * می‌شود (route جدا) و بیرونی (cron) صدایش می‌زند.
@@ -56,6 +62,8 @@ export interface DiscoveryUserOutcome {
   status: "queued" | "skipped" | "error";
   /** فقط status='queued': تعداد اپلای‌های تازه‌ی صف‌شده. */
   queued?: number;
+  /** رزومه‌های هدف‌گیری‌شده‌ای که برای صفِ آماده‌ی ارسال ساخته شدند. */
+  preparedResumes?: number;
   /** دلیلِ رد/خطا (کدِ کوتاه، بدون افشای راز). */
   reason?: string;
 }
@@ -75,6 +83,7 @@ export interface ServerDiscoverySummary {
   skipped: number;
   errors: number;
   totalQueued: number;
+  totalPreparedResumes: number;
   outcomes: DiscoveryUserOutcome[];
 }
 
@@ -89,7 +98,7 @@ export interface ServerDiscoveryDeps {
   now?: () => number;
   /** فهرست‌کننده‌ی کاربرانِ واجدِ شرایط — پیش‌فرض listEligibleForServerDiscovery. */
   listEligible?: (conn: Database, limit: number) => Promise<EligibleUser[]>;
-  /** گیتِ سطحِ سرور (plan/toggle/quota) — پیش‌فرض assertServerAutoApplyAllowed؛ minScore برمی‌گرداند. */
+  /** گیتِ سطحِ سرور (plan/toggle/quota) — minScore برای سازگاری تنظیمات برمی‌گردد ولی گیت صف نیست. */
   assertAllowed?: (userId: string, plan: Plan) => Promise<{ minScore: number }>;
   /** گیتِ موجودیِ AI — پیش‌فرض assertCanUsePaidAi؛ throw → کاربر رد می‌شود (بی‌اسپند). */
   canUsePaidAi?: (userId: string) => Promise<unknown>;
@@ -97,12 +106,16 @@ export interface ServerDiscoveryDeps {
   runFilter?: (opts: {
     userId: string;
     aiFilter: boolean;
-    threshold: number;
+    threshold?: number;
     dailyCap: number;
     db?: Database;
   }) => Promise<RunFilterApplyReport>;
+  /** آماده‌سازی رزومه‌های هدف‌گیری‌شده برای taskهای pending همین کاربر. */
+  prepareResumes?: (userId: string, conn: Database) => Promise<QueueResumePrepResult>;
   /** ثبتِ «تلاش‌شده» برای چرخش — پیش‌فرض به‌روزرسانیِ last_discovery_at این کاربران. */
   markAttempted?: (conn: Database, userIds: string[]) => Promise<void>;
+  /** Skip AI/discovery while the extension owns the queue or the server is blocked. */
+  canExecute?: (userId: string) => Promise<boolean>;
 }
 
 /**
@@ -185,7 +198,7 @@ function errMessage(err: unknown): string {
 
 /**
  * یک دورِ کاملِ کشفِ سرور را اجرا می‌کند. برای هر کاربرِ واجدِ شرایط: گیتِ سرور → گیتِ
- * موجودیِ AI → runFilterApply(aiFilter). خطای هر کاربر ایزوله است.
+ * موجودیِ AI → runFilterApply(filter mode). خطای هر کاربر ایزوله است.
  */
 export async function runServerDiscovery(
   deps: ServerDiscoveryDeps = {},
@@ -203,7 +216,13 @@ export async function runServerDiscovery(
   const canUsePaidAi =
     deps.canUsePaidAi ?? ((userId: string) => assertCanUsePaidAi(userId, { db: conn as never }));
   const runFilter = deps.runFilter ?? ((opts) => runFilterApply(opts));
+  const prepareResumes =
+    deps.prepareResumes ??
+    ((userId: string, db: Database) => prepareTailoredResumesForQueue(userId, { db }));
   const markAttempted = deps.markAttempted ?? defaultMarkAttempted;
+  const canExecute =
+    deps.canExecute ??
+    (deps.listEligible ? async () => true : (userId: string) => canServerExecute(userId, conn));
   const limit = deps.limit ?? DEFAULT_DISCOVERY_BATCH;
   const budgetMs = deps.budgetMs ?? DEFAULT_DISCOVERY_BUDGET_MS;
   const now = deps.now ?? (() => Date.now());
@@ -218,6 +237,7 @@ export async function runServerDiscovery(
   let errors = 0;
   let processed = 0;
   let deadlineHit = false;
+  let totalPreparedResumes = 0;
 
   for (const { userId, plan } of eligible) {
     // بودجه‌ی زمان: پیش از سررسیدِ cron/تابع بایست تا اجراها روی هم نیفتند. باقی‌مانده‌ها
@@ -229,17 +249,21 @@ export async function runServerDiscovery(
     processed += 1;
     attempted.push(userId); // چرخش: هر تلاش (موفق یا رد) کاربر را به تهِ صف می‌برد.
     try {
+      if (!(await canExecute(userId))) {
+        skipped += 1;
+        outcomes.push({ userId, status: "skipped", reason: "execution_owned_or_blocked" });
+        continue;
+      }
       // گیتِ سطحِ سرور (plan/toggle/quota دوباره — belt & suspenders، fail-closed).
-      let minScore: number;
       try {
-        ({ minScore } = await assertAllowed(userId, plan));
+        await assertAllowed(userId, plan);
       } catch (err) {
         skipped += 1;
         outcomes.push({ userId, status: "skipped", reason: gateReason(err) });
         continue;
       }
 
-      // گیتِ موجودیِ AI — بی‌موجودی هیچ اپلای خودکاری صف نمی‌شود (auto-submit فقط با فیلترِ کیفیِ AI).
+      // گیتِ موجودیِ AI — صف‌شدن بدون رزومه‌ی هدف‌گیری‌شده فایده ندارد، پس fail-closed.
       try {
         await canUsePaidAi(userId);
       } catch {
@@ -251,14 +275,20 @@ export async function runServerDiscovery(
       const dailyCap = applyQuotaFor(plan) ?? Number.MAX_SAFE_INTEGER;
       const report = await runFilter({
         userId,
-        aiFilter: true,
-        threshold: minScore,
+        aiFilter: false,
         dailyCap,
         db: conn,
       });
+      const prep = await prepareResumes(userId, conn);
       totalQueued += report.queued;
+      totalPreparedResumes += prep.prepared;
       if (report.queued > 0) queuedUsers += 1;
-      outcomes.push({ userId, status: "queued", queued: report.queued });
+      outcomes.push({
+        userId,
+        status: "queued",
+        queued: report.queued,
+        preparedResumes: prep.prepared,
+      });
     } catch (err) {
       errors += 1;
       outcomes.push({ userId, status: "error", reason: errMessage(err) });
@@ -284,6 +314,7 @@ export async function runServerDiscovery(
     skipped,
     errors,
     totalQueued,
+    totalPreparedResumes,
     outcomes,
   };
 }

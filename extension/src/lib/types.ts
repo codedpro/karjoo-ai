@@ -97,3 +97,75 @@ export interface AutoApplyStatus {
   /** Optional short, non-secret message for the UI. */
   message?: string;
 }
+
+export type ExecutionState = "paused" | "running" | "blocked" | "completed";
+export type ExecutionOwner = "extension" | "server";
+
+export interface ExecutionRun {
+  state: ExecutionState;
+  owner: ExecutionOwner | null;
+  executorId: string | null;
+  board: string | null;
+  currentTaskId: string | null;
+  progress: Record<string, unknown>;
+  blockedReason: string | null;
+  backgroundEnabled: boolean;
+  heartbeatAt: string | null;
+  startedAt: string | null;
+  blockedAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface LiveQueueJob {
+  taskId: string;
+  status: "pending" | "leased";
+  listing: {
+    board: string;
+    title: string;
+    company: string | null;
+    city: string | null;
+    url: string;
+    postedAt: string | null;
+  };
+}
+
+export interface ExtensionRunOverview {
+  run: ExecutionRun;
+  counts: {
+    queued: number;
+    applying: number;
+    appliedToday: number;
+    appliedTotal: number;
+    appliedLast30d: number;
+  };
+  applying: LiveQueueJob[];
+  queue: LiveQueueJob[];
+  recent: Array<{
+    applicationId: string;
+    status: "draft" | "submitted" | "skipped" | "failed";
+    channel: "extension" | "worker" | null;
+    happenedAt: string;
+    reason: string | null;
+    listing: LiveQueueJob["listing"];
+  }>;
+  updatedAt: string;
+}
+
+export interface ExtensionDiscoveryConfig {
+  board: "jobinja";
+  paused: boolean;
+  hasTargeting: boolean;
+  searchUrl: string | null;
+  maxAgeDays: number;
+}
+
+export interface BrowserDiscoveredListing {
+  externalId: string;
+  title: string;
+  company?: string | null;
+  city?: string | null;
+  url: string;
+  description?: string | null;
+  salary?: string | null;
+  postedAt: string;
+}

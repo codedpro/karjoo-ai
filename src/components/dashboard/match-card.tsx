@@ -1,13 +1,15 @@
 /**
- * کارتِ یک تطبیق — امتیاز، شرکت/عنوان، شهر/حقوق، دلیلِ AI و پیش‌نمایشِ انگیزه‌نامه.
+ * کارتِ یک تطبیق — امتیاز، شرکت/عنوان، شهر/حقوق و پیش‌نمایشِ انگیزه‌نامه.
  *
  * ارائه‌ای (server-safe). پیش‌نمایشِ انگیزه‌نامه با `<details>` باز/بسته می‌شود (بدونِ JS).
- * لینکِ آگهی با rel="nofollow noopener" باز می‌شود (خروجی به سایتِ شخصِ ثالث).
+ * لینکِ آگهی با rel="nofollow noopener" باز می‌شود (خروجی به سایتِ شخصِ ثالث) و کنارش آیکنِ
+ * «خروج از سایت» می‌نشیند — کاربر باید *قبل* از کلیک بداند تبِ تازه باز می‌شود.
  *
  * چیدمانِ RTL: از property‌های منطقی استفاده می‌شود. عنوان `truncate` می‌شود و
  * `title` می‌گیرد تا هیچ‌وقت زشت دو-خطی نشود؛ نشان‌ها `whitespace-nowrap`اند.
+ * `h-full`: کارت‌ها در شبکه‌ی چندستونیِ صفحه‌ی فرصت‌ها هم‌ارتفاع می‌مانند.
  */
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, SquareArrowOutUpRight } from "lucide-react";
 
 import type { DashboardMatch } from "./data";
 import { IconMapPin, IconWallet } from "./icons";
@@ -31,7 +33,7 @@ export function MatchCard({ match }: { match: DashboardMatch }) {
     <Card
       padded
       interactive
-      className="group/card relative overflow-hidden"
+      className="group/card relative h-full overflow-hidden"
     >
       {/* نوارِ لبه‌ی برند در حاشیه‌ی آغازین — امضای بصریِ ظریف در RTL */}
       <span
@@ -49,14 +51,20 @@ export function MatchCard({ match }: { match: DashboardMatch }) {
             <Badge tone="muted">{boardLabel(listing.board)}</Badge>
           </div>
 
-          <h3 className="mt-2 truncate text-base font-bold leading-6" title={listing.title}>
+          <h3 className="mt-2 text-base font-bold leading-6" title={listing.title}>
             <a
               href={listing.url}
               target="_blank"
               rel="nofollow noopener noreferrer"
-              className="focus-ring rounded-sm transition-colors hover:text-brand"
+              aria-label={`${listing.title} — بازکردنِ آگهی در ${boardLabel(listing.board)} (تبِ تازه)`}
+              className="focus-ring flex items-center gap-1.5 rounded-sm transition-colors hover:text-brand"
             >
-              {listing.title}
+              <span className="truncate">{listing.title}</span>
+              <SquareArrowOutUpRight
+                strokeWidth={1.75}
+                className="h-3.5 w-3.5 shrink-0 text-muted"
+                aria-hidden
+              />
             </a>
           </h3>
 
@@ -80,15 +88,6 @@ export function MatchCard({ match }: { match: DashboardMatch }) {
           </div>
         </div>
       </div>
-
-      {match.reason ? (
-        <div className="mt-4 rounded-xl border-s-2 border-brand/40 bg-brand/4 py-2.5 pe-3.5 ps-3">
-          <p className="text-pretty text-sm leading-7 text-muted">
-            <span className="font-semibold text-foreground">چرا مناسب است؟ </span>
-            {match.reason}
-          </p>
-        </div>
-      ) : null}
 
       {match.coverLetter ? (
         <details className="group mt-3">

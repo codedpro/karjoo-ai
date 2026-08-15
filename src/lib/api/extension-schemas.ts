@@ -70,6 +70,8 @@ export const applyQueueClaimBodySchema = z
   .object({
     /** حداکثر تعدادِ آیتمِ pending که برگردانده شود (۱..۲۵، پیش‌فرض ۵). */
     limit: z.coerce.number().int().min(1).max(25).default(5),
+    /** Browser instance that owns a background run. Omitted only by legacy/manual clients. */
+    executorId: z.string().uuid().optional(),
   })
   .strict()
   .default({ limit: 5 });
@@ -98,6 +100,8 @@ export const applyQueueResultBodySchema = z
     reason: z.string().max(2000).optional(),
     /** اثباتِ ارسالِ ساخت‌یافته (پاسخِ API/خلاصه). بدونِ مادهٔ سری. */
     proof: z.record(z.string(), z.unknown()).optional(),
+    /** Browser owner for unlimited free extension execution. */
+    executorId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -107,3 +111,60 @@ export type ApplyQueueResultBody = z.infer<typeof applyQueueResultBodySchema>;
 export const taskIdParamSchema = z.object({
   id: z.string().uuid("id باید UUID معتبر باشد"),
 });
+
+/* ───────────────────────  Shared execution run  ───────────────────────── */
+
+const executorIdSchema = z.string().uuid("executorId باید UUID معتبر باشد");
+
+export const extensionRunActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.enum(["start", "takeover"]),
+    executorId: executorIdSchema,
+    backgroundEnabled: z.boolean().default(true),
+  }).strict(),
+  z.object({
+    action: z.enum(["pause", "stop"]),
+    executorId: executorIdSchema,
+  }).strict(),
+  z.object({
+    action: z.literal("heartbeat"),
+    executorId: executorIdSchema,
+    backgroundEnabled: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    action: z.literal("progress"),
+    executorId: executorIdSchema,
+    currentTaskId: z.string().uuid().nullable().optional(),
+    progress: z.record(z.string(), z.unknown()),
+  }).strict(),
+  z.object({
+    action: z.literal("block"),
+    executorId: executorIdSchema,
+    taskId: z.string().uuid().optional(),
+    reason: z.string().trim().min(1).max(1000),
+  }).strict(),
+  z.object({
+    action: z.literal("complete"),
+    executorId: executorIdSchema,
+  }).strict(),
+]);
+
+export type ExtensionRunAction = z.infer<typeof extensionRunActionSchema>;
+
+export const browserDiscoveredListingSchema = z.object({
+  externalId: z.string().trim().min(1).max(160),
+  title: z.string().trim().min(1).max(500),
+  company: z.string().trim().max(500).nullable().optional(),
+  city: z.string().trim().max(250).nullable().optional(),
+  url: z.string().url().max(2000),
+  description: z.string().max(20_000).nullable().optional(),
+  salary: z.string().max(500).nullable().optional(),
+  postedAt: z.string().datetime(),
+}).strict();
+
+export const browserDiscoveryImportSchema = z.object({
+  board: z.literal("jobinja"),
+  listings: z.array(browserDiscoveredListingSchema).max(100),
+}).strict();
+
+export type BrowserDiscoveryImport = z.infer<typeof browserDiscoveryImportSchema>;

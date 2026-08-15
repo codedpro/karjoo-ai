@@ -22,12 +22,15 @@
  */
 import type { ComponentType } from "react";
 import {
+  Archive,
   ArrowLeft,
   ArrowRight,
+  BadgeCheck,
   BarChart3,
   Bell,
   Bot,
   Building2,
+  CreditCard,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
@@ -40,6 +43,8 @@ import {
   Gauge,
   GraduationCap,
   Hand,
+  Heart,
+  House,
   Inbox,
   Languages,
   Link2,
@@ -58,6 +63,7 @@ import {
   Receipt,
   RefreshCw,
   Reply,
+  Search,
   Send,
   Server,
   ShieldCheck,
@@ -68,6 +74,8 @@ import {
   Trash2,
   UploadCloud,
   User,
+  UserCheck,
+  Users,
   Wallet,
   X,
   Zap,
@@ -128,6 +136,8 @@ export const IconReply = icon(Reply, { flip: true }); // ارجاع/پاسخ (�
 export const IconStatusDot = icon(CircleDot);
 
 // ناوبری / کشف
+export const IconHome = icon(House); // نمای کلی/خانه‌ی داشبورد
+export const IconHeart = icon(Heart); // علاقه‌مندی‌ها/دسته‌های شغلی
 export const IconCompass = icon(Compass); // تطبیق‌ها/کشف
 export const IconGauge = icon(Gauge); // سنجه/سقفِ مصرف
 export const IconChart = icon(BarChart3); // آمار/تاریخچه (📊)
@@ -141,6 +151,14 @@ export const IconChip = icon(Puzzle); // میراثِ نامِ chip → همان
 // پول / بیلینگ
 export const IconWallet = icon(Wallet); // کیف‌پول
 export const IconReceipt = icon(Receipt); // رسید/ردِ ممیزی
+export const IconCard = icon(CreditCard); // پرداختِ کارت‌به‌کارت
+export const IconPlan = icon(BadgeCheck); // اشتراک/پلن
+
+// مدیریت (ادمین)
+export const IconUsers = icon(Users); // فهرستِ کاربران
+export const IconUserCheck = icon(UserCheck); // کاربرِ فعال/تأییدشده
+export const IconSearch = icon(Search); // جست‌وجو
+export const IconArchive = icon(Archive); // بایگانیِ ارسال‌ها
 
 // اعلان / امنیت / هوش مصنوعی
 export const IconBell = icon(Bell); // اعلانِ تطبیقِ تازه (🔔)

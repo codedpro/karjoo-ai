@@ -356,6 +356,104 @@ export function EmptyState({
   );
 }
 
+/* ────────────────────────────────  Callout  ─────────────────────────────── */
+
+type CalloutTone = "info" | "warn" | "success" | "danger";
+
+const CALLOUT_TONES: Record<CalloutTone, string> = {
+  info: "border-brand/25 bg-brand/[0.06] text-foreground",
+  warn: "border-amber-500/30 bg-amber-500/[0.08] text-foreground",
+  success: "border-emerald-500/30 bg-emerald-500/[0.08] text-foreground",
+  danger: "border-rose-500/30 bg-rose-500/[0.08] text-foreground",
+};
+
+const CALLOUT_ICON_TONES: Record<CalloutTone, string> = {
+  info: "text-brand",
+  warn: "text-amber-600 dark:text-amber-400",
+  success: "text-emerald-600 dark:text-emerald-400",
+  danger: "text-rose-600 dark:text-rose-400",
+};
+
+/**
+ * یادداشتِ کوتاهِ درون‌صفحه — جایگزینِ پاراگراف‌های توضیحیِ بلند.
+ *
+ * قاعده‌ی محتوایی: یک جمله. اگر توضیح بیشتری لازم است، یعنی خودِ UI گویا نیست و باید
+ * ساده شود، نه اینکه متنِ بیشتری اضافه شود.
+ */
+export function Callout({
+  tone = "info",
+  icon,
+  title,
+  children,
+  action,
+  className = "",
+}: {
+  tone?: CalloutTone;
+  icon?: ReactNode;
+  title?: ReactNode;
+  children?: ReactNode;
+  action?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-start gap-3 rounded-xl border px-4 py-3",
+        CALLOUT_TONES[tone],
+        className,
+      )}
+    >
+      {icon ? (
+        <span
+          className={cn("mt-0.5 [&>svg]:h-5 [&>svg]:w-5", CALLOUT_ICON_TONES[tone])}
+          aria-hidden
+        >
+          {icon}
+        </span>
+      ) : null}
+      <div className="min-w-0 flex-1 space-y-1">
+        {title ? <p className="text-sm font-semibold">{title}</p> : null}
+        {children ? (
+          <div className="text-pretty text-sm leading-6 text-muted">{children}</div>
+        ) : null}
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  );
+}
+
+/* ───────────────────────────────  TableFrame  ───────────────────────────── */
+
+/**
+ * قابِ جدولِ داده — کارتِ گرد با اسکرولِ افقیِ *مهارشده*.
+ *
+ * چرا لازم است؟ جدول‌های داشبورد `min-w-[…]` داشتند که از عرضِ ستونِ محتوا بیشتر بود،
+ * پس *همیشه* افقی اسکرول می‌شدند. حالا: خودِ قاب اسکرول را می‌گیرد (نه کلِ صفحه) و
+ * جدول در عرضِ موجود پخش می‌شود؛ `minWidth` فقط یک کفِ اختیاری برای موبایل است.
+ * بیرون‌زدگیِ افقیِ کلِ صفحه هرگز اتفاق نمی‌افتد.
+ */
+export function TableFrame({
+  children,
+  minWidth,
+  className = "",
+}: {
+  children: ReactNode;
+  /** کفِ عرضِ جدول روی صفحه‌های باریک (مثلاً `"44rem"`). پیش‌فرض: بدونِ کف. */
+  minWidth?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "overflow-x-auto rounded-2xl border border-border bg-card shadow-xs",
+        className,
+      )}
+    >
+      <div style={minWidth ? { minWidth } : undefined}>{children}</div>
+    </div>
+  );
+}
+
 /* ────────────────────────────────  Skeleton  ────────────────────────────── */
 
 /**

@@ -143,6 +143,19 @@ export async function executeApplyPlan(
 
   const ranSteps: string[] = [];
 
+  const pageText = (doc.body?.textContent ?? "").toLowerCase();
+  if (
+    pageText.includes("checking your browser before accessing") ||
+    pageText.includes("complete the security check") ||
+    pageText.includes("recaptcha") ||
+    pageText.includes("بررسی امنیتی")
+  ) {
+    return { ok: false, ranSteps, reason: "jobinja_security_check: security challenge is active" };
+  }
+  if (doc.querySelector("form[action*='/login'] input[type='password']")) {
+    return { ok: false, ranSteps, reason: "jobinja_login_required: sign in to Jobinja" };
+  }
+
   for (const step of plan.steps) {
     const label = `${step.kind}:${step.selector}`;
     const result = await runStep(doc, step, opts);

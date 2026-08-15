@@ -29,7 +29,11 @@ import {
 //   • getConnector از همان رجیستریِ index.ts (تابع است، در زمان اجرا صدا زده می‌شود)
 //   • scoreAndDraft از @/lib/apply/scoring (پیاده‌سازیِ واقعیِ گیت‌وی 1xai)
 // این کار رفتارِ زمان‌اجرا را تغییر نمی‌دهد، فقط ترتیبِ ارزیابیِ ماژول‌ها را امن می‌کند.
-import { isInsufficientBalance, meteredScoreAndDraft } from "@/lib/apply/metered-scoring";
+import {
+  isInsufficientBalance,
+  meteredScoreAndDraft,
+  meteredScoreOnly,
+} from "@/lib/apply/metered-scoring";
 import { toJobPreferences as preferencesToJobPreferences } from "@/lib/apply/filters";
 import {
   advanceFilterCursor,
@@ -59,6 +63,8 @@ const MATCH_UPSERT_RETRY_MS = 100;
 
 /** آستانه‌ی پیش‌فرضِ «بالای آستانه» برای drafted-شدنِ یک تطبیق. */
 const DEFAULT_SCORE_THRESHOLD = 0.6;
+const MAX_JOB_POSTED_AGE_DAYS = 45;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** خلاصه‌ی یک اجرای ingest+match. */
 export interface IngestRunResult {
@@ -127,7 +133,7 @@ export async function runJobinjaIngest(input: IngestRunInput): Promise<IngestRun
   // مسیرِ تولید: امتیازدهیِ *مترشده* مقید به کاربرِ صاحبِ پروفایل (هزینه به کیف‌پولِ او).
   // تست می‌تواند scoreFn را تزریق کند تا بدونِ بیلینگ/گیت‌وی اجرا شود.
   const scoreFn: ScoreAndDraftFn =
-    input.scoreFn ?? ((job, prof) => meteredScoreAndDraft(profileRow.userId, job, prof));
+    input.scoreFn ?? ((job, prof) => defaultScoreFn(profileRow.userId, job, prof));
 
   // ۲) ingest عمومی. اگر کانکتور هنوز داربست است → NotImplemented (۵۰۱).
   let listings: JobListing[];
@@ -158,7 +164,11 @@ export async function runJobinjaIngest(input: IngestRunInput): Promise<IngestRun
     typeof input.limit === "number" ? Math.min(Math.max(0, input.limit), runCap) : runCap;
   const toProcess = listings.slice(0, effectiveLimit);
 
-  for (const listing of toProcess) {
+  for (const candidate of toProcess) {
+    const listing = await freshJobForProcessing(candidate);
+    if (!listing) continue;
+    if (!matchesCandidateGender(listing, prefs)) continue;
+
     // ۳) نرمال‌سازی/ذخیره‌ی آگهی + ضبط خام.
     const { row, isNew } = await upsertListing(listing);
     if (isNew) result.newListings += 1;
@@ -172,7 +182,7 @@ export async function runJobinjaIngest(input: IngestRunInput): Promise<IngestRun
         userId: profileRow.userId,
         listingId: row.id,
         score: matchScore,
-        coverLetter: drafted ? coverLetter : null,
+        coverLetter: drafted && listing.board !== "jobinja" ? coverLetter : null,
         status: drafted ? "drafted" : "scored",
       });
       result.scoredMatches += 1;
@@ -403,10 +413,119 @@ function errMsg(err: unknown): string {
  * این کمک‌تابع فقط وقتی `Date` می‌سازد که مقدار به یک زمانِ معتبر پارس شود؛ در غیرِ این
  * صورت `null` (ستونِ postedAt خالی می‌ماند؛ `ingestedAt` همچنان ثبت می‌شود).
  */
-function toPostedDate(raw?: string | null): Date | null {
+function toPostedDate(raw?: string | Date | null): Date | null {
   if (!raw) return null;
+  if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw;
+
+  const relative = relativePostedDate(raw);
+  if (relative) return relative;
+
   const d = new Date(raw);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function normalizeDigits(input: string): string {
+  const fa = "۰۱۲۳۴۵۶۷۸۹";
+  const ar = "٠١٢٣٤٥٦٧٨٩";
+  return input.replace(/[۰-۹٠-٩]/g, (ch) => {
+    const faIdx = fa.indexOf(ch);
+    if (faIdx >= 0) return String(faIdx);
+    const arIdx = ar.indexOf(ch);
+    return arIdx >= 0 ? String(arIdx) : ch;
+  });
+}
+
+function relativePostedDate(raw: string, now = new Date()): Date | null {
+  const text = normalizeDigits(raw).replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
+  if (!text) return null;
+
+  let days: number | null = null;
+  if (/^(امروز|today)$/i.test(text)) days = 0;
+  else if (/^(دیروز|yesterday)$/i.test(text)) days = 1;
+  else {
+    const match = /(\d+)\s*(روز|day|days|هفته|week|weeks|ماه|month|months)\s*(?:پیش|ago)?/i.exec(text);
+    if (match) {
+      const n = Number(match[1]);
+      const unit = match[2];
+      if (Number.isFinite(n)) {
+        if (/روز|day/i.test(unit)) days = n;
+        else if (/هفته|week/i.test(unit)) days = n * 7;
+        else if (/ماه|month/i.test(unit)) days = n * 30;
+      }
+    }
+  }
+  if (days === null) return null;
+  return new Date(now.getTime() - days * MS_PER_DAY);
+}
+
+function isFreshJobPosting(job: JobListing, now = new Date()): boolean {
+  const posted = toPostedDate(job.postedAt);
+  if (!posted) return false;
+  return posted.getTime() >= now.getTime() - MAX_JOB_POSTED_AGE_DAYS * MS_PER_DAY;
+}
+
+function normalizedJobText(job: JobListing): string {
+  return `${job.title}\n${job.description ?? ""}\n${job.url}`.toLowerCase();
+}
+
+function isFemaleOnlyJob(job: JobListing): boolean {
+  const text = normalizedJobText(job);
+  return (
+    /(^|[\s(（\\/،؛:-])خانم($|[\s)）\\/،؛:-])/.test(text) ||
+    /جنسیت[^\n]{0,40}خانم/.test(text) ||
+    /(?:female|woman|women)\s*[- ]?\s*only/.test(text) ||
+    /\bonly\s+(?:female|woman|women)\b/.test(text)
+  );
+}
+
+function isMaleOnlyJob(job: JobListing): boolean {
+  const text = normalizedJobText(job);
+  return (
+    /(^|[\s(（\\/،؛:-])آقا($|[\s)）\\/،؛:-])/.test(text) ||
+    /جنسیت[^\n]{0,40}آقا/.test(text) ||
+    /(?:male|man|men)\s*[- ]?\s*only/.test(text) ||
+    /\bonly\s+(?:male|man|men)\b/.test(text)
+  );
+}
+
+function matchesCandidateGender(job: JobListing, prefs?: JobPreferences): boolean {
+  if (prefs?.gender === "male") return !isFemaleOnlyJob(job);
+  if (prefs?.gender === "female") return !isMaleOnlyJob(job);
+  return true;
+}
+
+function defaultScoreFn(
+  userId: string,
+  job: JobListing,
+  profile: CandidateProfile,
+): Promise<{ matchScore: number; coverLetter: string; reason?: string }> {
+  return job.board === "jobinja"
+    ? meteredScoreOnly(userId, job, profile)
+    : meteredScoreAndDraft(userId, job, profile);
+}
+
+async function enrichJobinjaMeta(job: JobListing): Promise<JobListing> {
+  if (job.board !== "jobinja" || !job.url) return job;
+  if (process.env.NODE_ENV === "test") return job;
+  if (toPostedDate(job.postedAt) && job.description) return job;
+  try {
+    const { fetchJobMeta } = await import("@/lib/apply/boards/jobinja");
+    const meta = await fetchJobMeta(job.url);
+    return {
+      ...job,
+      ...(meta.description && !job.description ? { description: meta.description } : {}),
+      ...(meta.postedAt && !toPostedDate(job.postedAt)
+        ? { postedAt: meta.postedAt.toISOString() }
+        : {}),
+    };
+  } catch {
+    return job;
+  }
+}
+
+async function freshJobForProcessing(job: JobListing): Promise<JobListing | null> {
+  const enriched = await enrichJobinjaMeta(job);
+  return isFreshJobPosting(enriched) ? enriched : null;
 }
 
 /**
@@ -487,6 +606,23 @@ async function countQueuedToday(
   return rows[0]?.n ?? 0;
 }
 
+async function countQueuedThisWeek(
+  conn: OrchestratorDb,
+  userId: string,
+): Promise<number> {
+  const rows = await conn
+    .select({ n: sql<number>`count(*)::int` })
+    .from(tasks)
+    .innerJoin(matches, eq(tasks.matchId, matches.id))
+    .where(
+      and(
+        eq(matches.userId, userId),
+        gte(tasks.createdAt, sql`date_trunc('week', now())`),
+      ),
+    );
+  return rows[0]?.n ?? 0;
+}
+
 /**
  * گردش‌کارِ اپلای خودکار را برای یک کاربر اجرا می‌کند:
  *   ingest (scrapePublic) → persist listing → score (scoreAndDraft) →
@@ -512,7 +648,7 @@ export async function runAutoApply(
   // تا هزینه‌ی هر فراخوانیِ تطبیق به کیف‌پولِ همین کاربر بسته شود (مدلِ بیلینگِ قفل‌شده).
   // تست‌ها همیشه scoreFn را تزریق می‌کنند و رفتارشان دست‌نخورده می‌ماند.
   const scoreFn: ScoreAndDraftFn =
-    options.scoreFn ?? ((job, prof) => meteredScoreAndDraft(userId, job, prof));
+    options.scoreFn ?? ((job, prof) => defaultScoreFn(userId, job, prof));
 
   // رجیستریِ کانکتور: تزریقی یا از getConnector.
   const resolveConnector = (id: JobBoardId): JobBoardConnector | undefined =>
@@ -553,7 +689,11 @@ export async function runAutoApply(
     // سقفِ runaway: حداکثر perRunListingCap آگهی در هر سایت در این اجرا پردازش می‌شود.
     const capped = listings.slice(0, Math.max(0, perRunListingCap));
 
-    for (const job of capped) {
+    for (const candidate of capped) {
+      const job = await freshJobForProcessing(candidate);
+      if (!job) continue;
+      if (!matchesCandidateGender(job, profile.preferences)) continue;
+
       // ۲) پایدارسازیِ آگهی (upsert + ضبطِ خام) روی هندلِ تزریق‌شده.
       let listingRow: JobListingRow;
       try {
@@ -595,7 +735,7 @@ export async function runAutoApply(
             score: score.matchScore,
             status: aboveThreshold ? "drafted" : "scored",
             reason: score.reason ?? null,
-            coverLetter: aboveThreshold ? score.coverLetter : null,
+            coverLetter: aboveThreshold && job.board !== "jobinja" ? score.coverLetter : null,
             scoredAt: sql`now()`,
           })
           .onConflictDoUpdate({
@@ -640,7 +780,7 @@ export async function runAutoApply(
             payload: {
               board: job.board,
               listingId: listingRow.id,
-              coverLetter: score.coverLetter,
+              ...(job.board !== "jobinja" && score.coverLetter ? { coverLetter: score.coverLetter } : {}),
               matchScore: score.matchScore,
             },
           },
@@ -704,7 +844,12 @@ export const FILTER_SCRAPE_MAX_PAGES = 12;
 interface PagedScrape {
   scrapePublicWith(
     prefs: JobPreferences,
-    opts: { startPage?: number; maxPages?: number; targetCount?: number },
+    opts: {
+      startPage?: number;
+      maxPages?: number;
+      targetCount?: number;
+      stopWhenStaleDays?: number;
+    },
   ): Promise<{ listings: JobListing[]; pagesFetched: number; reachedEnd: boolean }>;
 }
 
@@ -842,7 +987,7 @@ export async function runFilterApply(
 
   // مسیرِ تولید: scoreFnِ مترشده مقید به userId (هزینه به کیف‌پولِ همان کاربر). فقط در aiFilter.
   const scoreFn: ScoreAndDraftFn =
-    options.scoreFn ?? ((job, prof) => meteredScoreAndDraft(userId, job, prof));
+    options.scoreFn ?? ((job, prof) => defaultScoreFn(userId, job, prof));
 
   const resolveConnector = (id: JobBoardId): JobBoardConnector | undefined =>
     options.connectors ? options.connectors[id] : getConnector(id);
@@ -861,6 +1006,8 @@ export async function runFilterApply(
     errors: [],
   };
 
+  if (prefs.paused) return report;
+
   // دفاع در عمق: بدونِ هیچ فیلترِ هدف‌گیری (دسته/شهر/نوع/عنوان/دورکاری)، scrapePublic به
   // /jobsِ خام می‌رسد و تازه‌ترین‌های کلِ سایت را برمی‌گرداند → اپلای انبوهِ ناخواسته به
   // شغل‌های نامرتبط. پس اگر هیچ هدفی نیست، هیچ‌چیز صف نکن و گزارشِ خالی برگردان.
@@ -873,8 +1020,23 @@ export async function runFilterApply(
   );
   if (!hasTargeting) return report;
 
-  // سقفِ روزانه: ظرفیتِ باقی‌مانده (همان شمارشِ tasks امروزِ این کاربر — فیلتر + AI).
-  let remainingCap = Math.max(0, dailyCap - (await countQueuedToday(conn, userId)));
+  const unlimitedApply = prefs.unlimitedApply === true;
+  const userDailyLimit =
+    typeof prefs.dailyLimit === "number" && prefs.dailyLimit > 0
+      ? Math.floor(prefs.dailyLimit)
+      : dailyCap;
+  const effectiveDailyCap = unlimitedApply ? Number.POSITIVE_INFINITY : Math.min(dailyCap, userDailyLimit);
+
+  // سقفِ روزانه/هفتگی: ظرفیتِ باقی‌مانده (همان شمارشِ tasks این کاربر — فیلتر + AI).
+  let remainingCap = unlimitedApply
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, effectiveDailyCap - (await countQueuedToday(conn, userId)));
+  if (!unlimitedApply && typeof prefs.weeklyLimit === "number" && prefs.weeklyLimit > 0) {
+    remainingCap = Math.min(
+      remainingCap,
+      Math.max(0, Math.floor(prefs.weeklyLimit) - (await countQueuedThisWeek(conn, userId))),
+    );
+  }
 
   // امضای فیلتر برای مکان‌نما — با تغییرِ فیلترها عوض می‌شود و پیمایش از صفحه‌ی ۱ آغاز می‌شود.
   const filterSig = computeFilterSignature(prefs);
@@ -893,9 +1055,12 @@ export async function runFilterApply(
     // بودجه‌ی روزانه تمام شد → نه برداشت کن، نه مکان‌نما را جلو ببر (اجرای بعد همین صفحات را می‌گیرد).
     if (remainingCap <= 0) break boardsLoop;
 
-    // مکان‌نما: از کجای نتایج ادامه دهیم؟ هدفِ این اجرا = min(سقفِ اجرا، بودجه‌ی روزانه‌ی مانده).
+    // مکان‌نما: از کجای نتایج ادامه دهیم؟ کاربران unlimited به‌جای سقفِ صفحه/تعداد، تا مرزِ
+    // تازگیِ آگهی (۴۵ روز) جلو می‌روند؛ کاربران عادی با سقف‌های سابق محافظت می‌شوند.
     const startPage = await readCursorFn(conn, userId, boardId, filterSig);
-    const targetCount = Math.max(1, Math.min(perRunListingCap, remainingCap));
+    const targetCount = unlimitedApply
+      ? undefined
+      : Math.max(1, Math.min(perRunListingCap, remainingCap));
 
     // ۱) ingestِ عمومیِ فیلترشده (فقط-خواندنی)، از startPage با پنجره‌ی صفحه.
     //    مهم: در مسیرِ صفحه‌بندی *همه‌ی* آگهی‌های واکشی‌شده پردازش می‌شوند (بدونِ slice)، تا
@@ -910,8 +1075,9 @@ export async function runFilterApply(
       if (supportsPagedScrape(connector)) {
         const res = await connector.scrapePublicWith(prefs, {
           startPage,
-          maxPages: FILTER_SCRAPE_MAX_PAGES,
-          targetCount,
+          maxPages: unlimitedApply ? Number.POSITIVE_INFINITY : FILTER_SCRAPE_MAX_PAGES,
+          ...(targetCount === undefined ? {} : { targetCount }),
+          ...(unlimitedApply ? { stopWhenStaleDays: MAX_JOB_POSTED_AGE_DAYS } : {}),
         });
         listings = res.listings;
         pagesFetched = res.pagesFetched;
@@ -930,7 +1096,9 @@ export async function runFilterApply(
     let cutShort = false;
 
     for (let i = 0; i < listings.length; i += 1) {
-      const job = listings[i]!;
+      const job = await freshJobForProcessing(listings[i]!);
+      if (!job) continue;
+      if (!matchesCandidateGender(job, prefs)) continue;
 
       // ۰) گیتِ بودجه *پیش از هر کاری* (به‌ویژه پیش از امتیازدهیِ مترشده): وقتی سقفِ روزانه
       //    پر شد، هیچ آگهیِ تازه‌ای صف نمی‌شود؛ پس ادامه‌ی امتیازدهی صرفاً کیف‌پول را بی‌فایده
@@ -1000,7 +1168,7 @@ export async function runFilterApply(
             report.scored += 1;
             matchScore = s.matchScore;
             reason = s.reason ?? null;
-            coverLetter = s.coverLetter;
+            coverLetter = job.board === "jobinja" ? null : s.coverLetter;
             aboveThreshold = s.matchScore >= threshold;
           } catch (err) {
             // اتمامِ موجودی → کلِ اجرا را متوقف کن (break از حلقه‌ی برچسب‌دارِ سایت‌ها)، تا
@@ -1038,10 +1206,10 @@ export async function runFilterApply(
               status: insertStatus,
               // متنِ خروجیِ AI پاک‌سازی می‌شود (NUL/C0) تا یک آگهیِ مسموم درجِ تطبیق را قطعی
               // نشکند و حلقه‌ی شارژِ دوباره نسازد.
-              reason: sanitizePgText(reason) ?? (aiFilter ? null : "filter"),
+              reason: aiFilter ? sanitizePgText(reason) : null,
               // انگیزه‌نامه‌ی *پرداخت‌شده* را صرف‌نظر از آستانه ذخیره کن؛ اگر بعداً آستانه پایین
               // بیاید و امتیاز بازاستفاده شود، این آرتیفکت بدونِ شارژِ دوباره در دسترس است.
-              coverLetter: aiFilter ? sanitizePgText(coverLetter) : null,
+              coverLetter: aiFilter && job.board !== "jobinja" ? sanitizePgText(coverLetter) : null,
               scoredAt: aiFilter ? sql`now()` : null,
             })
             .onConflictDoUpdate({
@@ -1059,7 +1227,7 @@ export async function runFilterApply(
                   }
                 : {
                     // فیلترمود: امتیاز/انگیزه‌نامه/زمانِ امتیاز را دست نمی‌زنیم (حفظ).
-                    reason: sql`COALESCE(${matches.reason}, 'filter')`,
+                    reason: sql`${matches.reason}`,
                     status: sql`CASE WHEN ${matches.status} IN ('queued','dismissed')
                                      THEN ${matches.status}
                                      ELSE 'scored'::match_status END`,
@@ -1114,7 +1282,7 @@ export async function runFilterApply(
               url: job.url,
               mode: aiFilter ? "ai" : "filter",
               ...(matchScore !== null ? { matchScore } : {}),
-              ...(coverLetter ? { coverLetter } : {}),
+              ...(coverLetter && job.board !== "jobinja" ? { coverLetter } : {}),
             },
           },
           conn as unknown as Parameters<EnqueueFn>[1],
@@ -1151,6 +1319,120 @@ export async function runFilterApply(
       } catch (err) {
         report.errors.push(`advanceCursor(${boardId}): ${errMsg(err)}`);
       }
+    }
+  }
+
+  return report;
+}
+
+/** Result of importing listings discovered through the user's local browser session. */
+export interface BrowserDiscoveryReport {
+  ingested: number;
+  queued: number;
+  alreadyQueued: number;
+  stale: number;
+  genderFiltered: number;
+  errors: string[];
+}
+
+/**
+ * Persist and enqueue Jobinja listings that the extension read from the user's
+ * authenticated search page. This is the free path: no AI score, cover letter,
+ * tailored resume, daily cap, or server-side board request.
+ */
+export async function enqueueBrowserDiscoveredListings(
+  userId: string,
+  listings: JobListing[],
+  conn: OrchestratorDb = db,
+): Promise<BrowserDiscoveryReport> {
+  const loaded = await defaultLoadFilterProfile(userId, conn);
+  if (!loaded) throw new HttpError(404, "profile not found");
+
+  const report: BrowserDiscoveryReport = {
+    ingested: listings.length,
+    queued: 0,
+    alreadyQueued: 0,
+    stale: 0,
+    genderFiltered: 0,
+    errors: [],
+  };
+
+  const ordered = [...listings].sort((a, b) => {
+    const aTime = toPostedDate(a.postedAt)?.getTime() ?? 0;
+    const bTime = toPostedDate(b.postedAt)?.getTime() ?? 0;
+    return bTime - aTime;
+  });
+
+  for (const job of ordered) {
+    if (!isFreshJobPosting(job)) {
+      report.stale += 1;
+      continue;
+    }
+    if (!matchesCandidateGender(job, loaded.prefs)) {
+      report.genderFiltered += 1;
+      continue;
+    }
+
+    try {
+      const listingRow = await persistListingWith(conn, job);
+      const prior = await conn.query.matches.findFirst({
+        columns: { id: true, status: true },
+        where: and(eq(matches.userId, userId), eq(matches.listingId, listingRow.id)),
+      });
+      if (prior?.status === "queued" || prior?.status === "dismissed") {
+        report.alreadyQueued += prior.status === "queued" ? 1 : 0;
+        continue;
+      }
+
+      const [matchRow] = await conn
+        .insert(matches)
+        .values({
+          userId,
+          listingId: listingRow.id,
+          score: null,
+          status: "scored",
+          reason: null,
+          coverLetter: null,
+          scoredAt: null,
+        })
+        .onConflictDoUpdate({
+          target: [matches.userId, matches.listingId],
+          set: {
+            status: sql`CASE WHEN ${matches.status} IN ('queued','dismissed')
+                             THEN ${matches.status}
+                             ELSE 'scored'::match_status END`,
+            updatedAt: sql`now()`,
+          },
+        })
+        .returning({ id: matches.id, status: matches.status });
+
+      if (matchRow.status === "queued" || matchRow.status === "dismissed") {
+        report.alreadyQueued += matchRow.status === "queued" ? 1 : 0;
+        continue;
+      }
+
+      const { created } = await defaultEnqueue(
+        {
+          idempotencyKey: `apply:${matchRow.id}`,
+          matchId: matchRow.id,
+          payload: {
+            board: job.board,
+            listingId: listingRow.id,
+            url: job.url,
+            mode: "filter",
+            discovery: "extension",
+          },
+        },
+        conn as unknown as Parameters<EnqueueFn>[1],
+      );
+      await conn
+        .update(matches)
+        .set({ status: "queued", updatedAt: sql`now()` })
+        .where(eq(matches.id, matchRow.id));
+      if (created) report.queued += 1;
+      else report.alreadyQueued += 1;
+    } catch (error) {
+      report.errors.push(`${job.id}: ${errMsg(error)}`);
     }
   }
 

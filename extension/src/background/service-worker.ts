@@ -35,7 +35,10 @@ import {
 import {
   setupAutoApplyAlarms,
   registerAutoApplyAlarmListener,
+  getRunOverview,
+  mutateRun,
   runAutoApplyTick,
+  setRunBackground,
 } from "@ext/background/auto-apply";
 import { sendToTab, waitForTabComplete } from "@ext/background/tab-utils";
 import type {
@@ -353,6 +356,15 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
       return { ok: true, data: await handleGetAutoApplyStatus() };
     case "RUN_AUTO_APPLY_NOW":
       return { ok: true, data: await handleRunAutoApplyNow() };
+    case "GET_RUN_OVERVIEW":
+      return { ok: true, data: await getRunOverview() };
+    case "MUTATE_RUN":
+      return {
+        ok: true,
+        data: await mutateRun(msg.action, msg.backgroundEnabled ?? true),
+      };
+    case "SET_RUN_BACKGROUND":
+      return { ok: true, data: await setRunBackground(msg.enabled) };
     case "JOBINJA_CVID":
       return { ok: true, data: await handleJobinjaCvid(msg.cvId) };
     default: {
@@ -392,7 +404,14 @@ chrome.runtime.onMessage.addListener((msg: PopupToBackground, _sender, sendRespo
  * service worker (and thus background apply) runs only while the browser runs;
  * 24/7 apply is the Max/Max+ worker tier (README). */
 registerAutoApplyAlarmListener();
-chrome.runtime.onInstalled.addListener(() => setupAutoApplyAlarms());
+async function configureSidePanel(): Promise<void> {
+  await chrome.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true });
+}
+chrome.runtime.onInstalled.addListener(() => {
+  setupAutoApplyAlarms();
+  void configureSidePanel();
+});
 chrome.runtime.onStartup.addListener(() => setupAutoApplyAlarms());
 // Also ensure on plain load (covers dev-reload where onInstalled may not fire).
 setupAutoApplyAlarms();
+void configureSidePanel();

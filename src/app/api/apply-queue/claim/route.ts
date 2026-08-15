@@ -37,6 +37,11 @@ import {
   assertAutoApplyAllowed,
   AutoApplyNotAllowedError,
 } from "@/lib/apply/auto-apply";
+import {
+  assertExtensionExecutionOwner,
+  ExecutionOwnershipError,
+  releaseStaleExtensionLeases,
+} from "@/lib/apply/execution-run";
 
 // به DB دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -68,6 +73,24 @@ export async function POST(request: Request): Promise<Response> {
 
     // ۲) بدنه‌ی اختیاری (limit). بدنه‌ی خالی هم مجاز است (پیش‌فرض limit=5).
     const body = await parseClaimBody(request);
+
+    // New extension executor path: explicit cloud ownership is the consent gate.
+    // It is free, filter-authoritative, unlimited, and does not consult scores or
+    // plan application quotas. Legacy/manual clients continue through the old
+    // guarded branch below for backward compatibility.
+    if (body.executorId) {
+      try {
+        await assertExtensionExecutionOwner(userId, body.executorId);
+      } catch (error) {
+        if (error instanceof ExecutionOwnershipError) {
+          return json({ error: error.message, code: error.code }, 409);
+        }
+        throw error;
+      }
+      await releaseStaleExtensionLeases(userId);
+      const items = await claimUserApplyItems(userId, body.limit);
+      return json({ count: items.length, items });
+    }
 
     // ۳) پلنِ کاربر را از DB می‌خوانیم (سقفِ روزانه از روی پلن).
     const plan = await readUserPlan(userId);

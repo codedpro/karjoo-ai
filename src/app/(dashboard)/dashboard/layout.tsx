@@ -16,11 +16,13 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
+import { AdminNavGroup } from "@/components/dashboard/admin-nav";
 import {
   DashboardUserChip,
   DashboardUserChipSkeleton,
 } from "@/components/dashboard/dashboard-user-chip";
 import { MobileNav, SidebarNav } from "@/components/dashboard/dashboard-nav";
+import { JobinjaAutoSync } from "@/components/dashboard/jobinja-sync-button";
 import { signOut } from "@/components/dashboard/actions";
 import { Logo } from "@/components/brand/logo";
 
@@ -31,9 +33,10 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="min-h-dvh bg-surface">
+      <JobinjaAutoSync />
       {/* ───────────────────── هدرِ چسبانِ استاتیک ───────────────────── */}
       <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+        <div className="dash-container flex h-16 items-center justify-between gap-4">
           {/* برند */}
           <Link
             href="/dashboard"
@@ -71,17 +74,27 @@ export default function DashboardLayout({
       </header>
 
       {/* ───────────────────── بدنه: ناوبریِ کناری + محتوا ───────────────────── */}
-      <div className="mx-auto flex max-w-6xl gap-6 px-4 py-6 sm:px-6 lg:py-8">
-        {/* ناوبریِ کناریِ دسکتاپ */}
-        <aside className="hidden w-56 shrink-0 lg:block">
-          <SidebarNav />
+      <div className="dash-container flex gap-6 py-6 lg:gap-8 lg:py-8">
+        {/* ناوبریِ کناریِ دسکتاپ — روی نمایشگرِ بزرگ‌تر پهن‌تر می‌شود تا راهنمای
+            یک‌خطیِ هر آیتم جا شود (`xl:block` در خودِ ناوبری). */}
+        <aside className="hidden w-56 shrink-0 lg:block xl:w-64">
+          <SidebarNav>
+            {/* گروهِ «مدیریت» — سروری و استریم‌شونده؛ پوسته را بلاک نمی‌کند. */}
+            <Suspense fallback={null}>
+              <AdminNavGroup />
+            </Suspense>
+          </SidebarNav>
         </aside>
 
         {/* محتوای صفحه — بالشتک/عرض این‌جا مدیریت می‌شود؛ صفحه‌ها فقط محتوا می‌دهند. */}
         <main className="min-w-0 flex-1">
-          {/* ناوبریِ افقیِ موبایل (زیرِ lg) */}
+          {/* ناوبریِ موبایل: چیپ‌های اصلی + کشوی «همه‌ی بخش‌ها» (زیرِ lg) */}
           <div className="mb-6 lg:hidden">
-            <MobileNav />
+            <MobileNav>
+              <Suspense fallback={null}>
+                <AdminNavGroup />
+              </Suspense>
+            </MobileNav>
           </div>
 
           {children}

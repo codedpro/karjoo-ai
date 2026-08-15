@@ -133,6 +133,13 @@ export const auditEventTypeEnum = pgEnum("audit_event_type", [
   // سطحِ «سرور» (پَسیو، ناوگانِ ۲۴/۷ — پلن‌های Max/Max+): تفکیکِ ممیزیِ تاگلِ سرور.
   "server_auto_apply_enabled", // [سرور] کاربر تاگلِ اپلای خودکارِ سرور را روشن کرد (رضایت).
   "server_auto_apply_disabled", // [سرور] کاربر تاگلِ سرور را خاموش کرد (لغوِ رضایت).
+  // مدیریت (بخشِ «کاربران» داشبورد): وقتی *ادمین* روی حسابِ کاربرِ دیگری کاری می‌کند،
+  // ردیفِ ممیزی روی همان کاربر نوشته می‌شود و ایمیلِ ادمینِ عمل‌کننده در metadata می‌آید.
+  // این‌ها عمداً از رویدادهای خودِ کاربر جدا هستند تا «چه کسی این را عوض کرد؟» همیشه
+  // بی‌ابهام باشد.
+  "admin_plan_changed", // ادمین پلنِ کاربر را دستی تغییر داد.
+  "admin_credit_adjusted", // ادمین اعتبارِ کیف‌پولِ کاربر را دستی کم/زیاد کرد.
+  "admin_access_changed", // ادمین دسترسیِ کاربر را بست یا باز کرد.
 ]);
 
 /** نوعِ یک نشستِ احرازهویت: وب (داشبورد) یا افزونه‌ی مرورگر. */
@@ -1185,6 +1192,49 @@ export const userServerAutoApply = pgTable(
 );
 
 /**
+ * Shared execution ownership for one user's apply queue.
+ *
+ * The cloud queue remains authoritative, but exactly one executor owns an active
+ * run: either the user's browser extension or a server fleet node. Keeping this
+ * separate from the two consent/settings tables makes takeover atomic without
+ * coupling product settings to transient runtime state.
+ */
+export const applyExecutionRuns = pgTable(
+  "apply_execution_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** paused | running | blocked | completed */
+    state: text("state").notNull().default("paused"),
+    /** extension | server; null while fully stopped. */
+    owner: text("owner"),
+    /** Per-browser UUID for extension ownership, or worker-node id for server. */
+    executorId: text("executor_id"),
+    board: jobBoardEnum("board"),
+    currentTaskId: uuid("current_task_id").references(() => tasks.id, {
+      onDelete: "set null",
+    }),
+    /** Non-secret current stage/title/company for synchronized progress UIs. */
+    progress: jsonb("progress").$type<Record<string, unknown>>().notNull().default({}),
+    blockedReason: text("blocked_reason"),
+    /** When true, closing the side panel does not pause the extension run. */
+    backgroundEnabled: boolean("background_enabled").notNull().default(true),
+    heartbeatAt: timestamp("heartbeat_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    blockedAt: timestamp("blocked_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("apply_execution_runs_user_uq").on(t.userId),
+    index("apply_execution_runs_owner_state_idx").on(t.owner, t.state),
+    index("apply_execution_runs_heartbeat_idx").on(t.heartbeatAt),
+  ],
+);
+
+/**
  * مکان‌نمای صفحه‌بندیِ فیلترمود — به‌ازای (کاربر × سایت × امضای فیلتر).
  *
  * `runFilterApply` در هر اجرا از `nextPage` آغاز می‌کند و آن را جلو می‌برد تا اجراهای
@@ -1461,3 +1511,5 @@ export type UserAutoApplyRow = typeof userAutoApply.$inferSelect;
 export type NewUserAutoApplyRow = typeof userAutoApply.$inferInsert;
 export type UserServerAutoApplyRow = typeof userServerAutoApply.$inferSelect;
 export type NewUserServerAutoApplyRow = typeof userServerAutoApply.$inferInsert;
+export type ApplyExecutionRunRow = typeof applyExecutionRuns.$inferSelect;
+export type NewApplyExecutionRunRow = typeof applyExecutionRuns.$inferInsert;

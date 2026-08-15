@@ -20,8 +20,8 @@ import "server-only";
  * typed با علتِ زیرین پرتاب می‌شود تا فراخواننده بتواند تصمیم بگیرد (skip / retry / log).
  */
 import { chatCompleteJson, type GatewayOptions } from "@/lib/ai/gateway";
-import { buildScoreAndDraftPrompt } from "@/lib/ai/prompts";
-import { scoreAndDraftSchema } from "@/lib/ai/schema";
+import { buildMatchScorePrompt, buildScoreAndDraftPrompt } from "@/lib/ai/prompts";
+import { matchScoreSchema, scoreAndDraftSchema } from "@/lib/ai/schema";
 import type { CandidateProfile, JobListing } from "@/lib/apply/types";
 
 /** خروجی امتیازدهی: امتیاز تطبیق ۰..۱ و انگیزه‌نامه‌ی پیش‌نویس. */
@@ -85,6 +85,43 @@ export async function scoreAndDraft(
   return {
     matchScore: parsed.data.matchScore,
     coverLetter: parsed.data.coverLetter,
+    reason,
+  };
+}
+
+/**
+ * امتیازدهی بدون انگیزه‌نامه. برای سایت‌هایی مثل Jobinja که cover letter را رایگان/قابل‌ارسال
+ * ندارند، همین مسیر کافی است و از مصرف توکن برای متنِ بی‌استفاده جلوگیری می‌کند.
+ */
+export async function scoreOnly(
+  job: JobListing,
+  profile: CandidateProfile,
+  opts: GatewayOptions = {},
+): Promise<ScoreAndDraftResult> {
+  const messages = buildMatchScorePrompt(job, profile);
+
+  let data: unknown;
+  try {
+    ({ data } = await chatCompleteJson({ messages, temperature: 0.25 }, opts));
+  } catch (cause) {
+    throw new ScoringError("فراخوانی گیت‌وی هوش مصنوعی برای امتیازدهی ناموفق بود.", cause);
+  }
+
+  const parsed = matchScoreSchema.safeParse(data);
+  if (!parsed.success) {
+    throw new ScoringError(
+      `خروجی مدل با اسکیمای موردانتظار هم‌خوان نبود: ${parsed.error.issues
+        .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+        .join("؛ ")}`,
+      parsed.error,
+    );
+  }
+
+  const reason = parsed.data.reasons.length > 0 ? parsed.data.reasons.join("؛ ") : undefined;
+
+  return {
+    matchScore: parsed.data.matchScore,
+    coverLetter: "",
     reason,
   };
 }

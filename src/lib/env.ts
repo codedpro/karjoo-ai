@@ -48,6 +48,11 @@ const envSchema = z.object({
   // هنگام استفاده — requireInternalSecret() اگر تنظیم نشده باشد fail-closed می‌کند.
   INTERNAL_API_SECRET: optionalNonEmpty(z.string().min(1)),
 
+  // فهرستِ ایمیل‌های ادمین (جدا با کاما) — کسانی که بخشِ «مدیریت» داشبورد را می‌بینند.
+  // اگر تنظیم نشود، فقط مالکِ محصول (ADMIN_EMAILS_FALLBACK) ادمین است. مقایسه
+  // case-insensitive و روی ایمیلِ *راستی‌آزمایی‌شده‌ی نشست* انجام می‌شود (نه ورودی کاربر).
+  KARJOO_ADMIN_EMAILS: optionalNonEmpty(z.string().min(1)),
+
   // ── احراز هویت (auth) ────────────────────────────────────────────────────
   // رازِ سرور برای هش‌کردنِ OTPها و توکن‌های نشست (HMAC pepper). هرگز به کلاینت
   // نشت نمی‌کند و هرگز در دیتابیس ذخیره نمی‌شود؛ فقط برای محاسبه‌ی هش استفاده می‌شود.
@@ -256,6 +261,33 @@ export function requireInternalSecret(): string {
     );
   }
   return env.INTERNAL_API_SECRET;
+}
+
+/* ───────────────────────────  ادمین‌ها (allowlist)  ─────────────────────── */
+
+/**
+ * مالکِ محصول — همیشه ادمین است، حتی اگر KARJOO_ADMIN_EMAILS تنظیم نشده باشد.
+ * این «در پشتی» نیست: دسترسی همچنان نیازمندِ ورودِ موفق با همین حسابِ Google است.
+ */
+const ADMIN_EMAILS_FALLBACK = ["dev.codedpro@gmail.com"];
+
+/** فهرستِ نرمال‌شده‌ی ایمیل‌های ادمین (lowercase، بدونِ فاصله، بدونِ تکرار). */
+export function adminEmails(): string[] {
+  const raw = env.KARJOO_ADMIN_EMAILS ?? "";
+  const parsed = raw
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return Array.from(new Set([...ADMIN_EMAILS_FALLBACK, ...parsed]));
+}
+
+/**
+ * آیا این ایمیل ادمین است؟ ورودی باید ایمیلِ *راستی‌آزمایی‌شده‌ی نشست* باشد
+ * (نه رشته‌ای که کاربر تایپ کرده). null/خالی ⇒ false (fail-closed).
+ */
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return adminEmails().includes(email.trim().toLowerCase());
 }
 
 /**

@@ -5,7 +5,7 @@
  * داده از RSC (wallet-data.ts) می‌آید و مقید به userIdِ نشست است.
  */
 import { IconChart } from "./icons";
-import { Badge, Card, EmptyState, toFaDigits } from "./ui";
+import { Badge, Card, EmptyState, TableFrame, toFaDigits } from "./ui";
 import { LEDGER_KIND, USAGE_KIND, providerLabel } from "./wallet-labels";
 import { formatSignedToman, formatToman } from "./wallet-format";
 import type {
@@ -88,66 +88,66 @@ export function LedgerList({ entries }: { entries: DashboardLedgerEntry[] }) {
 
 /* ───────────────────────────  تاریخچه‌ی مصرفِ AI  ──────────────────────────── */
 
-/** جدولِ تاریخچه‌ی مصرفِ هوش مصنوعی (مدل، نوع، توکن‌ها، هزینه، تاریخ). */
+/**
+ * جدولِ تاریخچه‌ی مصرفِ هوش مصنوعی.
+ *
+ * پنج ستونِ فشرده برای کسی که فقط می‌خواهد بداند «چقدر و بابتِ چه» زیادی بود: نامِ مدل و
+ * شمارِ توکن جزئیاتِ فنی‌اند و فقط در نمایشگرِ پهن ظاهر می‌شوند؛ در باریک، سرویس/هزینه/تاریخ
+ * می‌ماند که همان چیزی است که کاربر دنبالش است. قاب `TableFrame` است تا اسکرولِ افقی درونِ
+ * کارت مهار شود، نه در کلِ صفحه.
+ */
 export function UsageTable({ rows }: { rows: DashboardUsageRow[] }) {
   if (rows.length === 0) {
     return (
       <EmptyState
         icon={<IconChart />}
         title="هنوز مصرفی ثبت نشده"
-        body="به‌محضِ اولین استفاده از سرویس‌های هوش مصنوعی (تطبیق، انگیزه‌نامه، پردازشِ رزومه)، هزینه‌ی هر فراخوانی این‌جا فهرست می‌شود."
+        body="به‌محضِ اولین استفاده از سرویس‌های هوش مصنوعی (تطبیق، انگیزه‌نامه، پردازشِ رزومه)، هزینه‌ی هر پردازش این‌جا فهرست می‌شود."
       />
     );
   }
 
   return (
-    <Card className="overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-2xl text-right text-sm">
-          <thead>
-            <tr className="border-b border-border bg-surface/60 text-xs text-muted">
-              <th className="whitespace-nowrap px-4 py-3.5 font-medium">سرویس</th>
-              <th className="whitespace-nowrap px-4 py-3.5 font-medium">مدل</th>
-              <th className="whitespace-nowrap px-4 py-3.5 font-medium">
-                توکن (ورودی/خروجی)
-              </th>
-              <th className="whitespace-nowrap px-4 py-3.5 font-medium">
-                هزینه (تومان)
-              </th>
-              <th className="whitespace-nowrap px-4 py-3.5 font-medium">تاریخ</th>
+    <TableFrame minWidth="22rem">
+      <table className="w-full text-right text-sm">
+        <thead>
+          <tr className="border-b border-border bg-surface/60 text-xs text-muted">
+            <th className="whitespace-nowrap px-4 py-3.5 font-medium">سرویس</th>
+            <th className="hidden whitespace-nowrap px-4 py-3.5 font-medium lg:table-cell">
+              مدل
+            </th>
+            <th className="hidden whitespace-nowrap px-4 py-3.5 font-medium xl:table-cell">
+              توکن (ورودی/خروجی)
+            </th>
+            <th className="whitespace-nowrap px-4 py-3.5 font-medium">هزینه (تومان)</th>
+            <th className="whitespace-nowrap px-4 py-3.5 font-medium">تاریخ</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((r) => (
+            <tr key={r.id} className="transition-colors hover:bg-foreground/2">
+              <td className="whitespace-nowrap px-4 py-3 font-medium">
+                {USAGE_KIND[r.kind] ?? r.kind}
+              </td>
+              <td className="hidden px-4 py-3 lg:table-cell">
+                <div className="ltr-nums max-w-56 truncate" title={r.modelId}>
+                  {r.modelId}
+                </div>
+                <div className="text-xs text-muted">{providerLabel(r.provider)}</div>
+              </td>
+              <td className="ltr-nums hidden whitespace-nowrap px-4 py-3 text-muted xl:table-cell">
+                {toFaDigits(r.promptTokens)} / {toFaDigits(r.completionTokens)}
+              </td>
+              <td className="ltr-nums whitespace-nowrap px-4 py-3 font-bold">
+                {toFaDigits(formatToman(r.costToman))}
+              </td>
+              <td className="ltr-nums whitespace-nowrap px-4 py-3 text-muted">
+                {toFaDigits(faDate(r.createdAt))}
+              </td>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {rows.map((r) => (
-              <tr
-                key={r.id}
-                className="transition-colors hover:bg-foreground/2"
-              >
-                <td className="whitespace-nowrap px-4 py-3 font-medium">
-                  {USAGE_KIND[r.kind] ?? r.kind}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="ltr-nums max-w-56 truncate" title={r.modelId}>
-                    {r.modelId}
-                  </div>
-                  <div className="text-xs text-muted">
-                    {providerLabel(r.provider)}
-                  </div>
-                </td>
-                <td className="ltr-nums whitespace-nowrap px-4 py-3 text-muted">
-                  {toFaDigits(r.promptTokens)} / {toFaDigits(r.completionTokens)}
-                </td>
-                <td className="ltr-nums whitespace-nowrap px-4 py-3 font-bold">
-                  {toFaDigits(formatToman(r.costToman))}
-                </td>
-                <td className="ltr-nums whitespace-nowrap px-4 py-3 text-muted">
-                  {toFaDigits(faDate(r.createdAt))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+          ))}
+        </tbody>
+      </table>
+    </TableFrame>
   );
 }

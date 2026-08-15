@@ -7,12 +7,17 @@
  * این کامپوننت POST /api/auth/extension/pair را صدا می‌زند (با کوکیِ نشستِ وب) و کدِ
  * خام را فقط همین‌جا، موقتاً، نمایش می‌دهد. کد کوتاه‌عمر است؛ شمارشِ معکوس نشان داده
  * می‌شود. هیچ رازِ سرور/توکنی اینجا hard-code نیست — همه از پاسخِ امنِ سرور می‌آید.
+ *
+ * این پنل *عمداً* هم در صفحه‌ی «افزونه‌ی مرورگر» و هم در خانه‌ی داشبورد (آنبوردینگ) رندر
+ * می‌شود؛ پس متنش باید در هر دو زمینه کوتاه و خودبسنده بماند. به همین دلیل توضیحِ بلند به
+ * یک جمله کوتاه شد و «حالا چه کنم؟» فقط *بعد از* ساختِ کد ظاهر می‌شود — یعنی دقیقاً وقتی
+ * کاربر به آن نیاز دارد. خطاها از `Callout`ِ مشترک می‌آیند تا با بقیه‌ی داشبورد یکدست باشند.
  */
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { IconCheck, IconPuzzle, IconShield } from "./icons";
-import { Badge, Button, Card, toFaDigits } from "./ui";
+import { IconCheck, IconPuzzle, IconShield, IconWarn } from "./icons";
+import { Badge, Button, Callout, Card, toFaDigits } from "./ui";
 
 interface PairResponse {
   /** کدِ جفت‌سازیِ خام برای واردکردن در افزونه (فیلدِ قراردادِ مسیرِ pair). */
@@ -107,20 +112,15 @@ export function PairExtensionPanel() {
         <div className="min-w-0">
           <h3 className="text-balance text-base font-bold">اتصالِ افزونه‌ی مرورگر</h3>
           <p className="mt-1 text-pretty text-sm leading-7 text-muted">
-            افزونه‌ی کارجو در مرورگرِ خودتان، با تأییدِ شما اپلای را پیش‌نویس می‌کند.
-            برای اتصال، یک کدِ یک‌بارمصرف بسازید و آن را در افزونه وارد کنید — نیازی به
-            ورودِ دوباره نیست.
+            یک کدِ یک‌بارمصرف بسازید و در افزونه واردش کنید — نیازی به ورودِ دوباره نیست.
           </p>
         </div>
       </div>
 
       {error ? (
-        <p
-          role="alert"
-          className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-600 dark:text-rose-400"
-        >
-          {error}
-        </p>
+        <Callout tone="danger" icon={<IconWarn />} className="mt-4">
+          <span role="alert">{error}</span>
+        </Callout>
       ) : null}
 
       {code ? (
@@ -146,8 +146,9 @@ export function PairExtensionPanel() {
               )}
             </Button>
           </div>
-          <p className="mt-2 text-xs text-muted">
-            این کد یک‌بارمصرف است و تا{" "}
+          {/* راهنمای «حالا چه کنم؟» فقط وقتی کد هست — نه یک لحظه زودتر. */}
+          <p className="mt-2 text-pretty text-xs leading-6 text-muted">
+            آیکنِ کارجو را در مرورگر باز کنید و این کد را در آن بچسبانید. کد تا{" "}
             <span className="ltr-nums font-medium text-foreground">{timeLabel}</span>{" "}
             دیگر معتبر است.
           </p>
@@ -333,19 +334,15 @@ export function ConnectedDevicesPanel() {
         <div className="min-w-0">
           <h3 className="text-balance text-base font-bold">دستگاه‌ها و نشست‌های فعال</h3>
           <p className="mt-1 text-pretty text-sm leading-7 text-muted">
-            هر جا که با حساب‌تان وارد شده‌اید یا افزونه را متصل کرده‌اید این‌جا فهرست می‌شود.
-            هر دسترسی را که نمی‌شناسید یا دیگر لازم ندارید، «لغوِ دسترسی» کنید.
+            هر دسترسی را که نمی‌شناسید، لغو کنید.
           </p>
         </div>
       </div>
 
       {error ? (
-        <p
-          role="alert"
-          className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-600 dark:text-rose-400"
-        >
-          {error}
-        </p>
+        <Callout tone="danger" icon={<IconWarn />} className="mt-4">
+          <span role="alert">{error}</span>
+        </Callout>
       ) : null}
 
       {sessions === null ? (

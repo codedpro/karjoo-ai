@@ -1,16 +1,30 @@
 /**
- * صفحه‌ی «افزونه‌ی مرورگر» (Server component) — دریافت و نصبِ افزونه‌ی کارجو.
+ * صفحه‌ی «افزونه‌ی مرورگر» (Server component) — دانلود، نصب و اتصالِ افزونه‌ی کارجو.
  *
  * الگوی Next 16 (پوسته‌ی فوری): پوسته/هدر در `dashboard/layout.tsx` استاتیک است؛ این صفحه
- * فقط محتوا می‌دهد و هدرِ استاتیکِ خودش را با `PageHeader` بی‌درنگ می‌آورد. محتوای این صفحه
- * تماماً استاتیک است (راهنمای نصب + دکمه‌ی دانلود)، پس نیازی به Suspense نیست؛ تنها پنلِ
- * «اتصالِ افزونه» تعاملی (client) است و کدِ یک‌بارمصرف را از سرور می‌گیرد.
+ * فقط محتوا می‌دهد و هدرِ خودش را با `PageHeader` بی‌درنگ می‌آورد. محتوا تماماً استاتیک است
+ * (راهنما + دکمه‌ی دانلود)، پس Suspense لازم نیست؛ تنها پنلِ اتصال و فهرستِ دستگاه‌ها client‌اند.
  *
- * حضورِ نشست پیش‌تر در `proxy.ts` (لبه، بدونِ DB) چک شده؛ این‌جا فقط برای اطمینان دوباره
+ * تصمیم‌های محتوایی (بازنویسیِ ضدِ دیوارِ متن):
+ *   • **یک** دکمه‌ی دانلودِ آشکار (در هدر). پیش‌تر دو دکمه‌ی یکسان بود و کاربر را مردد می‌کرد.
+ *   • مراحلِ کروم و اِج تقریباً یکسان‌اند؛ نمایشِ هم‌زمانِ هر دو یعنی ۱۲ گام برای کاری که ۶ گام
+ *     است. حالا هر مرورگر یک `<details>` است و با `name` مشترک، آکاردئونِ *انحصاری* می‌سازند
+ *     (باز شدنِ یکی دیگری را می‌بندد) — بدونِ ذره‌ای JS و بدونِ client component. کروم پیش‌فرض
+ *     باز است چون سهمِ غالبِ کاربران است.
+ *   • روشِ توزیع «بارگذاریِ باز» است (تصمیمِ بیرونی، اینجا قابلِ تغییر نیست)؛ پس تنها کارِ ما
+ *     زنده‌نگه‌داشتنِ کاربرِ غیرِفنی است: هر گام یک جمله‌ی امری، و هشدارِ حیاتیِ «پوشه را پاک
+ *     نکنید» به‌جای پاراگرافِ دفن‌شده، یک `Callout` در بالای راهنما.
+ *   • هر جمله‌ای که «دستور» نبود حذف شد؛ توضیحِ ارزشِ افزونه در زیرعنوانِ صفحه خلاصه است.
+ *
+ * `PairExtensionPanel` عمداً هم اینجا و هم در خانه‌ی داشبورد (آنبوردینگ) رندر می‌شود؛ در این
+ * صفحه فقط *یک‌بار* می‌آید.
+ *
+ * حضورِ نشست پیش‌تر در `proxy.ts` (لبه، بدونِ DB) چک شده؛ اینجا فقط برای اطمینان دوباره
  * راستی‌آزمایی می‌کنیم و در نبودِ نشست به /login می‌رویم. فارسی/RTL؛ آیکن‌های lucide.
  */
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 
 import { getDashboardUser } from "@/components/dashboard/session";
 import {
@@ -19,13 +33,18 @@ import {
 } from "@/components/dashboard/pair-extension-panel";
 import {
   IconBolt,
-  IconCheck,
   IconDownload,
-  IconPuzzle,
   IconShield,
   IconSparkle,
+  IconWarn,
 } from "@/components/dashboard/icons";
-import { Badge, Card, PageHeader } from "@/components/dashboard/ui";
+import {
+  Badge,
+  Callout,
+  Card,
+  PageHeader,
+  toFaDigits,
+} from "@/components/dashboard/ui";
 import { KARJOO_EXTENSION_VERSION } from "@/lib/extension/version";
 
 // راستی‌آزماییِ نشست → اجرای Node.
@@ -47,217 +66,163 @@ export default async function ExtensionPage() {
     <div className="space-y-8">
       <PageHeader
         title="افزونه‌ی مرورگر"
-        subtitle="افزونه‌ی کارجو در مرورگرِ خودتان نصب می‌شود و با تأییدِ شما، اپلای در سایت‌های کاریابی را پیش‌نویس و ارسال می‌کند. در سه گام: دانلود، نصب، و اتصال به حسابتان."
-        actions={
-          <a
-            href={EXTENSION_ZIP}
-            download
-            className="focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] duration-150 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-px"
-          >
-            <IconDownload className="h-4 w-4" />
-            دانلودِ افزونه
-          </a>
-        }
+        subtitle="افزونه در مرورگرِ خودتان نصب می‌شود و اپلای در سایت‌های کاریابی را برایتان انجام می‌دهد. سه کار: دانلود، نصب، اتصال."
+        actions={<DownloadButton />}
       />
 
-      <IntroSection />
+      <Callout
+        tone="warn"
+        icon={<IconWarn />}
+        title="پوشه‌ی افزونه را پاک یا جابه‌جا نکنید"
+      >
+        مرورگر افزونه را هر بار از همان پوشه می‌خواند؛ با حذف یا جابه‌جاییِ پوشه، افزونه از
+        کار می‌افتد.
+      </Callout>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid gap-6 xl:grid-cols-3">
+        <div className="xl:col-span-2">
           <InstallGuide />
         </div>
         <div className="space-y-6">
           <PairExtensionPanel />
           <ConnectedDevicesPanel />
-          <PrivacyNote />
+          <Callout tone="success" icon={<IconShield />} title="کنترل با شماست">
+            افزونه فقط در مرورگرِ خودتان کار می‌کند و تاگلِ «اپلای خودکار» داخلِ خودش هر
+            لحظه خاموش‌شدنی است.
+          </Callout>
         </div>
       </div>
     </div>
   );
 }
 
-/* ─────────────────────────── معرفی + دانلود ─────────────────────────── */
+/* ───────────────────────────── دکمه‌ی دانلود ───────────────────────────── */
 
-/** سه ویژگیِ کلیدیِ افزونه — آیکن + عنوان + توضیح. */
-const FEATURES: Array<{
-  icon: typeof IconBolt;
-  title: string;
-  body: string;
-}> = [
-  {
-    icon: IconSparkle,
-    title: "پیش‌نویسِ هوشمند",
-    body: "افزونه فرم‌های اپلای را با اطلاعاتِ رزومه‌ی شما به‌صورتِ هوشمند پر می‌کند تا فقط تأیید کنید.",
-  },
-  {
-    icon: IconBolt,
-    title: "اپلای خودکار در مرورگر",
-    body: "با فعال‌سازیِ تاگلِ داخلِ افزونه، اپلای روی فرصت‌های بالای آستانه در مرورگرِ خودتان انجام می‌شود.",
-  },
-  {
-    icon: IconShield,
-    title: "امن و مقید به شما",
-    body: "افزونه با یک کدِ یک‌بارمصرف به حسابتان متصل می‌شود؛ نیازی به واردکردنِ دوباره‌ی رمز نیست.",
-  },
-];
-
-function IntroSection() {
+/**
+ * تنها دکمه‌ی دانلودِ صفحه. لینکِ مستقیم به فایلِ استاتیکِ `public/` است (نه ناوبریِ
+ * برنامه‌ای)، پس `<a download>` خام و نه `next/link`.
+ */
+function DownloadButton() {
   return (
-    <Card padded>
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-4">
-          <div
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand/10 text-brand"
-            aria-hidden
-          >
-            <IconPuzzle className="h-6 w-6" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-balance text-lg font-bold">افزونه‌ی کارجو چه می‌کند؟</h2>
-            <p className="mt-1.5 max-w-xl text-pretty text-sm leading-7 text-muted">
-              افزونه در مرورگرِ Chrome یا Edge نصب می‌شود و روی سایت‌های کاریابیِ ایرانی
-              (جابینجا، جاب‌ویژن، ای‌استخدام، ایران‌تلنت) اپلای را برایتان آماده می‌کند —
-              حتی هنگامی که خودتان پای سیستم نیستید.
-            </p>
-          </div>
-        </div>
-        <a
-          href={EXTENSION_ZIP}
-          download
-          className="focus-ring inline-flex shrink-0 items-center justify-center gap-2 self-start whitespace-nowrap rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] duration-150 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-px"
-        >
-          <IconDownload className="h-4 w-4" />
-          دانلودِ افزونه (ZIP)
-        </a>
-      </div>
-
-      <div className="mt-6 grid gap-4 border-t border-border/70 pt-6 sm:grid-cols-3">
-        {FEATURES.map((f) => {
-          const Icon = f.icon;
-          return (
-            <div key={f.title} className="flex items-start gap-3">
-              <span
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"
-                aria-hidden
-              >
-                <Icon className="h-5 w-5" />
-              </span>
-              <div className="min-w-0">
-                <h3 className="text-sm font-bold">{f.title}</h3>
-                <p className="mt-1 text-pretty text-xs leading-6 text-muted">{f.body}</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Card>
+    <a
+      href={EXTENSION_ZIP}
+      download
+      className="focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] duration-150 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-px"
+    >
+      <IconDownload className="h-4 w-4" />
+      دانلودِ افزونه (ZIP)
+    </a>
   );
 }
 
-/* ─────────────────────────── راهنمای نصب ─────────────────────────── */
+/* ───────────────────────────── راهنمای نصب ───────────────────────────── */
 
 /**
- * مراحلِ نصبِ «بارگذاریِ باز» (Load unpacked) در کروم و اِج. این روش برای هر دو مرورگر و
- * روی macOS و Windows یکسان است؛ تفاوتِ کوچک فقط در «بازکردنِ فایلِ ZIP» است که در
- * زیرنویسِ گامِ اول توضیح داده شده.
+ * گام‌های نصبِ «بارگذاریِ باز» — هر گام دقیقاً یک جمله‌ی امری. کروم و اِج فقط در نشانیِ
+ * صفحه‌ی افزونه‌ها فرق دارند؛ بقیه یکسان است. روی macOS و Windows تفاوتی نیست.
  */
-const CHROME_STEPS: string[] = [
-  "فایلِ karjoo-extension.zip را که دانلود کردید، از حالتِ فشرده خارج کنید تا یک پوشه (folder) به‌دست آید.",
-  "در نوارِ آدرسِ کروم عبارتِ chrome://extensions را تایپ کنید و Enter بزنید.",
-  "گوشه‌ی بالای صفحه، کلیدِ «Developer mode» (حالتِ توسعه‌دهنده) را روشن کنید.",
-  "روی «Load unpacked» (بارگذاریِ باز) کلیک کنید.",
-  "پوشه‌ای که در گامِ اول از حالتِ فشرده خارج کردید را انتخاب کنید و تأیید کنید.",
-  "افزونه‌ی کارجو در فهرست ظاهر می‌شود؛ آیکنِ آن را در نوارِ ابزارِ مرورگر سنجاق کنید.",
-];
-
-const EDGE_STEPS: string[] = [
-  "فایلِ karjoo-extension.zip را از حالتِ فشرده خارج کنید تا یک پوشه (folder) به‌دست آید.",
-  "در نوارِ آدرسِ اِج عبارتِ edge://extensions را تایپ کنید و Enter بزنید.",
-  "گوشه‌ی سمتِ چپِ صفحه، کلیدِ «Developer mode» (حالتِ توسعه‌دهنده) را روشن کنید.",
-  "روی «Load unpacked» (بارگذاریِ باز) کلیک کنید.",
-  "همان پوشه‌ی خارج‌شده از فشرده را انتخاب کنید و تأیید کنید.",
-  "افزونه‌ی کارجو نصب می‌شود؛ آیکنِ آن را در نوارِ ابزار سنجاق کنید.",
+const BROWSERS: Array<{
+  id: string;
+  name: string;
+  tone: "brand" | "accent";
+  defaultOpen: boolean;
+  steps: string[];
+}> = [
+  {
+    id: "chrome",
+    name: "Google Chrome",
+    tone: "brand",
+    defaultOpen: true,
+    steps: [
+      "فایلِ karjoo-extension.zip را از حالتِ فشرده خارج کنید تا یک پوشه ساخته شود.",
+      "در نوارِ آدرسِ کروم عبارتِ chrome://extensions را بنویسید و Enter بزنید.",
+      "کلیدِ Developer mode را روشن کنید.",
+      "روی Load unpacked کلیک کنید.",
+      "همان پوشه‌ی گامِ یک را انتخاب کنید.",
+      "آیکنِ کارجو را در نوارِ ابزارِ مرورگر سنجاق کنید.",
+    ],
+  },
+  {
+    id: "edge",
+    name: "Microsoft Edge",
+    tone: "accent",
+    defaultOpen: false,
+    steps: [
+      "فایلِ karjoo-extension.zip را از حالتِ فشرده خارج کنید تا یک پوشه ساخته شود.",
+      "در نوارِ آدرسِ اِج عبارتِ edge://extensions را بنویسید و Enter بزنید.",
+      "کلیدِ Developer mode را روشن کنید.",
+      "روی Load unpacked کلیک کنید.",
+      "همان پوشه‌ی گامِ یک را انتخاب کنید.",
+      "آیکنِ کارجو را در نوارِ ابزارِ مرورگر سنجاق کنید.",
+    ],
+  },
 ];
 
 function InstallGuide() {
   return (
-    <Card padded>
-      <div className="flex items-center gap-2">
-        <InstallBadge />
-        <h2 className="text-base font-bold">راهنمای نصب</h2>
+    <Card padded className="h-full">
+      <div className="flex items-center gap-3">
+        <span
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"
+          aria-hidden
+        >
+          <IconDownload className="h-5 w-5" />
+        </span>
+        <h2 className="text-base font-bold">نصب در ۶ گام</h2>
       </div>
-      <p className="mt-1.5 text-pretty text-sm leading-7 text-muted">
-        افزونه به‌روشِ «بارگذاریِ باز» از پوشه‌ی خارج‌شده از فایلِ ZIP نصب می‌شود. این روش
-        روی <span className="font-medium text-foreground">macOS</span> و{" "}
-        <span className="font-medium text-foreground">Windows</span> یکسان است؛ فقط نامِ
-        صفحه‌ی تنظیماتِ افزونه‌ها در هر مرورگر متفاوت است.
+      <p className="mt-1.5 text-sm leading-7 text-muted">
+        مرورگرِ خود را انتخاب کنید؛ فقط گام‌های همان مرورگر را ببینید.
       </p>
 
-      <div className="mt-6 space-y-6">
-        <BrowserSteps
-          browser="Google Chrome"
-          tone="brand"
-          steps={CHROME_STEPS}
-        />
-        <div className="border-t border-border/70" />
-        <BrowserSteps browser="Microsoft Edge" tone="accent" steps={EDGE_STEPS} />
+      <div className="mt-5 space-y-3">
+        {BROWSERS.map((b) => (
+          <BrowserSteps key={b.id} {...b} />
+        ))}
       </div>
 
-      <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/5 px-4 py-3">
-        <IconWarnLike />
-        <p className="text-pretty text-xs leading-6 text-muted">
-          پس از نصب، پوشه‌ی خارج‌شده را{" "}
-          <span className="font-medium text-foreground">پاک نکنید و جابه‌جا نکنید</span>؛
-          مرورگر افزونه را از همان مسیر می‌خواند. برای به‌روزرسانی، نسخه‌ی جدید را دانلود
-          و از همان‌جا دوباره «Load unpacked» کنید.
-        </p>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-foreground/[0.02] px-4 py-3">
-        <div className="flex items-center gap-2 text-xs text-muted">
-          <IconSparkle className="h-4 w-4 text-brand" aria-hidden />
-          <span>
-            آخرین نسخه‌ی منتشرشده‌ی افزونه:{" "}
-            <span
-              dir="ltr"
-              className="ltr-nums mx-0.5 inline-block rounded-md bg-brand/10 px-1.5 py-0.5 align-middle font-mono text-[0.7rem] font-semibold text-brand"
-            >
-              v{KARJOO_EXTENSION_VERSION}
-            </span>
-          </span>
-        </div>
-        <span className="text-[0.7rem] leading-5 text-muted">
-          افزونه هنگام باز شدن، نسخه‌ی نصب‌شده را با این نسخه می‌سنجد و در صورتِ قدیمی بودن،
-          پیامِ به‌روزرسانی نشان می‌دهد.
-        </span>
-      </div>
+      <VersionRow />
     </Card>
   );
 }
 
+/**
+ * یک مرورگر = یک `<details>`. `name` مشترک ⇒ آکاردئونِ انحصاری (رفتارِ بومیِ HTML):
+ * باز کردنِ یکی، دیگری را می‌بندد. در مرورگرهای قدیمی‌تر بدترین حالت این است که هر دو
+ * باز بمانند — یعنی همان رفتارِ قبلی، نه خرابی.
+ */
 function BrowserSteps({
-  browser,
+  name,
   steps,
   tone,
+  defaultOpen,
 }: {
-  browser: string;
+  name: string;
   steps: string[];
   tone: "brand" | "accent";
+  defaultOpen: boolean;
 }) {
   return (
-    <div>
-      <div className="flex items-center gap-2.5">
-        <Badge tone={tone}>{browser}</Badge>
-        <span className="text-xs text-muted">macOS و Windows</span>
-      </div>
-      <ol className="mt-4 space-y-3">
+    <details
+      name="karjoo-browser"
+      open={defaultOpen}
+      className="group rounded-xl border border-border bg-surface/40 open:bg-surface/70"
+    >
+      <summary className="focus-ring flex cursor-pointer list-none items-center gap-2.5 rounded-xl px-4 py-3 text-sm font-bold [&::-webkit-details-marker]:hidden">
+        <Badge tone={tone}>{name}</Badge>
+        <span className="text-muted">{toFaDigits(steps.length)} گام</span>
+        <ChevronDown
+          className="me-auto h-4 w-4 shrink-0 text-muted transition-transform duration-200 group-open:rotate-180"
+          aria-hidden
+        />
+      </summary>
+      <ol className="space-y-3 border-t border-border/70 px-4 py-4">
         {steps.map((step, i) => (
           <li key={i} className="flex items-start gap-3">
             <span
               className="ltr-nums grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/10 text-xs font-bold text-brand"
               aria-hidden
             >
-              {toFa(i + 1)}
+              {toFaDigits(i + 1)}
             </span>
             <p className="text-pretty text-sm leading-7 text-foreground/90">
               {highlightCode(step)}
@@ -265,40 +230,29 @@ function BrowserSteps({
           </li>
         ))}
       </ol>
-    </div>
+    </details>
   );
 }
 
-/* ─────────────────────────── یادداشتِ حریمِ خصوصی ─────────────────────────── */
-
-function PrivacyNote() {
+/** نسخه‌ی منتشرشده — یک خط، چون افزونه خودش به‌روزرسانی را یادآوری می‌کند. */
+function VersionRow() {
   return (
-    <Card padded>
-      <div className="flex items-start gap-3">
-        <div
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
-          aria-hidden
-        >
-          <IconCheck className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <h3 className="text-balance text-base font-bold">با کنترلِ کامل شما</h3>
-          <p className="mt-1 text-pretty text-sm leading-7 text-muted">
-            افزونه فقط در مرورگرِ خودتان و با تأییدِ شما کار می‌کند. تاگلِ «اپلای خودکار در
-            مرورگر» داخلِ خودِ افزونه است و هر لحظه قابلِ خاموش‌کردن است.
-          </p>
-        </div>
-      </div>
-    </Card>
+    <p className="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-foreground/2 px-4 py-3 text-xs text-muted">
+      <IconSparkle className="h-4 w-4 text-brand" aria-hidden />
+      آخرین نسخه‌ی افزونه:
+      <span
+        dir="ltr"
+        className="ltr-nums rounded-md bg-brand/10 px-1.5 py-0.5 font-mono text-[0.7rem] font-semibold text-brand"
+      >
+        v{KARJOO_EXTENSION_VERSION}
+      </span>
+      <IconBolt className="h-3.5 w-3.5" aria-hidden />
+      برای به‌روزرسانی، نسخه‌ی تازه را دانلود و روی همان پوشه جایگزین کنید.
+    </p>
   );
 }
 
-/* ─────────────────────────── کمک‌کننده‌های محلی ─────────────────────────── */
-
-const FA_DIGITS = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
-function toFa(n: number): string {
-  return String(n).replace(/[0-9]/g, (d) => FA_DIGITS[Number(d)]);
-}
+/* ───────────────────────────── کمک‌کننده‌های محلی ───────────────────────────── */
 
 /**
  * قطعه‌های شبیهِ آدرس/دستور (مثلِ chrome://extensions یا Load unpacked) را به‌صورتِ
@@ -322,42 +276,12 @@ function highlightCode(text: string) {
       <code
         key={i}
         dir="ltr"
-        className="mx-0.5 inline-block rounded-md bg-foreground/[0.06] px-1.5 py-0.5 align-middle font-mono text-xs text-foreground"
+        className="mx-0.5 inline-block rounded-md bg-foreground/6 px-1.5 py-0.5 align-middle font-mono text-xs text-foreground"
       >
         {part}
       </code>
     ) : (
       part
     ),
-  );
-}
-
-function InstallBadge() {
-  return (
-    <span
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"
-      aria-hidden
-    >
-      <IconDownload className="h-4 w-4" />
-    </span>
-  );
-}
-
-function IconWarnLike() {
-  return (
-    <span className="mt-0.5 text-amber-600 dark:text-amber-400" aria-hidden>
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.75}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-4 w-4 shrink-0"
-      >
-        <path d="M12 9v4M12 17h.01" />
-        <path d="M10.3 3.6 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.6a2 2 0 0 0-3.4 0Z" />
-      </svg>
-    </span>
   );
 }

@@ -1,21 +1,30 @@
 /**
- * صفحه‌ی «اپلای‌ها» (Server component) — قیفِ تحلیلیِ درخواست‌های اپلایِ کاربر در جابینجا.
+ * «پرونده‌ی جابینجا» (Server component) — آینه‌ی چیزی که *خودِ سایتِ کارفرما* گزارش می‌کند.
  *
- * منبعِ داده: `getApplications(userId, "jobinja")` از storeِ فاز ۲ (فقط-خواندنی، مقید به کاربر).
- * چیدمانِ Next 16: پوسته/هدر در `dashboard/layout.tsx` فوری است؛ این صفحه فقط محتوا می‌دهد و
- * هدرِ استاتیکِ خودش (`PageHeader` + دکمه‌ی همگام‌سازی) را بی‌درنگ می‌آورد. بخشِ وابسته به DB
- * داخلِ `<Suspense>` با اسکلتِ هم‌شکلِ محتوا استریم می‌شود. مقید به نشست (قاعده‌ی ۴). فارسی/RTL.
+ * مرزِ این صفحه با دو صفحه‌ی تاریخچه‌ی دیگر عمداً در خودِ متن آمده تا کسی نپرسد «چرا سه
+ * صفحه؟»: بایگانیِ ارسال‌ها = چه فرستادیم و با کدام رزومه؛ وضعیتِ اپلای‌ها = همین حالا چه
+ * چیزی در حالِ ارسال است؛ این‌جا = کارفرما درخواست را در چه مرحله‌ای دیده.
+ *
+ * دو تصمیمِ آرام‌سازی: (۱) نوارِ ابزار تا وقتی فهرست کوچک است اصلاً نمایش داده نمی‌شود و
+ * مرتب‌سازی/جست‌وجو داخلِ `<details>` جمع شده‌اند (toolbar.tsx). (۲) نشانِ وضعیت دیگر متنِ
+ * خامِ جابینجا نیست؛ به مجموعه‌ی کوچکِ فارسیِ `CATEGORY_META` نگاشت می‌شود و عبارتِ دقیقِ سایت
+ * روی `title` می‌ماند.
+ *
+ * منبعِ داده: `listApplicationsPage` (فقط-خواندنی، مقید به کاربر). بخشِ وابسته به DB داخلِ
+ * `<Suspense>` با اسکلتِ هم‌شکلِ محتوا استریم می‌شود. فارسی/RTL.
  */
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
+import { SquareArrowOutUpRight } from "lucide-react";
 
 import { getDashboardUser } from "@/components/dashboard/session";
 import { JobinjaSyncButton } from "@/components/dashboard/jobinja-sync-button";
-import { IconSend } from "@/components/dashboard/icons";
+import { IconArchive, IconBolt, IconSend } from "@/components/dashboard/icons";
 import {
   Badge,
   ButtonLink,
+  Callout,
   Card,
   EmptyState,
   PageHeader,
@@ -35,9 +44,8 @@ import { buildFunnelSegments, CATEGORY_META, type FunnelCategory } from "./funne
 import {
   ActiveFilterNote,
   Pagination,
-  SearchBox,
-  SortControls,
   StatusFilter,
+  ToolbarDetails,
   type ToolbarState,
 } from "./toolbar";
 
@@ -45,9 +53,15 @@ import {
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "اپلای‌ها",
+  title: "پرونده‌ی جابینجا",
   robots: { index: false, follow: false },
 };
+
+/**
+ * از این تعداد به بالا، فیلتر/جست‌وجو واقعاً به‌درد می‌خورد. پایین‌تر از آن، نوارِ ابزار فقط
+ * شلوغیِ بصری است و کاربر کلِ فهرست را در یک نگاه می‌بیند.
+ */
+const TOOLBAR_MIN_ITEMS = 8;
 
 /** Next 16: `searchParams` یک Promise است و باید await شود. */
 export default async function ApplicationsPage({
@@ -65,12 +79,24 @@ export default async function ApplicationsPage({
   const state = parseApplicationQuery(flat) as ToolbarState;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
-        title="اپلای‌های شما"
-        subtitle="قیفِ درخواست‌هایت در جابینجا — از ارسال تا مصاحبه. با «به‌روزرسانی از جابینجا» تازه‌ترین وضعیتِ هر درخواست از حسابت خوانده می‌شود."
+        title="پرونده‌ی جابینجا"
+        subtitle="کارفرماها درخواست‌هایت را در چه مرحله‌ای دیده‌اند — همان چیزی که جابینجا در حسابِ خودت نشان می‌دهد."
         actions={<JobinjaSyncButton label="به‌روزرسانی از جابینجا" />}
       />
+
+      <Callout
+        icon={<IconArchive />}
+        title="این وضعیت‌ها را جابینجا اعلام می‌کند، نه ما"
+        action={
+          <ButtonLink href="/dashboard/archive" variant="secondary" size="sm">
+            بایگانیِ ارسال‌ها
+          </ButtonLink>
+        }
+      >
+        برای دیدنِ اینکه چه فرستادیم و با کدام رزومه، سراغِ «بایگانیِ ارسال‌ها» برو.
+      </Callout>
 
       {/* کلیدِ Suspense شاملِ فیلترهاست تا با هر تغییرِ فیلتر، اسکلت دوباره نشان داده شود. */}
       <Suspense key={JSON.stringify(state)} fallback={<ApplicationsSkeleton />}>
@@ -93,29 +119,34 @@ async function ApplicationsSection({ userId, state }: { userId: string; state: T
     return (
       <EmptyState
         icon={<IconSend />}
-        title="هنوز اپلایی ثبت نشده"
-        body="وقتی جابینجا را از افزونه وصل کنی و اپلای خودکار کار کند، درخواست‌هایت این‌جا فهرست می‌شوند و در یک قیف — در انتظار، بررسی، مصاحبه، رد — دیده می‌شوند."
+        title="هنوز درخواستی در جابینجا ثبت نشده"
+        body="وقتی اپلای خودکار روشن باشد و درخواستی فرستاده شود، وضعیتِ هرکدام — بررسی‌نشده، در حالِ بررسی، دعوت به مصاحبه یا رد — همین‌جا نشان داده می‌شود."
         action={
-          <ButtonLink href="/dashboard/matches" variant="secondary" size="sm">
-            اتصالِ جابینجا و مشاهده‌ی تطبیق‌ها
+          <ButtonLink href="/dashboard/auto-apply" size="sm">
+            <IconBolt className="h-4 w-4" />
+            روشن‌کردنِ اپلای خودکار
           </ButtonLink>
         }
       />
     );
   }
 
+  // نوارِ ابزار تا وقتی فهرست کوچک است پنهان می‌ماند — مگر خودِ کاربر فیلتری گذاشته باشد
+  // (وگرنه فیلترِ فعالِ نامرئی، فهرستِ کوتاه را غیرقابلِ توضیح می‌کرد).
+  const showToolbar =
+    funnel.total >= TOOLBAR_MIN_ITEMS || Boolean(state.status) || Boolean(state.q);
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <FunnelSummary funnel={funnel} />
 
-      <section className="space-y-4" aria-label="فیلتر و مرتب‌سازی">
-        <StatusFilter state={state} counts={funnel} />
-        <div className="flex flex-col gap-3 border-t border-foreground/10 pt-4 lg:flex-row lg:items-center lg:justify-between">
-          <SortControls state={state} />
-          <SearchBox state={state} />
-        </div>
-        <ActiveFilterNote state={state} shown={filteredTotal} />
-      </section>
+      {showToolbar ? (
+        <section className="space-y-3" aria-label="فیلتر و مرتب‌سازی">
+          <StatusFilter state={state} counts={funnel} />
+          <ToolbarDetails state={state} />
+          <ActiveFilterNote state={state} shown={filteredTotal} />
+        </section>
+      ) : null}
 
       <ApplicationsList items={items} sort={state.sort} />
 
@@ -129,15 +160,19 @@ async function ApplicationsSection({ userId, state }: { userId: string; state: T
 /** کارت‌های آمارِ بالای صفحه: کل + چهار دسته‌ی اصلی، هرکدام با رنگِ لحنِ خودش. */
 const SUMMARY_CATEGORIES: FunnelCategory[] = ["pending", "review", "interview", "rejected"];
 
+/**
+ * کارت‌های شمارش + یک نوارِ نسبتیِ باریک.
+ *
+ * راهنمای رنگیِ زیرِ نوار حذف شد: همان اعداد و برچسب‌ها یک‌بار در کارت‌ها و یک‌بار در چیپ‌های
+ * فیلتر تکرار می‌شدند؛ سه‌بار گفتنِ یک عدد صفحه را شلوغ می‌کند، نه گویا.
+ */
 function FunnelSummary({ funnel }: { funnel: ApplicationFunnel }) {
-  const segments = buildFunnelSegments(funnel);
-  const barSegments = segments.filter((s) => s.count > 0);
+  const barSegments = buildFunnelSegments(funnel).filter((s) => s.count > 0);
 
   return (
-    <section aria-label="قیفِ اپلای" className="space-y-5">
-      {/* کارت‌های شمارش */}
+    <section aria-label="خلاصه‌ی وضعیتِ درخواست‌ها" className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCell value={funnel.total} label="کلِ اپلای‌ها" textClass="text-brand" />
+        <StatCell value={funnel.total} label="کلِ درخواست‌ها" textClass="text-brand" />
         {SUMMARY_CATEGORIES.map((key) => (
           <StatCell
             key={key}
@@ -148,34 +183,20 @@ function FunnelSummary({ funnel }: { funnel: ApplicationFunnel }) {
         ))}
       </div>
 
-      {/* نوارِ نسبتیِ قیف + راهنما */}
       {barSegments.length > 0 ? (
-        <div className="space-y-3">
-          <div
-            className="flex h-3 w-full overflow-hidden rounded-full bg-foreground/5"
-            role="img"
-            aria-label="نمودارِ نسبتِ وضعیت‌های اپلای"
-          >
-            {barSegments.map((s) => (
-              <div
-                key={s.key}
-                className={cn("h-full", s.barClass)}
-                style={{ width: `${s.pct}%` }}
-                title={`${s.label}: ${toFaDigits(s.count)}`}
-              />
-            ))}
-          </div>
-          <ul className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
-            {barSegments.map((s) => (
-              <li key={s.key} className="flex items-center gap-1.5 text-muted">
-                <span className={cn("h-2.5 w-2.5 rounded-full", s.barClass)} aria-hidden />
-                <span>{s.label}</span>
-                <span className="ltr-nums font-semibold text-foreground">
-                  {toFaDigits(s.count)}
-                </span>
-              </li>
-            ))}
-          </ul>
+        <div
+          className="flex h-2.5 w-full overflow-hidden rounded-full bg-foreground/5"
+          role="img"
+          aria-label="نمودارِ نسبتِ وضعیت‌های درخواست"
+        >
+          {barSegments.map((s) => (
+            <div
+              key={s.key}
+              className={cn("h-full", s.barClass)}
+              style={{ width: `${s.pct}%` }}
+              title={`${s.label}: ${toFaDigits(s.count)}`}
+            />
+          ))}
         </div>
       ) : null}
     </section>
@@ -219,20 +240,19 @@ function ApplicationsList({ items, sort }: { items: ApplicationListRow[]; sort: 
       />
     );
   }
+  // در نمایشگرِ پهن دو ستون: ردیف‌ها کوتاه‌اند و یک ستونِ تنها، عرضِ صفحه را هدر می‌دهد.
   return (
-    <section className="space-y-4">
-      <ol className="space-y-3">
-        {items.map((item) => (
-          <li key={item.id}>
-            <ApplicationRow item={item} sort={sort} />
-          </li>
-        ))}
-      </ol>
-    </section>
+    <ol className="grid gap-3 xl:grid-cols-2">
+      {items.map((item) => (
+        <li key={item.id}>
+          <ApplicationRow item={item} sort={sort} />
+        </li>
+      ))}
+    </ol>
   );
 }
 
-/** یک ردیفِ درخواست — عنوان/شرکت/تاریخ + نشانِ وضعیتِ رنگی؛ کلِ کارت لینک به آگهیِ جابینجا. */
+/** یک ردیفِ درخواست — عنوان/شرکت/تاریخ + نشانِ وضعیت؛ کلِ کارت لینکِ *خروجی* به جابینجاست. */
 function ApplicationRow({ item, sort }: { item: ApplicationListRow; sort: string }) {
   const meta = CATEGORY_META[item.statusCategory] ?? CATEGORY_META.other;
   // تاریخِ ارسال از خودِ جابینجا می‌آید؛ `lastSeenAt` فقط زمانِ همگام‌سازیِ ماست و اگر
@@ -242,10 +262,21 @@ function ApplicationRow({ item, sort }: { item: ApplicationListRow; sort: string
 
   const body = (
     <Card padded interactive={Boolean(item.url)} className="h-full">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold">
-            {item.title ?? "آگهیِ بدونِ عنوان"}
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-bold">
+              {item.title ?? "آگهیِ بدونِ عنوان"}
+            </span>
+            {/* نشانه‌ی «این لینک از سایت خارج می‌شود» — بدونِ آن، کارت مرموزانه تبِ تازه باز
+                می‌کرد و کاربر فکر می‌کرد صفحه‌ی جزئیاتِ درونِ کارجو را می‌بیند. */}
+            {item.url ? (
+              <SquareArrowOutUpRight
+                strokeWidth={1.75}
+                className="h-3.5 w-3.5 shrink-0 text-muted"
+                aria-hidden
+              />
+            ) : null}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
             {item.company ? <span className="truncate">{item.company}</span> : null}
@@ -267,10 +298,12 @@ function ApplicationRow({ item, sort }: { item: ApplicationListRow; sort: string
             ) : null}
           </div>
         </div>
-        {/* متنِ خامِ جابینجا روی نشان می‌نشیند: دسته‌ی ما خلاصه است، ولی کاربر باید بتواند
-            عبارتِ دقیقِ خودِ سایت («تأیید برای مصاحبه») را هم ببیند. */}
-        <Badge tone={meta.tone} title={item.statusRaw ?? undefined}>
-          {item.statusRaw?.trim() || meta.label}
+        {/* برچسبِ یکدستِ ما روی نشان می‌نشیند؛ عبارتِ دقیقِ خودِ جابینجا در tooltip می‌ماند. */}
+        <Badge
+          tone={meta.tone}
+          title={item.statusRaw?.trim() ? `عبارتِ جابینجا: ${item.statusRaw.trim()}` : undefined}
+        >
+          {meta.label}
         </Badge>
       </div>
     </Card>
@@ -281,7 +314,8 @@ function ApplicationRow({ item, sort }: { item: ApplicationListRow; sort: string
       href={item.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="focus-ring block rounded-2xl"
+      aria-label={`${item.title ?? "آگهی"} — بازکردن در جابینجا (تبِ تازه)`}
+      className="focus-ring block h-full rounded-2xl"
     >
       {body}
     </a>
@@ -309,7 +343,7 @@ function formatFaDate(d: Date | null): string | null {
 
 function ApplicationsSkeleton() {
   return (
-    <div className="space-y-8" aria-hidden>
+    <div className="space-y-6" aria-hidden>
       {/* کارت‌های شمارش */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {Array.from({ length: 5 }).map((_, i) => (
@@ -323,7 +357,7 @@ function ApplicationsSkeleton() {
         ))}
       </div>
       {/* نوارِ قیف */}
-      <Skeleton className="h-3 w-full rounded-full" />
+      <Skeleton className="h-2.5 w-full rounded-full" />
       {/* فهرست */}
       <SkeletonList rows={4} />
     </div>

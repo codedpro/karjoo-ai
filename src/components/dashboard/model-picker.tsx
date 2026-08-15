@@ -1,36 +1,45 @@
 "use client";
 
 /**
- * مدل‌پیکرِ هوش مصنوعی (client component, RTL).
+ * انتخابگرِ «هوش مصنوعیِ کارجو» (client component, RTL).
  *
- * کاتالوگِ گروه‌بندی‌شده، انتخابِ اولیه و modelIdِ recommended از سرور (RSC) می‌آیند؛
- * این کامپوننت فقط تب‌های provider، انتخابِ مدل و ذخیره با PUT /api/ai-settings را
- * مدیریت می‌کند. سرور منبعِ حقیقت است: پاسخِ PUT modelIdِ واقعاً ذخیره‌شده را برمی‌گرداند
- * و ما همان را می‌نشانیم. هیچ داده‌ی حساسی اینجا نیست — فقط قیمت/برچسبِ عمومیِ مدل +
- * انتخابِ همین کاربر (که route به نشستِ همان کاربر مقید کرده).
+ * کاتالوگ، انتخابِ اولیه و modelIdِ پیشنهادی از سرور (RSC) می‌آیند؛ این کامپوننت فقط
+ * انتخاب و ذخیره با PUT /api/ai-settings را مدیریت می‌کند. سرور منبعِ حقیقت است: پاسخِ
+ * PUT همان modelIdِ واقعاً ذخیره‌شده را برمی‌گرداند و ما همان را می‌نشانیم. هیچ داده‌ی
+ * حساسی این‌جا نیست — فقط برچسب/قیمتِ عمومیِ مدل + انتخابِ همین کاربر.
+ *
+ * بازنویسیِ ضدِ اصطلاحاتِ فنی — مخاطب کارجوست، نه مهندسِ AI:
+ *   • **تب‌های provider حذف شد.** «OpenAI / Anthropic / Google» برای کارجو معنایی ندارد و
+ *     صفحه را با یک تصمیمِ بی‌ربط شروع می‌کرد. حالا یک فهرستِ تخت است و نامِ ارائه‌دهنده
+ *     فقط در جزئیاتِ فنی می‌ماند.
+ *   • **پیشنهادِ کارجو اول و بزرگ.** اکثریتِ کاربران نباید چیزی را عوض کنند؛ صفحه همین
+ *     را می‌گوید و بقیه‌ی گزینه‌ها بعد از آن می‌آیند.
+ *   • **توصیف با نتیجه، نه با مشخصات.** هر مدل یک جمله دارد: دقیق‌تر / سریع‌تر / ارزان‌تر /
+ *     فارسیِ بهتر. هزینه به‌صورتِ نسبی («کم/متوسط/زیاد») نشان داده می‌شود، چون «تومان به‌ازای
+ *     هر ۱۰۰۰ توکن» عددی است که کارجو نمی‌تواند با آن تصمیم بگیرد.
+ *   • **عددِ خام حذف نشد، فقط ثانویه شد.** قیمتِ دقیق، شناسه‌ی مدل، ارائه‌دهنده و پنجره‌ی
+ *     متن داخلِ `<details>`ِ «جزئیاتِ فنی» می‌مانند برای کسی که واقعاً می‌خواهد.
  */
 import { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 
-import { IconCheck, IconPuzzle } from "./icons";
-import { Badge, Button, EmptyState, cn, toFaDigits } from "./ui";
+import { IconBolt, IconCheck, IconSparkle } from "./icons";
+import { Badge, Button, Card, EmptyState, cn, toFaDigits } from "./ui";
 import { MODEL_TAGS, MODEL_TAG_ORDER } from "./labels";
 
-/** یک مدلِ کاتالوگ که UI لازم دارد (زیرمجموعه‌ی CatalogModel). */
+/** یک مدلِ کاتالوگ که UI لازم دارد (زیرمجموعه‌ی CatalogModel + برچسبِ ارائه‌دهنده). */
 export interface PickerModel {
   modelId: string;
   displayName: string;
+  /** نامِ نمایشیِ ارائه‌دهنده — فقط در «جزئیاتِ فنی» دیده می‌شود. */
+  providerLabel: string;
   inputPer1kToman: number;
   outputPer1kToman: number;
   contextWindow: number | null;
   tags: string[];
 }
 
-/** یک گروهِ provider: شناسه + برچسبِ نمایشی + مدل‌های زیرِ آن. */
-export interface PickerProviderGroup {
-  provider: string;
-  label: string;
-  models: PickerModel[];
-}
+/* ───────────────────────────  کمک‌کننده‌های نمایشی  ─────────────────────────── */
 
 /** قیمتِ تومان را با جداکننده‌ی هزارگان و ارقامِ فارسی نمایش می‌دهد. */
 function formatToman(value: number): string {
@@ -50,37 +59,91 @@ function formatContext(tokens: number | null): string | null {
   return `${toFaDigits(tokens)} توکن`;
 }
 
+type CostTier = "low" | "mid" | "high";
+
+const COST_TIER_LABEL: Record<CostTier, { label: string; tone: "green" | "amber" | "rose" }> = {
+  low: { label: "هزینه‌ی کم", tone: "green" },
+  mid: { label: "هزینه‌ی متوسط", tone: "amber" },
+  high: { label: "هزینه‌ی بالا", tone: "rose" },
+};
+
+/**
+ * هزینه‌ی *نسبی* هر مدل نسبت به بقیه‌ی کاتالوگ (سه‌بخشی).
+ *
+ * چرا نسبی؟ چون عددِ مطلقِ «تومان/۱۰۰۰ توکن» بدونِ دانستنِ مصرف بی‌معناست؛ ولی «این از آن
+ * ارزان‌تر است» دقیقاً همان چیزی است که کاربر می‌خواهد بداند. مبنا مجموعِ ورودی+خروجی است
+ * (تقریبِ ساده و پایدار). اگر همه هم‌قیمت باشند، همه «متوسط» می‌شوند.
+ */
+function buildCostTiers(models: PickerModel[]): Map<string, CostTier> {
+  const blended = models.map((m) => ({
+    id: m.modelId,
+    price: m.inputPer1kToman + m.outputPer1kToman,
+  }));
+  const prices = [...new Set(blended.map((b) => b.price))].sort((a, b) => a - b);
+  const tiers = new Map<string, CostTier>();
+  if (prices.length < 3) {
+    for (const b of blended) tiers.set(b.id, "mid");
+    return tiers;
+  }
+  const lowCut = prices[Math.floor((prices.length - 1) / 3)];
+  const midCut = prices[Math.floor((2 * (prices.length - 1)) / 3)];
+  for (const b of blended) {
+    tiers.set(b.id, b.price <= lowCut ? "low" : b.price <= midCut ? "mid" : "high");
+  }
+  return tiers;
+}
+
+/**
+ * یک جمله‌ی «این برای من چه معنایی دارد؟» از روی تگ‌های مدل. ترتیب اهمیت دارد: بارزترین
+ * ویژگی برنده می‌شود تا هر کارت *یک* پیام بدهد، نه فهرستی از صفت‌ها.
+ */
+function benefitLine(tags: string[], isRecommended: boolean): string {
+  if (isRecommended || tags.includes("recommended")) {
+    return "تعادلِ خوبِ دقت و هزینه — برای اغلبِ کاربران بهترین انتخاب.";
+  }
+  if (tags.includes("premium")) return "دقیق‌ترین نتیجه‌ها؛ در عوض گران‌تر است.";
+  if (tags.includes("persian")) return "فارسی را روان‌تر می‌نویسد و بهتر می‌فهمد.";
+  if (tags.includes("fast")) return "سریع‌تر جواب می‌دهد؛ برای حجمِ زیادِ آگهی خوب است.";
+  if (tags.includes("cheap")) return "کم‌هزینه‌ترین گزینه برای مصرفِ روزانه‌ی زیاد.";
+  return "گزینه‌ی جایگزین؛ اگر پیشنهادِ کارجو مناسبتان نبود امتحانش کنید.";
+}
+
+/* ─────────────────────────────────  پیکر  ───────────────────────────────── */
+
 export function ModelPicker({
-  groups,
+  models,
   initialSelectedModelId,
   recommendedModelId,
+  /** انتخابِ فعلی، انتخابِ صریحِ کاربر است یا پیش‌فرضِ سیستم؟ */
+  isDefaultSelection,
 }: {
-  groups: PickerProviderGroup[];
+  models: PickerModel[];
   initialSelectedModelId: string | null;
   recommendedModelId: string | null;
+  isDefaultSelection: boolean;
 }) {
-  // تبِ فعال: provider مدلِ انتخابی، وگرنه اولین گروه.
-  const initialProvider = useMemo(() => {
-    const owning = groups.find((g) =>
-      g.models.some((m) => m.modelId === initialSelectedModelId),
-    );
-    return owning?.provider ?? groups[0]?.provider ?? null;
-  }, [groups, initialSelectedModelId]);
-
-  const [activeProvider, setActiveProvider] = useState<string | null>(
-    initialProvider,
-  );
   const [selected, setSelected] = useState<string | null>(initialSelectedModelId);
   const [savedModelId, setSavedModelId] = useState<string | null>(
     initialSelectedModelId,
   );
+  const [touched, setTouched] = useState(false);
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const activeGroup = useMemo(
-    () => groups.find((g) => g.provider === activeProvider) ?? groups[0] ?? null,
-    [groups, activeProvider],
-  );
+  const costTiers = useMemo(() => buildCostTiers(models), [models]);
+
+  // پیشنهادِ کارجو اول؛ بقیه به ترتیبِ ارزان‌به‌گران تا مقایسه طبیعی باشد.
+  const { featured, others } = useMemo(() => {
+    const feat = models.find((m) => m.modelId === recommendedModelId) ?? null;
+    const rest = models
+      .filter((m) => m.modelId !== feat?.modelId)
+      .sort(
+        (a, b) =>
+          a.inputPer1kToman + a.outputPer1kToman -
+          (b.inputPer1kToman + b.outputPer1kToman),
+      );
+    return { featured: feat, others: rest };
+  }, [models, recommendedModelId]);
 
   async function select(modelId: string) {
     if (modelId === savedModelId || pendingModelId) return;
@@ -106,6 +169,7 @@ export function ModelPicker({
       const applied = data.modelId ?? modelId;
       setSelected(applied);
       setSavedModelId(applied);
+      setTouched(true);
     } catch {
       setSelected(savedModelId);
       setError("اتصال برقرار نشد. اینترنت را بررسی کنید.");
@@ -114,19 +178,21 @@ export function ModelPicker({
     }
   }
 
-  if (groups.length === 0) {
+  if (models.length === 0) {
     return (
       <EmptyState
-        icon={<IconPuzzle />}
-        title="هنوز مدلی در دسترس نیست"
-        body="کاتالوگِ مدل‌ها هنوز همگام نشده است. کمی بعد دوباره سر بزنید."
+        icon={<IconSparkle />}
+        title="فهرستِ مدل‌ها هنوز آماده نیست"
+        body="تا وقتی این فهرست پر شود، کارجو با مدلِ پیش‌فرض کار می‌کند و چیزی از کارِ شما زمین نمی‌ماند. کمی بعد دوباره سر بزنید."
       />
     );
   }
 
+  // «پیش‌فرض» فقط تا وقتی است که کاربر خودش چیزی انتخاب نکرده باشد.
+  const stillDefault = isDefaultSelection && !touched;
+
   return (
-    <div className="space-y-6">
-      {/* وضعیتِ خطا (انتخاب به‌صورتِ خودکار ذخیره می‌شود) */}
+    <div className="space-y-8">
       {error ? (
         <div
           role="alert"
@@ -136,55 +202,54 @@ export function ModelPicker({
         </div>
       ) : null}
 
-      {/* تب‌های provider */}
-      <div
-        role="tablist"
-        aria-label="ارائه‌دهنده‌ی هوش مصنوعی"
-        className="flex flex-wrap gap-2"
-      >
-        {groups.map((g) => {
-          const isActive = g.provider === activeProvider;
-          const hasSelected = g.models.some((m) => m.modelId === selected);
-          return (
-            <button
-              key={g.provider}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setActiveProvider(g.provider)}
-              className={cn(
-                "focus-ring inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-bold transition-[background-color,border-color,transform] duration-150 active:translate-y-px",
-                isActive
-                  ? "border-brand/50 bg-brand/10 text-brand"
-                  : "border-border bg-card text-muted hover:border-foreground/20 hover:text-foreground",
-              )}
-            >
-              {g.label}
-              {hasSelected ? (
-                <span
-                  className="h-1.5 w-1.5 rounded-full bg-brand"
-                  aria-hidden
-                />
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* کارت‌های مدلِ گروهِ فعال */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        {activeGroup?.models.map((model) => (
+      {/* ── پیشنهادِ کارجو (کارتِ شاخص) ── */}
+      {featured ? (
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-base font-bold">
+            <IconSparkle className="h-4 w-4 text-brand" />
+            پیشنهادِ کارجو
+          </h2>
           <ModelCard
-            key={model.modelId}
-            model={model}
-            isSelected={model.modelId === selected}
-            isSaved={model.modelId === savedModelId}
-            isRecommended={model.modelId === recommendedModelId}
-            isPending={model.modelId === pendingModelId}
-            onSelect={() => select(model.modelId)}
+            model={featured}
+            featured
+            costTier={costTiers.get(featured.modelId) ?? "mid"}
+            isSelected={featured.modelId === selected}
+            isSaved={featured.modelId === savedModelId}
+            isRecommended
+            isDefaultBadge={stillDefault && featured.modelId === savedModelId}
+            isPending={featured.modelId === pendingModelId}
+            onSelect={() => select(featured.modelId)}
           />
-        ))}
-      </div>
+        </section>
+      ) : null}
+
+      {/* ── بقیه‌ی گزینه‌ها ── */}
+      {others.length > 0 ? (
+        <section className="space-y-3">
+          <h2 className="flex items-center gap-2 text-base font-bold">
+            <IconBolt className="h-4 w-4 text-muted" />
+            گزینه‌های دیگر
+            <span className="text-xs font-normal text-muted">
+              (فقط اگر دلیلِ مشخصی دارید)
+            </span>
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {others.map((model) => (
+              <ModelCard
+                key={model.modelId}
+                model={model}
+                costTier={costTiers.get(model.modelId) ?? "mid"}
+                isSelected={model.modelId === selected}
+                isSaved={model.modelId === savedModelId}
+                isRecommended={false}
+                isDefaultBadge={stillDefault && model.modelId === savedModelId}
+                isPending={model.modelId === pendingModelId}
+                onSelect={() => select(model.modelId)}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -193,20 +258,28 @@ export function ModelPicker({
 
 function ModelCard({
   model,
+  costTier,
   isSelected,
   isSaved,
   isRecommended,
+  isDefaultBadge,
   isPending,
+  featured = false,
   onSelect,
 }: {
   model: PickerModel;
+  costTier: CostTier;
   isSelected: boolean;
   isSaved: boolean;
   isRecommended: boolean;
+  /** انتخابِ فعلی، پیش‌فرضِ سیستم است (نه انتخابِ صریحِ کاربر). */
+  isDefaultBadge: boolean;
   isPending: boolean;
+  featured?: boolean;
   onSelect: () => void;
 }) {
   const context = formatContext(model.contextWindow);
+  const cost = COST_TIER_LABEL[costTier];
   // تگ‌ها را به ترتیبِ اهمیت مرتب کن (و ناشناخته‌ها را در انتها نگه دار).
   const orderedTags = useMemo(() => {
     const known = MODEL_TAG_ORDER.filter((t) => model.tags.includes(t));
@@ -217,67 +290,75 @@ function ModelCard({
   }, [model.tags]);
 
   return (
-    <div
+    <Card
+      padded
       className={cn(
-        "relative flex flex-col rounded-2xl border bg-card p-5 shadow-xs transition-[border-color,box-shadow]",
-        isSelected
-          ? "border-brand/60 ring-1 ring-brand/30"
-          : isRecommended
-            ? "border-brand/30 hover:border-brand/50"
-            : "border-border hover:border-foreground/20",
+        "flex flex-col",
+        isSelected && "border-brand/60 ring-1 ring-brand/30",
+        featured && "bg-brand/4",
       )}
     >
-      {/* سرِ کارت: نام + نشانِ انتخاب‌شده/پیشنهادی */}
+      {/* سرِ کارت: نامِ خوانا + وضعیتِ انتخاب */}
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-base font-bold" title={model.displayName}>
-            {model.displayName}
-          </h3>
-          <p
-            className="ltr-nums mt-0.5 truncate text-xs text-muted"
-            dir="ltr"
-            title={model.modelId}
-          >
-            {model.modelId}
-          </p>
-        </div>
+        <h3
+          className={cn(
+            "text-balance font-bold",
+            featured ? "text-lg" : "text-base",
+          )}
+        >
+          {model.displayName}
+        </h3>
         {isSaved ? (
           <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand px-2.5 py-0.5 text-xs font-bold text-brand-foreground">
-            انتخاب‌شده
+            {isDefaultBadge ? "پیش‌فرضِ فعال" : "انتخابِ شما"}
             <IconCheck className="h-3.5 w-3.5" />
           </span>
-        ) : isRecommended ? (
-          <Badge tone="brand">پیشنهادی</Badge>
         ) : null}
       </div>
 
-      {/* تگ‌ها */}
-      {orderedTags.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {orderedTags.map((tag) => {
-            const meta = MODEL_TAGS[tag];
-            return (
-              <Badge key={tag} tone={meta?.tone ?? "muted"} title={meta?.title}>
-                {meta?.label ?? tag}
-              </Badge>
-            );
-          })}
-        </div>
-      ) : null}
+      {/* یک جمله: این مدل برای کاربر یعنی چه */}
+      <p className="mt-2 text-pretty text-sm leading-7 text-muted">
+        {benefitLine(model.tags, isRecommended)}
+      </p>
 
-      {/* قیمت + پنجره‌ی متن */}
-      <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-        <PriceCell label="ورودی / هزار توکن" value={model.inputPer1kToman} />
-        <PriceCell label="خروجی / هزار توکن" value={model.outputPer1kToman} />
-      </dl>
-      {context ? (
-        <p className="mt-3 text-xs text-muted">
-          پنجره‌ی متن:{" "}
-          <span className="ltr-nums font-medium text-foreground">{context}</span>
-        </p>
-      ) : null}
+      {/* نشان‌های خوانا: هزینه‌ی نسبی + ویژگی‌ها */}
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        <Badge tone={cost.tone}>{cost.label}</Badge>
+        {orderedTags.map((tag) => {
+          const meta = MODEL_TAGS[tag];
+          return (
+            <Badge key={tag} tone={meta?.tone ?? "muted"} title={meta?.title}>
+              {meta?.label ?? tag}
+            </Badge>
+          );
+        })}
+      </div>
 
-      {/* اکشنِ انتخاب */}
+      {/* جزئیاتِ فنی — عمداً بسته و ثانویه؛ برای کاربرِ کنجکاو، نه برای تصمیمِ اصلی */}
+      <details className="group mt-4 rounded-xl border border-border bg-surface/50">
+        <summary className="focus-ring flex cursor-pointer list-none items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-medium text-muted [&::-webkit-details-marker]:hidden">
+          جزئیاتِ فنی و قیمتِ دقیق
+          <ChevronDown
+            className="me-auto h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-open:rotate-180"
+            aria-hidden
+          />
+        </summary>
+        <dl className="space-y-2 border-t border-border/70 px-3.5 py-3 text-xs">
+          <DetailRow label="ارائه‌دهنده" value={model.providerLabel} />
+          <DetailRow label="شناسه‌ی مدل" value={model.modelId} ltr />
+          <DetailRow
+            label="ورودی (هر ۱۰۰۰ توکن)"
+            value={`${formatToman(model.inputPer1kToman)} تومان`}
+          />
+          <DetailRow
+            label="خروجی (هر ۱۰۰۰ توکن)"
+            value={`${formatToman(model.outputPer1kToman)} تومان`}
+          />
+          {context ? <DetailRow label="پنجره‌ی متن" value={context} /> : null}
+        </dl>
+      </details>
+
+      {/* اکشنِ انتخاب — همیشه در کفِ کارت تا در شبکه هم‌تراز بماند */}
       <Button
         type="button"
         onClick={onSelect}
@@ -289,21 +370,32 @@ function ModelCard({
         {isPending
           ? "در حال ذخیره…"
           : isSaved
-            ? "مدلِ فعالِ شما"
-            : "انتخابِ این مدل"}
+            ? "همین فعال است"
+            : "استفاده از این مدل"}
       </Button>
-    </div>
+    </Card>
   );
 }
 
-/** یک سلولِ قیمت (تومان به‌ازای هر ۱۰۰۰ توکن). */
-function PriceCell({ label, value }: { label: string; value: number }) {
+/** یک ردیفِ جزئیاتِ فنی (برچسب/مقدار). */
+function DetailRow({
+  label,
+  value,
+  ltr = false,
+}: {
+  label: string;
+  value: string;
+  ltr?: boolean;
+}) {
   return (
-    <div className="rounded-xl bg-foreground/5 px-3 py-2.5">
-      <dt className="text-pretty text-xs leading-5 text-muted">{label}</dt>
-      <dd className="ltr-nums mt-0.5 whitespace-nowrap font-bold">
-        {formatToman(value)}{" "}
-        <span className="text-xs font-normal text-muted">تومان</span>
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-muted">{label}</dt>
+      <dd
+        className={cn("min-w-0 truncate font-medium", ltr && "ltr-nums")}
+        dir={ltr ? "ltr" : undefined}
+        title={value}
+      >
+        {value}
       </dd>
     </div>
   );

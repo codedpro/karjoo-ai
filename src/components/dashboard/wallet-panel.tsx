@@ -1,23 +1,38 @@
 "use client";
 
 /**
- * پنلِ کیف‌پول (client component) — موجودیِ کیف‌پولِ *واحدِ 1xAi* + نشانِ پلن.
+ * پنلِ کیف‌پول (client component) — موجودیِ کیف‌پولِ *واحدِ 1xAi* + مسیرِ روشنِ شارژ.
  *
- * «یک انسان، یک موجودی»: پول در 1xai زندگی می‌کند؛ کارجو فقط نمایش می‌دهد. فرمِ
- * کارت‌به‌کارت/فهرستِ درخواست‌ها حذف شده — شارژ *فقط* در داشبوردِ 1xai انجام می‌شود
- * (لینکِ https://1xai.ir/topup). هیچ توکن/رازی اینجا نیست؛ فقط کوکیِ نشستِ httpOnly.
+ * «یک انسان، یک موجودی»: پول در 1xai زندگی می‌کند؛ کارجو فقط نمایش می‌دهد و هیچ پرداختی
+ * نمی‌گیرد (جریانِ کارت‌به‌کارتِ درون‌برنامه‌ای بازنشسته شده و `POST /api/wallet/topup`
+ * الان ۴۱۰ برمی‌گرداند).
+ *
+ * تصمیمِ اصلیِ این فایل: «شارژ در 1xai انجام می‌شود» به‌تنهایی یک بن‌بست است — وسطِ یک
+ * جریانِ پرداخت، کاربر را به جایی می‌فرستد بدونِ اینکه بگوید آن‌جا چه می‌بیند و بعدش چه.
+ * پس مسیر در سه گامِ شمرده آمده (ورود با همان حساب → پرداختِ آنلاین یا کارت‌به‌کارت →
+ * بازگشت) و دکمه‌ی «به‌روزرسانیِ موجودی» همان‌جاست تا کاربر بعدِ بازگشت نتیجه را ببیند.
  *
  * `unavailable`: اگر سرور نتوانست موجودیِ واحد را بخواند (svc در دسترس نبود)، به‌جای
  * موجودیِ جعلی، حالتِ «کیف‌پول موقتاً در دسترس نیست» رندر می‌شود (تنزلِ نمایشی).
  */
-import { IconWallet } from "./icons";
-import { Badge, ButtonLink, Card, cn, toFaDigits } from "./ui";
+import { useRouter } from "next/navigation";
+import { useTransition } from "react";
+
+import { IconRefresh, IconWallet } from "./icons";
+import { Badge, Button, ButtonLink, Card, cn, toFaDigits } from "./ui";
 import { PLAN_BADGE } from "./wallet-labels";
 import { formatToman } from "./wallet-format";
 import type { Plan } from "@/db/schema";
 
 /** نشانیِ یکتای شارژِ کیف‌پولِ واحد (خانواده‌ی 1xAi). */
 const ONEXAI_TOPUP_URL = "https://1xai.ir/topup";
+
+/** گام‌های شارژ — کوتاه و به‌ترتیبِ انجام؛ کاربر باید بداند بعدِ کلیک چه می‌بیند. */
+const TOPUP_STEPS = [
+  "در 1xai با همان حسابی که به کارجو وارد شده‌ای وارد شو.",
+  "مبلغ را با پرداختِ آنلاین یا کارت‌به‌کارت شارژ کن.",
+  "به همین صفحه برگرد و موجودی را به‌روزرسانی کن.",
+];
 
 export function WalletPanel({
   initialBalanceToman,
@@ -29,6 +44,8 @@ export function WalletPanel({
   /** موجودیِ واحد خوانده نشد (svc در دسترس نیست) → حالتِ تنزل‌یافته. */
   unavailable?: boolean;
 }) {
+  const router = useRouter();
+  const [refreshing, startRefresh] = useTransition();
   const planBadge = PLAN_BADGE[plan] ?? PLAN_BADGE.payg;
   const lowBalance = !unavailable && initialBalanceToman <= 0;
 
@@ -77,24 +94,51 @@ export function WalletPanel({
         </p>
       ) : lowBalance ? (
         <p className="mt-4 text-pretty rounded-xl border border-rose-500/30 bg-rose-500/5 px-3.5 py-2.5 text-xs leading-6 text-rose-600 dark:text-rose-400">
-          موجودیِ شما صفر است. برای استفاده از سرویس‌های هوش مصنوعی (تطبیق، انگیزه‌نامه،
-          پردازشِ رزومه) ابتدا کیف‌پول را در 1xai شارژ کنید.
+          موجودی صفر است — تا شارژ نشود، تطبیق، انگیزه‌نامه و رزومه‌ی سفارشی کار نمی‌کنند.
         </p>
       ) : null}
 
-      {/* ───── شارژ — فقط در داشبوردِ 1xai ───── */}
+      {/* ───── مسیرِ شارژ: سه گامِ روشن + اکشنِ اصلی ───── */}
       <div className="mt-5 border-t border-border pt-5">
-        <p className="text-pretty text-xs leading-6 text-muted">
-          کیف‌پولِ شما همان کیف‌پولِ 1xAi است — یک موجودی برای همه‌ی محصولات.
-        </p>
+        <h3 className="text-sm font-semibold">شارژِ کیف‌پول</h3>
+        <ol className="mt-2.5 space-y-1.5">
+          {TOPUP_STEPS.map((step, i) => (
+            <li key={step} className="flex gap-2 text-pretty text-xs leading-6 text-muted">
+              <span
+                className="ltr-nums mt-1 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-brand/10 text-[0.65rem] font-bold text-brand"
+                aria-hidden
+              >
+                {toFaDigits(i + 1)}
+              </span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+
         <ButtonLink
           href={ONEXAI_TOPUP_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-3 w-full"
+          className="mt-4 w-full"
         >
-          شارژِ کیف‌پول در 1xai ↗
+          رفتن به صفحه‌ی شارژِ 1xai ↗
         </ButtonLink>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => startRefresh(() => router.refresh())}
+          disabled={refreshing}
+          className="mt-2 w-full"
+        >
+          <IconRefresh className={cn("h-4 w-4", refreshing && "animate-spin")} />
+          {refreshing ? "در حالِ به‌روزرسانی…" : "به‌روزرسانیِ موجودی"}
+        </Button>
+
+        <p className="mt-3 text-pretty text-xs leading-6 text-muted">
+          کیف‌پولِ کارجو و 1xAi یکی است — یک موجودی برای همه‌ی محصولات.
+        </p>
       </div>
     </Card>
   );

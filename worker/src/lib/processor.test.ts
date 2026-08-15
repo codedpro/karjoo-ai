@@ -116,20 +116,6 @@ describe("processJob — skip / fail branches", () => {
     expect(report.reason).toContain("no apply-spec");
   });
 
-  it("fails (and closes the browser) when a required selector is missing", async () => {
-    // A required NON-submit control is absent → genuine failure. (A missing *submit*
-    // control is deliberately 'skipped' instead — see the on-site-apply test below.)
-    const { launcher, record } = makeFakeBrowser({
-      selectors: { "#apply-form": { waitForThrows: true } },
-    });
-    const report = await processJob(jobinjaJob(), baseOpts(launcher));
-    expect(report.status).toBe("failed");
-    expect(report.reason).toContain("waitFor missing");
-    // Even on failure the session is discarded.
-    expect(record.contextClosed).toBe(1);
-    expect(record.browserClosed).toBe(1);
-  });
-
   it("fails on an unparseable session without launching a browser", async () => {
     const { launcher, record } = makeFakeBrowser();
     const report = await processJob(jobinjaJob({ session: "not-json{" }), baseOpts(launcher));
@@ -164,6 +150,30 @@ describe("processJob — §10 session is NEVER logged", () => {
 });
 
 describe("runPlan — confirm handling", () => {
+  it("fails when a required non-apply-form selector is missing", async () => {
+    const { launcher } = makeFakeBrowser({
+      selectors: { ".required-panel": { waitForThrows: true } },
+    });
+    const browser = await launcher({ headless: true, executablePath: null });
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+
+    const outcome = await runPlan(
+      page,
+      {
+        board: "jobinja",
+        jobUrl: LISTING,
+        maturity: "best-effort",
+        submitSelector: "#apply-form input[type='submit']",
+        steps: [{ kind: "waitFor", selector: ".required-panel" }],
+      },
+      5000,
+    );
+
+    expect(outcome.status).toBe("failed");
+    expect(outcome.reason).toContain("waitFor missing: .required-panel");
+  });
+
   it("reports confirmed:false when the success selector is absent", async () => {
     const { launcher } = makeFakeBrowser({
       selectors: { ".js-flashMessageMsg, .c-flashMessage__message": { count: 0 } },
@@ -175,6 +185,37 @@ describe("runPlan — confirm handling", () => {
     const outcome = await runPlan(page, plan, 5000);
     expect(outcome.status).toBe("submitted");
     expect(outcome.confirmed).toBe(false);
+  });
+
+  it("reports 'skipped' when Jobinja has no apply form or the user already applied", async () => {
+    const { launcher } = makeFakeBrowser({
+      selectors: { "#apply-form": { waitForThrows: true } },
+    });
+    const browser = await launcher({ headless: true, executablePath: null });
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const plan = buildApplyPlan(jobinjaJob())!;
+
+    const outcome = await runPlan(page, plan, 5000);
+
+    expect(outcome.status).toBe("skipped");
+    expect(outcome.reason).toMatch(/no on-site apply form|already applied/i);
+  });
+
+  it("reports 'failed' when Jobinja shows a security check instead of the listing", async () => {
+    const { launcher } = makeFakeBrowser({
+      bodyText: "Checking your browser before accessing the website... Please complete the security check before accessing the website.",
+      selectors: { "#apply-form": { waitForThrows: true } },
+    });
+    const browser = await launcher({ headless: true, executablePath: null });
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const plan = buildApplyPlan(jobinjaJob())!;
+
+    const outcome = await runPlan(page, plan, 5000);
+
+    expect(outcome.status).toBe("failed");
+    expect(outcome.reason).toContain("jobinja_security_check");
   });
 
   it("reports 'skipped' (not 'failed') when the listing has no on-site submit control", async () => {
@@ -195,6 +236,26 @@ describe("runPlan — confirm handling", () => {
 
     expect(outcome.status).toBe("skipped");
     expect(outcome.reason).toMatch(/no on-site apply form/i);
+  });
+
+  it("reports 'skipped' when Jobinja submit is disabled", async () => {
+    const { launcher } = makeFakeBrowser({
+      selectors: {
+        "#apply-form input[type='submit'], #apply-form button[type='submit']": {
+          throwOn: "click",
+          throwMessage: "locator.click: Element is not enabled",
+        },
+      },
+    });
+    const browser = await launcher({ headless: true, executablePath: null });
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const plan = buildApplyPlan(jobinjaJob())!;
+
+    const outcome = await runPlan(page, plan, 5000);
+
+    expect(outcome.status).toBe("skipped");
+    expect(outcome.reason).toMatch(/submit button is disabled/i);
   });
 
   it("falls back to the profile résumé (NOT 'failed') when a job has a custom résumé but no upload radio", async () => {

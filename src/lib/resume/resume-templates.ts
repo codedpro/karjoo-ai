@@ -88,7 +88,7 @@ export interface ResumeTemplateData {
     company?: string | null;
     title?: string | null;
     period?: string | null;
-    /** یک جمله‌ی زمینه پیش از bulletها — شرکت/محصول/مقیاس/دامنه‌ی نقش. */
+    /** یک جمله‌ی زمینه پیش از bulletها — کاری که کاربر در آن نقش انجام داد. */
     context?: string | null;
     bullets: string[];
   }[];

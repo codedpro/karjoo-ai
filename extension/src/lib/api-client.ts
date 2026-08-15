@@ -31,6 +31,9 @@ import type {
   ApplyResultReport,
   AutoApplySettings,
   PlanTier,
+  BrowserDiscoveredListing,
+  ExtensionDiscoveryConfig,
+  ExtensionRunOverview,
 } from "@ext/lib/types";
 import type { ImportPayloadBody } from "@ext/lib/import-payload";
 import type { SessionRefreshBody } from "@ext/lib/session-snapshot";
@@ -256,10 +259,17 @@ export class KarjooApi {
    * Server returns `{ count, items: ClaimedApplyItem[] }`; we map each item onto
    * the extension's ApplyQueueItem render shape.
    */
-  async claimQueue(limit?: number): Promise<{ items: ApplyQueueItem[]; reason?: "disabled" | "quota_exceeded" }> {
+  async claimQueue(
+    limit?: number,
+    executorId?: string,
+  ): Promise<{ items: ApplyQueueItem[]; reason?: "disabled" | "quota_exceeded" }> {
+    const body = {
+      ...(typeof limit === "number" ? { limit } : {}),
+      ...(executorId ? { executorId } : {}),
+    };
     const res = await this.request<ServerClaimResponse>("/api/apply-queue/claim", {
       method: "POST",
-      ...(typeof limit === "number" ? { body: JSON.stringify({ limit }) } : {}),
+      ...(Object.keys(body).length > 0 ? { body: JSON.stringify(body) } : {}),
     });
     return {
       items: (res.items ?? []).map(toApplyQueueItem),
@@ -337,11 +347,20 @@ export class KarjooApi {
    * is in the PATH; the server's result schema is `.strict()` and rejects an `id`
    * in the body — so we send only { status, externalRef?, reason? }.
    */
-  async reportResult(report: ApplyResultReport): Promise<{ ok: boolean; status: number }> {
-    const body: { status: ApplyResultReport["status"]; externalRef?: string; reason?: string } = {
+  async reportResult(
+    report: ApplyResultReport,
+    executorId?: string,
+  ): Promise<{ ok: boolean; status: number }> {
+    const body: {
+      status: ApplyResultReport["status"];
+      externalRef?: string;
+      reason?: string;
+      executorId?: string;
+    } = {
       status: report.status,
       ...(report.externalRef ? { externalRef: report.externalRef } : {}),
       ...(report.reason ? { reason: report.reason } : {}),
+      ...(executorId ? { executorId } : {}),
     };
     // Use the raw request so a 429 (daily-cap reached) does NOT throw — the
     // background runner reads `status` to stop the drain gracefully. Other
@@ -358,6 +377,55 @@ export class KarjooApi {
       throw new ApiError(status, msg);
     }
     return { ok, status };
+  }
+
+  async getExecutionRun(): Promise<ExtensionRunOverview> {
+    return this.request<ExtensionRunOverview>("/api/extension/run", { method: "GET" });
+  }
+
+  async mutateExecutionRun(body: {
+    action: "start" | "takeover" | "pause" | "stop" | "heartbeat" | "progress" | "block" | "complete";
+    executorId: string;
+    backgroundEnabled?: boolean;
+    currentTaskId?: string | null;
+    taskId?: string;
+    reason?: string;
+    progress?: Record<string, unknown>;
+  }): Promise<ExtensionRunOverview> {
+    return this.request<ExtensionRunOverview>("/api/extension/run", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async getDiscoveryConfig(): Promise<ExtensionDiscoveryConfig> {
+    return this.request<ExtensionDiscoveryConfig>("/api/extension/discovery", { method: "GET" });
+  }
+
+  async importDiscoveredListings(
+    listings: BrowserDiscoveredListing[],
+  ): Promise<{
+    ingested: number;
+    queued: number;
+    alreadyQueued: number;
+    stale: number;
+    genderFiltered: number;
+    errors: string[];
+  }> {
+    return this.request<{
+      ingested: number;
+      queued: number;
+      alreadyQueued: number;
+      stale: number;
+      genderFiltered: number;
+      errors: string[];
+    }>(
+      "/api/extension/discovery",
+      {
+        method: "POST",
+        body: JSON.stringify({ board: "jobinja", listings }),
+      },
+    );
   }
 
   /**

@@ -23,6 +23,10 @@ import { recordResult } from "@/lib/apply/extension-queue";
 import { recordAutoApplyAudit } from "@/lib/apply/auto-apply";
 import { assertApplyQuotaForUser } from "@/lib/billing/apply-quota-guard";
 import { ApplyQuotaError } from "@/lib/billing/errors";
+import {
+  assertExtensionExecutionOwner,
+  ExecutionOwnershipError,
+} from "@/lib/apply/execution-run";
 
 // به DB دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -48,7 +52,16 @@ export async function POST(
     //      کاربرِ free حداکثر ۱۰۰ اپلای/روز دارد؛ پلن‌های پولی نامحدودند (بدونِ کوئریِ شمارش).
     //      گزارشِ skipped/failed سهمیه نمی‌سوزاند (تا کاربر بتواند همیشه نتیجه را گزارش کند).
     //      ApplyQuotaError → ۴۲۹ با پیامِ فارسیِ روشن.
-    if (body.status === "submitted") {
+    if (body.executorId) {
+      try {
+        await assertExtensionExecutionOwner(userId, body.executorId);
+      } catch (error) {
+        if (error instanceof ExecutionOwnershipError) {
+          return json({ error: error.message, code: error.code }, 409);
+        }
+        throw error;
+      }
+    } else if (body.status === "submitted") {
       try {
         await assertApplyQuotaForUser(userId);
       } catch (err) {

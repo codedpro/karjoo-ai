@@ -50,6 +50,9 @@ export interface InitialApplyFilters {
   remoteOnly: boolean;
   minSalary?: number;
   sort?: string;
+  paused?: boolean;
+  dailyLimit?: number;
+  weeklyLimit?: number;
 }
 
 /** پاسخِ PUT/GET /api/apply/filters. */
@@ -67,6 +70,9 @@ interface EditorState {
   remoteOnly: boolean;
   minSalary: number | null;
   sort: SortValue;
+  paused: boolean;
+  dailyLimit: number | null;
+  weeklyLimit: number | null;
 }
 
 function toState(f: InitialApplyFilters): EditorState {
@@ -83,6 +89,9 @@ function toState(f: InitialApplyFilters): EditorState {
     remoteOnly: f.remoteOnly === true,
     minSalary: typeof f.minSalary === "number" && f.minSalary > 0 ? f.minSalary : null,
     sort,
+    paused: f.paused === true,
+    dailyLimit: typeof f.dailyLimit === "number" && f.dailyLimit > 0 ? f.dailyLimit : null,
+    weeklyLimit: typeof f.weeklyLimit === "number" && f.weeklyLimit > 0 ? f.weeklyLimit : null,
   };
 }
 
@@ -95,6 +104,9 @@ function signature(s: EditorState): string {
     r: s.remoteOnly,
     m: s.minSalary ?? 0,
     s: s.sort, // پیش‌فرض هم صریح مقایسه می‌شود چون همیشه مقدار دارد
+    p: s.paused,
+    d: s.dailyLimit ?? 0,
+    w: s.weeklyLimit ?? 0,
   });
 }
 
@@ -205,6 +217,9 @@ export function ApplyFiltersEditor({
           remoteOnly: state.remoteOnly,
           ...(state.minSalary && state.minSalary > 0 ? { minSalary: state.minSalary } : {}),
           ...(state.sort !== DEFAULT_SORT ? { sort: state.sort } : {}),
+          paused: state.paused,
+          ...(state.dailyLimit && state.dailyLimit > 0 ? { dailyLimit: state.dailyLimit } : {}),
+          ...(state.weeklyLimit && state.weeklyLimit > 0 ? { weeklyLimit: state.weeklyLimit } : {}),
         }),
       });
       const data: FiltersApiResult = await res.json().catch(() => ({}));
@@ -274,6 +289,48 @@ export function ApplyFiltersEditor({
 
       {/* ───── اقدامِ «جست‌وجوی مشاغل» — مستقل از ذخیره ───── */}
       <FindJobsButton />
+
+      <Field
+        icon={<IconTarget className="h-4 w-4" />}
+        title="حالت و محدودیت اپلای"
+        hint="برای اپلای به همه‌ی شغل‌های فیلترشده، AI را خاموش بگذارید و سقف روزانه/هفتگی را اینجا تنظیم کنید."
+      >
+        <div className="grid gap-3 lg:grid-cols-3">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface/50 px-4 py-3">
+            <span className="text-sm font-medium">توقف موقت کشف و صف‌گذاری</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={state.paused}
+              aria-label="توقف موقت کشف و صف‌گذاری"
+              onClick={() => apply({ ...state, paused: !state.paused })}
+              className={cn(
+                "focus-ring relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors",
+                state.paused ? "bg-rose-500" : "bg-foreground/15",
+              )}
+            >
+              <span
+                className={cn(
+                  "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                  state.paused ? "-translate-x-6" : "-translate-x-1",
+                )}
+              />
+            </button>
+          </div>
+          <LimitInput
+            label="سقف روزانه"
+            value={state.dailyLimit}
+            placeholder="مثلاً 100"
+            onChange={(dailyLimit) => apply({ ...state, dailyLimit })}
+          />
+          <LimitInput
+            label="سقف هفتگی"
+            value={state.weeklyLimit}
+            placeholder="مثلاً 500"
+            onChange={(weeklyLimit) => apply({ ...state, weeklyLimit })}
+          />
+        </div>
+      </Field>
 
       {/* ───── پیش‌نمایشِ هدف ───── */}
       <TargetPreview
@@ -583,6 +640,36 @@ function Field({
       </div>
       {children}
     </section>
+  );
+}
+
+function LimitInput({
+  label,
+  value,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  placeholder: string;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <label className="block rounded-xl border border-border bg-surface/50 px-4 py-3">
+      <span className="mb-2 block text-sm font-medium">{label}</span>
+      <input
+        type="number"
+        min={1}
+        step={1}
+        value={value ?? ""}
+        onChange={(e) => {
+          const n = Number(e.target.value);
+          onChange(Number.isFinite(n) && n > 0 ? Math.floor(n) : null);
+        }}
+        placeholder={placeholder}
+        className="focus-ring ltr-nums w-full rounded-lg border border-border bg-card px-3 py-2 text-sm placeholder:text-muted/70"
+      />
+    </label>
   );
 }
 

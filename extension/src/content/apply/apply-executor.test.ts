@@ -14,7 +14,13 @@ function doc(html: string): Document {
   return parseHTML(`<!doctype html><html><body>${html}</body></html>`).document as unknown as Document;
 }
 
-const immediate = { sleep: async () => {}, now: () => 0, stepTimeoutMs: 10, pollMs: 1 };
+let immediateTime = 0;
+const immediate = {
+  sleep: async () => {},
+  now: () => (immediateTime += 100),
+  stepTimeoutMs: 10,
+  pollMs: 1,
+};
 
 function jobinjaItem(over: Partial<ApplyQueueItem> = {}): ApplyQueueItem {
   return {
@@ -30,39 +36,29 @@ function jobinjaItem(over: Partial<ApplyQueueItem> = {}): ApplyQueueItem {
 
 /** A jobinja apply form that is already rendered (so waitFor resolves immediately). */
 const JOBINJA_FORM = `
-  <a class="c-jobView__applyButton" href="#">ارسال رزومه</a>
-  <form class="c-applyForm">
-    <textarea name="application[body]" class="c-applyForm__message"></textarea>
-    <button type="submit" class="c-applyForm__submit">ثبت</button>
+  <div class="c-slideToggle__mobileFormToggler"><button class="c-btn--primary">ارسال رزومه</button></div>
+  <form id="apply-form">
+    <input id="apply_choice_jobinja_profile" type="radio">
+    <button type="submit">ثبت</button>
   </form>
-  <div class="c-applyForm__success" hidden>ثبت شد</div>
+  <div class="js-flashMessageMsg">ثبت شد</div>
 `;
 
 describe("executeApplyPlan — jobinja best-effort happy path", () => {
-  it("clicks apply, fills the cover letter, clicks submit, confirms", async () => {
+  it("selects the Jobinja profile resume and submits", async () => {
     const d = doc(JOBINJA_FORM);
-    // Make the success node "appear" the moment submit is clicked.
-    const submit = d.querySelector(".c-applyForm__submit") as HTMLElement;
-    const success = d.querySelector(".c-applyForm__success") as HTMLElement;
-    submit.addEventListener("click", () => success.removeAttribute("hidden"));
-
     const it = jobinjaItem({ coverLetter: "متن انگیزه" });
     const plan = buildApplyPlan(it, applyValuesFor(it))!;
     const res = await executeApplyPlan(plan, { doc: d, ...immediate });
 
     expect(res.ok).toBe(true);
-    const ta = d.querySelector("textarea[name='application[body]']") as HTMLTextAreaElement;
-    expect(ta.value).toBe("متن انگیزه");
-    // Trail includes the apply click, the fill, and the submit click.
-    expect(res.ranSteps.some((s) => s.startsWith("fill:"))).toBe(true);
+    expect(res.ranSteps.some((s) => s.includes("#apply_choice_jobinja_profile"))).toBe(true);
+    expect(res.ranSteps.some((s) => s.startsWith("fill:"))).toBe(false);
     expect(res.ranSteps.filter((s) => s.startsWith("click:")).length).toBeGreaterThanOrEqual(2);
   });
 
   it("skips the optional cover-letter step when there is no cover letter", async () => {
     const d = doc(JOBINJA_FORM);
-    (d.querySelector(".c-applyForm__submit") as HTMLElement).addEventListener("click", () =>
-      (d.querySelector(".c-applyForm__success") as HTMLElement).removeAttribute("hidden"),
-    );
     const it = jobinjaItem({ coverLetter: "" });
     const plan = buildApplyPlan(it, applyValuesFor(it))!;
     const res = await executeApplyPlan(plan, { doc: d, ...immediate });
@@ -73,13 +69,25 @@ describe("executeApplyPlan — jobinja best-effort happy path", () => {
 });
 
 describe("executeApplyPlan — never blindly submits", () => {
+  it("stops before touching the form on a security challenge", async () => {
+    const d = doc("Checking your browser before accessing the website");
+    const it = jobinjaItem();
+    const plan = buildApplyPlan(it, applyValuesFor(it))!;
+    const res = await executeApplyPlan(plan, { doc: d, ...immediate });
+    expect(res).toEqual({
+      ok: false,
+      ranSteps: [],
+      reason: "jobinja_security_check: security challenge is active",
+    });
+  });
+
   it("FAILS when the required apply button is missing (empty page)", async () => {
     const d = doc(`<div>nothing here</div>`);
     const it = jobinjaItem();
     const plan = buildApplyPlan(it, applyValuesFor(it))!;
     const res = await executeApplyPlan(plan, { doc: d, ...immediate });
     expect(res.ok).toBe(false);
-    expect(res.reason).toContain("not found");
+    expect(res.reason).toContain("waitFor");
   });
 
   it("FAILS when the form never appears (waitFor times out)", async () => {
@@ -120,16 +128,17 @@ describe("executeApplyPlan — scaffold board with placeholder selectors", () =>
 
 describe("executeApplyPlan — no event-spoofing / detection-evasion surface", () => {
   it("only dispatches plain input/change events on fill (no synthetic trust flags)", async () => {
-    const d = doc(JOBINJA_FORM);
-    (d.querySelector(".c-applyForm__submit") as HTMLElement).addEventListener("click", () =>
-      (d.querySelector(".c-applyForm__success") as HTMLElement).removeAttribute("hidden"),
-    );
-    const ta = d.querySelector("textarea[name='application[body]']") as HTMLTextAreaElement;
+    const d = doc(`<textarea id="message"></textarea>`);
+    const ta = d.querySelector("#message") as HTMLTextAreaElement;
     const seen: string[] = [];
     ta.addEventListener("input", () => seen.push("input"));
     ta.addEventListener("change", () => seen.push("change"));
-    const it = jobinjaItem({ coverLetter: "x" });
-    const plan = buildApplyPlan(it, applyValuesFor(it))!;
+    const plan = {
+      board: "jobinja" as const,
+      jobUrl: "https://jobinja.ir/companies/x/jobs/Y",
+      maturity: "best-effort" as const,
+      steps: [{ kind: "fill" as const, selector: "#message", value: "x" }],
+    };
     await executeApplyPlan(plan, { doc: d, ...immediate });
     expect(seen).toEqual(["input", "change"]);
   });

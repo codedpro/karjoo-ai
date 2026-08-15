@@ -2,7 +2,7 @@
  * انتخابِ سوابقی که در رزومه‌ی یک آگهیِ مشخص می‌آیند.
  *
  * رزومه لازم نیست همه‌ی سابقه‌ها را بگوید. برای یک آگهیِ تحلیلِ داده، سابقه‌ی نامرتبط
- * فقط جای دو صفحه را می‌گیرد و توجهِ خواننده را می‌برد. پس این ماژول تصمیم می‌گیرد
+ * فقط جای دو تا سه صفحه را می‌گیرد و توجهِ خواننده را می‌برد. پس این ماژول تصمیم می‌گیرد
  * **کدام سابقه‌های واقعی** در این رزومه بیایند و به چه ترتیبی.
  *
  * سه قاعده:
@@ -19,10 +19,140 @@
 import type { RoleInput } from "@/lib/resume/career-arc";
 
 /** شرکت‌هایی که کاربر خواسته همیشه در رزومه بمانند. */
-export const DEFAULT_PINNED_COMPANIES = ["CodeNest", "MTN Irancell", "CCTV Line"];
+export const DEFAULT_PINNED_COMPANIES = [
+  "CodeNest",
+  "MTN Irancell",
+  "UK Trade Line",
+  "CCTV Line",
+];
 
-/** حداکثر سابقه در یک رزومه — بیشتر از این، دو صفحه رقیق می‌شود. */
-export const MAX_ROLES = 5;
+export type VariableCompanyRegion = "international" | "iran";
+
+export interface VariableCompany {
+  domain: string;
+  region: VariableCompanyRegion;
+  name: string;
+}
+
+const VARIABLE_COMPANY_PAIRS: Record<string, { international: string; iran: string }> = {
+  "web-fullstack": { international: "Automattic", iran: "Niksam AI" },
+  "backend-python": { international: "Canonical", iran: "Hamyan" },
+  databases: { international: "Supabase", iran: "Apptech" },
+  "baas-cloud": { international: "Supabase", iran: "Kloude" },
+  devops: { international: "GitLab", iran: "Kloude" },
+  web3: { international: "Chainlink Labs", iran: "Hoomaan" },
+  mobile: { international: "Doist", iran: "Hami Pishgaman" },
+  "ai-ml": { international: "Hugging Face", iran: "Armaghan Atlas" },
+  security: { international: "Tailscale", iran: "Amerandish Hooshmand" },
+  "product-management": { international: "GitLab", iran: "Plotset" },
+  "sales-bizdev": { international: "Remote", iran: "Neurollamas AI" },
+  "data-analytics": { international: "dbt Labs", iran: "Pishro Ebtekar & Danesh" },
+  "telecom-networks": { international: "Tailscale", iran: "Amerandish Hooshmand" },
+  "seo-digital-marketing": { international: "Buffer", iran: "Khadamateman" },
+  "qa-testing": { international: "Testlio", iran: "Web Ario" },
+  design: { international: "Buffer", iran: "Poldesigners" },
+  gaming: { international: "SOFTGAMES", iran: "Iran Takhasos" },
+  "content-writing": { international: "Buffer", iran: "Smart Management of Rastad" },
+};
+
+export const VARIABLE_COMPANY_DOMAINS = Object.keys(VARIABLE_COMPANY_PAIRS);
+
+const DOMAIN_KEYWORDS: Record<string, readonly string[]> = {
+  "web-fullstack": [
+    "react", "next", "next.js", "vue", "nuxt", "angular", "svelte", "typescript", "javascript",
+    "frontend", "front-end", "fullstack", "full-stack", "node", "web", "shopify", "ecommerce",
+  ],
+  "backend-python": ["python", "django", "fastapi", "flask", "backend", "back-end", "api", "celery"],
+  databases: ["postgres", "postgresql", "mysql", "mongodb", "redis", "database", "sql", "query"],
+  "baas-cloud": ["supabase", "firebase", "cloud", "serverless", "aws", "azure", "vercel", "cloudflare"],
+  devops: ["devops", "docker", "kubernetes", "ci/cd", "terraform", "linux", "nginx", "deployment"],
+  web3: ["web3", "blockchain", "solidity", "smart contract", "defi", "nft", "evm"],
+  mobile: ["mobile", "flutter", "react native", "android", "ios", "swift", "kotlin"],
+  "ai-ml": [
+    "ai", "ml", "machine learning", "llm", "rag", "openai", "hugging face", "pytorch",
+    "هوش مصنوعی", "اتوماسیون", "n8n", "ai automation", "ai agents",
+  ],
+  security: ["security", "owasp", "authentication", "authorization", "oauth", "jwt", "encryption"],
+  "product-management": ["product", "roadmap", "scrum", "agile", "stakeholder", "prioritization"],
+  "sales-bizdev": ["sales", "business development", "bizdev", "crm", "lead generation", "account"],
+  "data-analytics": ["analytics", "data", "dashboard", "bi", "power bi", "tableau", "etl", "reporting"],
+  "telecom-networks": ["telecom", "network", "networking", "oss", "bss", "lte", "5g", "voip"],
+  "seo-digital-marketing": [
+    "seo", "سئو", "digital marketing", "marketing", "content marketing", "semrush", "ahrefs",
+    "search console", "google analytics", "campaign", "email marketing",
+  ],
+  "qa-testing": ["qa", "testing", "test", "selenium", "playwright", "cypress", "postman"],
+  design: ["design", "ui", "ux", "figma", "prototype", "accessibility"],
+  gaming: ["game", "gaming", "unity", "unreal", "godot", "c#", "level design"],
+  "content-writing": ["content", "copywriting", "writing", "editing", "translation", "localisation"],
+};
+
+const IRAN_RESTRICTED_TECH = [
+  "Shopify",
+  "Stripe",
+  "PayPal",
+  "Klarna",
+  "BigCommerce",
+  "WooCommerce Payments",
+];
+
+const INTERNATIONAL_FIXED_COMPANIES = ["CodeNest", "CCTV Line", "UK Trade Line"];
+
+export function variableCompaniesForDomain(domain: string | null | undefined): VariableCompany[] {
+  const key = String(domain ?? "").trim().toLowerCase();
+  const pair = VARIABLE_COMPANY_PAIRS[key];
+  if (!pair) return [];
+  return [
+    { domain: key, region: "international", name: pair.international },
+    { domain: key, region: "iran", name: pair.iran },
+  ];
+}
+
+export function inferVariableCompanyDomain(
+  values: readonly string[],
+  declaredDomains: readonly string[] = [],
+): string | null {
+  const hay = norm(values.join(" "));
+  let best: { domain: string; score: number } | null = null;
+  for (const [domain, keywords] of Object.entries(DOMAIN_KEYWORDS)) {
+    const score = keywords.reduce((n, kw) => (hay.includes(norm(kw)) ? n + 1 : n), 0);
+    if (score > 0 && (!best || score > best.score)) best = { domain, score };
+  }
+  if (best) return best.domain;
+  for (const raw of declaredDomains) {
+    const d = String(raw).trim().toLowerCase();
+    if (d in VARIABLE_COMPANY_PAIRS) return d;
+  }
+  return null;
+}
+
+export function isIranRestrictedTechnology(term: string): boolean {
+  const t = norm(term);
+  return IRAN_RESTRICTED_TECH.some((x) => t.includes(norm(x)));
+}
+
+export function isInternationalCompanyName(company: string | null | undefined): boolean {
+  const c = norm(company ?? "");
+  if (!c) return false;
+  if (INTERNATIONAL_FIXED_COMPANIES.some((p) => c.includes(norm(p)) || norm(p).includes(c))) {
+    return true;
+  }
+  return Object.values(VARIABLE_COMPANY_PAIRS).some(({ international }) => {
+    const k = norm(international);
+    return c.includes(k) || k.includes(c);
+  });
+}
+
+export function canPlaceTechnologyAtCompany(
+  technology: string,
+  company: string | null | undefined,
+): boolean {
+  if (!isIranRestrictedTechnology(technology)) return true;
+  return isInternationalCompanyName(company);
+}
+
+/** حداکثر سابقه در یک رزومه — چهار ثابت + دو متغیر باید جا شوند. */
+export const MAX_ROLES = 6;
 
 export interface SelectedRole extends RoleInput {
   /** تنها سابقه‌ای که به‌عنوانِ شغلِ جاری معرفی می‌شود. */

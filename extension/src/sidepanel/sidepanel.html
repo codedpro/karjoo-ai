@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>کارجو</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <strong>کارجو</strong>
+        <span id="account">در حال بررسی…</span>
+      </div>
+      <span id="statusPill" class="status-pill">متوقف</span>
+    </header>
+
+    <main>
+      <section id="pairing" class="pairing hidden" aria-labelledby="pairTitle">
+        <h1 id="pairTitle">اتصال به حساب</h1>
+        <p>کد یک‌بارمصرف داشبورد کارجو را وارد کنید.</p>
+        <form id="pairForm">
+          <input id="pairCode" required autocomplete="one-time-code" inputmode="text" placeholder="کد اتصال" />
+          <button type="submit" class="primary">اتصال</button>
+        </form>
+      </section>
+
+      <div id="workspace" class="hidden">
+        <section class="metrics" aria-label="آمار اپلای">
+          <div><span>در صف</span><strong id="queued">0</strong></div>
+          <div><span>امروز</span><strong id="today">0</strong></div>
+          <div><span>کل</span><strong id="total">0</strong></div>
+        </section>
+
+        <section id="alert" class="alert hidden" role="alert"></section>
+
+        <section class="controls" aria-label="کنترل صف">
+          <div class="mode-line">
+            <div><strong>رزومهٔ پروفایل جابینجا</strong><span>رایگان، بدون AI</span></div>
+            <label class="switch"><input id="backgroundToggle" type="checkbox" checked /><span></span></label>
+          </div>
+          <div class="buttons">
+            <button id="startBtn" class="primary" type="button">شروع</button>
+            <button id="pauseBtn" type="button">مکث</button>
+            <button id="stopBtn" class="danger" type="button">توقف</button>
+            <button id="takeoverBtn" class="warning hidden" type="button">ادامه با افزونه</button>
+          </div>
+        </section>
+
+        <section class="current" aria-labelledby="currentTitle">
+          <div class="section-head"><h2 id="currentTitle">فعالیت زنده</h2><span id="updatedAt"></span></div>
+          <div class="activity-row"><span class="pulse"></span><div><strong id="stage">متوقف</strong><span id="currentJob">هنوز کاری در حال انجام نیست.</span></div></div>
+        </section>
+
+        <section aria-labelledby="queueTitle">
+          <div class="section-head"><h2 id="queueTitle">ادامهٔ صف</h2><span id="queueCount"></span></div>
+          <ol id="queueList" class="job-list"></ol>
+          <p id="queueEmpty" class="empty">صف خالی است.</p>
+        </section>
+
+        <section aria-labelledby="recentTitle">
+          <div class="section-head"><h2 id="recentTitle">نتایج اخیر</h2><span>زنده</span></div>
+          <ul id="recentList" class="recent-list"></ul>
+          <p id="recentEmpty" class="empty">هنوز نتیجه‌ای ثبت نشده است.</p>
+        </section>
+      </div>
+
+      <p id="error" class="error hidden" role="alert"></p>
+    </main>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

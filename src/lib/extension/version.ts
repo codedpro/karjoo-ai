@@ -1,29 +1,9 @@
-/**
- * نسخه‌ی افزونه‌ی مرورگرِ کارجو — منبعِ یگانه‌ی حقیقت در سمتِ سرور.
- *
- * این مقدار باید همیشه با `version` در `extension/manifest.json` برابر بماند. افزونه
- * (بارگذاریِ باز/unpacked) به‌روزرسانیِ خودکارِ واقعی ندارد (که به فروشگاه/CRXِ امضا و
- * شناسه‌ی پایدار نیاز دارد)، پس این ثابت را نقطه‌ی مرجع می‌گیریم: مسیرِ
- * `GET /api/extension/version` همین را برمی‌گرداند و افزونه نسخه‌ی نصب‌شده‌ی خود
- * (`chrome.runtime.getManifest().version`) را با آن مقایسه می‌کند تا در صورتِ
- * جدیدتر بودنِ سرور، بنرِ «نسخه‌ی جدید موجود است» را نشان دهد.
- *
- * قانونِ نگه‌داری (هر دو با هم حرکت می‌کنند):
- *   1) هنگام بامپِ نسخه، ابتدا `extension/manifest.json#version` را تغییر دهید،
- *   2) سپس همین ثابت را دقیقاً برابر آن قرار دهید،
- *   3) و ZIPِ تازه‌ساخته‌شده را در `public/karjoo-extension.zip` جای‌گزین کنید.
- * تستِ `extension-version-sync` (سمتِ افزونه) و تستِ این مسیر، برابری را نگه‌بانی می‌کنند.
- */
+/** Server-side source of truth for the published browser extension release. */
+export const KARJOO_EXTENSION_VERSION = "0.3.1";
 
-/** نسخه‌ی جاریِ افزونه (semver «MAJOR.MINOR.PATCH»). = extension/manifest.json#version */
-export const KARJOO_EXTENSION_VERSION = "0.2.10";
+/** Public ZIP served by Next.js from public/. */
+export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip?v=0.3.1";
 
-/** مسیرِ دانلودِ ZIPِ افزونه (نسبی به ریشه‌ی سایت؛ در public سرو می‌شود). */
-export const KARJOO_EXTENSION_DOWNLOAD_PATH = "/karjoo-extension.zip";
-
-/**
- * توضیحِ کوتاهِ اختیاریِ نسخه‌ی جاری (فارسی) — در بنرِ افزونه/داشبورد نمایش داده می‌شود.
- * اگر خالی بماند، `notes` در پاسخِ مسیر حذف می‌شود.
- */
+/** Short release summary shown by the dashboard and extension update UI. */
 export const KARJOO_EXTENSION_RELEASE_NOTES =
-  "اپلایِ مقاوم‌تر در جابینجا: برخی آگهی‌ها گزینه‌ی «آپلودِ رزومه» ندارند و فقط رزومه‌ی پروفایلِ جابینجا را می‌پذیرند — حالا در این آگهی‌ها به‌جای شکستِ اپلای، به‌آرامی به رزومه‌ی پروفایل برمی‌گردیم. هم‌چنین نبودِ پیامِ تأییدِ جابینجا دیگر «ناموفق» شمرده نمی‌شود (که می‌توانست به اپلایِ تکراری منجر شود).";
+  "نسخهٔ ۰.۳.۱: پنل کناری زنده، کشف آگهی با فیلترهای ابری و حداکثر سن ۴۵ روز، اپلای رایگان با رزومهٔ پروفایل جابینجا، پایش دوره‌ای آگهی‌ها در پس‌زمینه و تحویل یک‌کلیکی صف متوقف‌شدهٔ سرور به افزونه.";

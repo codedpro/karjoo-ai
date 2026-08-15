@@ -23,3 +23,21 @@ describe("isFilterModeTask", () => {
     expect(isFilterModeTask(42)).toBe(false);
   });
 });
+
+/**
+ * معافیتِ مودِ دستی از آستانه‌ی امتیاز.
+ *
+ * آستانه برای جایی است که هیچ‌کس انتخاب نکرده — کشفِ خودکار نباید سرِخود اپلای کند.
+ * وقتی کاربر خودش روی یک آگهی «اپلای» می‌زند، عددِ heuristic ما نباید جلوی تصمیمش را
+ * بگیرد. زنده دیده شد: آگهی‌ای با امتیاز ۰٫۷ که کاربر خودش انتخاب کرده بود، پشتِ
+ * آستانه‌ی ۰٫۷۵ گیر کرد و هرگز ارسال نشد.
+ */
+describe("claimUserApplyItems — معافیتِ انتخابِ کاربر", () => {
+  it("مودهای معاف در شرطِ گیت هستند", async () => {
+    const src = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/lib/apply/extension-queue.ts", "utf8"),
+    );
+    // شرط باید هر دو مود را بپذیرد، نه فقط filter.
+    expect(src).toMatch(/'mode'\s+in\s+\('filter',\s*'manual'\)/);
+  });
+});

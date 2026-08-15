@@ -21,11 +21,15 @@ export interface SelectorBehavior {
   waitForThrows?: boolean;
   /** The named action throws when true. */
   throwOn?: "click" | "fill" | "select" | "upload";
+  /** Optional custom error message for thrown selector actions. */
+  throwMessage?: string;
 }
 
 export interface FakeBrowserOptions {
   /** Map selector → behavior. Unlisted selectors default to count:1, present. */
   selectors?: Record<string, SelectorBehavior>;
+  /** Text returned by locator("body").textContent(). */
+  bodyText?: string;
   /** The URL page.url() returns (default the goto target). */
   finalUrl?: string;
   /** goto rejects when true. */
@@ -69,24 +73,27 @@ export function makeFakeBrowser(opts: FakeBrowserOptions = {}): {
         return b.count ?? 1;
       },
       async click() {
-        if (b.throwOn === "click") throw new Error("click failed");
+        if (b.throwOn === "click") throw new Error(b.throwMessage ?? "click failed");
         record.actions.push({ kind: "click", selector });
       },
       async fill(value: string) {
-        if (b.throwOn === "fill") throw new Error("fill failed");
+        if (b.throwOn === "fill") throw new Error(b.throwMessage ?? "fill failed");
         record.actions.push({ kind: "fill", selector, value });
       },
       async selectOption(value: string) {
-        if (b.throwOn === "select") throw new Error("select failed");
+        if (b.throwOn === "select") throw new Error(b.throwMessage ?? "select failed");
         record.actions.push({ kind: "select", selector, value });
       },
       async setInputFiles(files: string | string[]) {
-        if (b.throwOn === "upload") throw new Error("upload failed");
+        if (b.throwOn === "upload") throw new Error(b.throwMessage ?? "upload failed");
         record.actions.push({ kind: "upload", selector, value: String(files) });
       },
       async waitFor() {
-        if (b.waitForThrows) throw new Error("waitFor timeout");
+        if (b.waitForThrows) throw new Error(b.throwMessage ?? "waitFor timeout");
         record.actions.push({ kind: "waitFor", selector });
+      },
+      async textContent() {
+        return selector === "body" ? (opts.bodyText ?? "") : "";
       },
     };
   }

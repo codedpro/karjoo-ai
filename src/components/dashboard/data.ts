@@ -9,15 +9,17 @@ import "server-only";
  * از آن استفاده کنند. خطاها به فراخواننده می‌رسند (صفحه می‌تواند Suspense/empty کند).
  */
 import { cache } from "react";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
   applications,
   boardAccounts,
+  boardApplications,
   candidateProfiles,
   jobListings,
   matches,
+  tasks,
 } from "@/db/schema";
 
 /** یک ردیفِ تطبیق همراهِ اطلاعاتِ آگهی — هم‌ساختار با خروجیِ GET /api/matches. */
@@ -44,6 +46,8 @@ export interface DashboardMatch {
 /** فهرستِ تطبیق‌های کاربر (بالاترین امتیاز اول). */
 export const getMatchesForUser = cache(
   async (userId: string, limit = 30): Promise<DashboardMatch[]> => {
+    const listingJobKey = sql`regexp_replace(${jobListings.url}, '^(https?://[^/]+/companies/[^/]+/jobs/[^/?#]+).*$', '\\1')`;
+    const boardApplicationJobKey = sql`regexp_replace(coalesce(ba.url, ''), '^(https?://[^/]+/companies/[^/]+/jobs/[^/?#]+).*$', '\\1')`;
     const rows = await db
       .select({
         id: matches.id,
@@ -66,7 +70,24 @@ export const getMatchesForUser = cache(
       })
       .from(matches)
       .innerJoin(jobListings, eq(matches.listingId, jobListings.id))
-      .where(eq(matches.userId, userId))
+      .where(sql`
+        ${matches.userId} = ${userId}
+        and ${jobListings.postedAt} >= now() - interval '45 days'
+        and not exists (
+          select 1
+          from ${applications} a
+          where a.user_id = ${userId}
+            and a.listing_id = ${jobListings.id}
+            and a.status = 'submitted'
+        )
+        and not exists (
+          select 1
+          from ${boardApplications} ba
+          where ba.user_id = ${userId}
+            and ba.board = ${jobListings.board}::text
+            and ${boardApplicationJobKey} = ${listingJobKey}
+        )
+      `)
       .orderBy(desc(matches.score), desc(matches.createdAt))
       .limit(limit);
 
@@ -168,30 +189,52 @@ export const getBoardAccountsForUser = cache(
   },
 );
 
-/** خلاصه‌ی شمارشِ داشبورد — تطبیق‌های آماده، کلِ تطبیق‌ها، کلِ اپلای‌ها. */
+/** خلاصه‌ی شمارشِ داشبورد — صف، امروز، کل، و ۳۰ روز اخیر. */
 export interface DashboardCounts {
-  drafted: number;
-  totalMatches: number;
-  totalApplications: number;
+  queued: number;
+  appliedToday: number;
+  appliedTotal: number;
+  appliedLast30d: number;
 }
 
 export const getDashboardCounts = cache(
   async (userId: string): Promise<DashboardCounts> => {
-    const [matchRows, appRows] = await Promise.all([
+    const [queueRows, todayRows, totalRows, last30Rows] = await Promise.all([
       db
-        .select({ id: matches.id, status: matches.status })
-        .from(matches)
-        .where(eq(matches.userId, userId)),
+        .select({ n: sql<number>`count(*)::int` })
+        .from(tasks)
+        .innerJoin(matches, eq(tasks.matchId, matches.id))
+        .where(
+          sql`${matches.userId} = ${userId}
+              and ${tasks.status} in ('pending', 'leased')`,
+        ),
       db
-        .select({ id: applications.id })
+        .select({ n: sql<number>`count(*)::int` })
         .from(applications)
-        .where(eq(applications.userId, userId)),
+        .where(
+          sql`${applications.userId} = ${userId}
+              and ${applications.status} = 'submitted'
+              and coalesce(${applications.submittedAt}, ${applications.createdAt}) >= date_trunc('day', now())`,
+        ),
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(applications)
+        .where(sql`${applications.userId} = ${userId} and ${applications.status} = 'submitted'`),
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(applications)
+        .where(
+          sql`${applications.userId} = ${userId}
+              and ${applications.status} = 'submitted'
+              and coalesce(${applications.submittedAt}, ${applications.createdAt}) >= now() - interval '30 days'`,
+        ),
     ]);
 
     return {
-      drafted: matchRows.filter((m) => m.status === "drafted").length,
-      totalMatches: matchRows.length,
-      totalApplications: appRows.length,
+      queued: queueRows[0]?.n ?? 0,
+      appliedToday: todayRows[0]?.n ?? 0,
+      appliedTotal: totalRows[0]?.n ?? 0,
+      appliedLast30d: last30Rows[0]?.n ?? 0,
     };
   },
 );
