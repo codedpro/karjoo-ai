@@ -6,7 +6,10 @@ name: karjoo-web
 
 services:
   web:
-    image: node:22-bookworm-slim
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: karjoo-web:local
     container_name: karjoo-web
     restart: always
     network_mode: host
@@ -15,4 +18,5 @@ services:
       - .:/app
     environment:
       NODE_ENV: production
+      CHROMIUM_PATH: /usr/bin/chromium
     command: ["node", "node_modules/next/dist/bin/next", "start", "-p", "3030"]

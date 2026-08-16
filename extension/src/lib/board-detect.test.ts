@@ -39,6 +39,7 @@ describe("jobinjaLoggedIn (cookie-shaped)", () => {
 
 describe("jobvisionLoggedIn (token-shaped, localStorage key names only)", () => {
   it("true when an auth-token key is present", () => {
+    expect(jobvisionLoggedIn(["CandidateClient_v2"])).toBe(true);
     expect(jobvisionLoggedIn(["token"])).toBe(true);
     expect(jobvisionLoggedIn(["foo", "access_token"])).toBe(true);
     expect(jobvisionLoggedIn(["userToken"])).toBe(true);

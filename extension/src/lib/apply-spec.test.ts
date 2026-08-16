@@ -19,9 +19,9 @@ describe("APPLY_SPEC coverage + maturity", () => {
     }
   });
 
-  it("jobinja is best-effort; the others are scaffold", () => {
+  it("jobinja and jobvision are best-effort; the others are scaffold", () => {
     expect(isApplySpecReady("jobinja")).toBe(true);
-    expect(isApplySpecReady("jobvision")).toBe(false);
+    expect(isApplySpecReady("jobvision")).toBe(true);
     expect(isApplySpecReady("e-estekhdam")).toBe(false);
     expect(isApplySpecReady("irantalent")).toBe(false);
   });

@@ -50,6 +50,8 @@ export const STORAGE_KEYS = {
   executorId: "karjoo.executorId",
   /** Last blocked timestamp already shown as a browser notification. */
   notifiedBlockedAt: "karjoo.notifiedBlockedAt",
+  /** Single extension-created tab retained for login/security intervention. */
+  interventionTabId: "karjoo.interventionTabId",
 } as const;
 
 /**

@@ -90,12 +90,12 @@ describe("POST /api/board-accounts/connect — قاعده‌ی ایمنیِ ۱",
     expect(Object.keys(inserted)).not.toContain("token");
   });
 
-  it("سایتِ داربستی (jobvision) هنوز زنده نیست → ۴۰۹ و هیچ DB-write (board gating)", async () => {
+  it("سایتِ extension-only (jobvision) قابل اتصال است", async () => {
     // jobvision/e-estekhdam/irantalent داربست‌اند؛ اتصالشان پیش از هر نوشتنی رد می‌شود.
     authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
     const res = await connectPOST(connectReq({ board: "jobvision" }));
-    expect(res.status).toBe(409);
-    expect(dbInsert).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(dbInsert).toHaveBeenCalled();
   });
 
   it("فیلدِ cookie در بدنه → ۴۰۰ و هیچ DB-write (مادهٔ سری رد می‌شود)", async () => {

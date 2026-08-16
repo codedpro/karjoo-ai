@@ -93,7 +93,7 @@ export async function readExecutionRun(
   return viewOf(row);
 }
 
-/** Assign the queue to one browser. A live server run can only be replaced by takeover. */
+/** Assign the queue to one browser. Explicit takeover may replace any server-owned run. */
 export async function startExtensionExecution(
   userId: string,
   executorId: string,
@@ -117,13 +117,6 @@ export async function startExtensionExecution(
       "owned_by_other_extension",
     );
   }
-  if (opts.takeover && current.owner === "server" && current.state !== "blocked") {
-    throw new ExecutionOwnershipError(
-      "server execution must be blocked or paused before takeover",
-      "owned_by_server",
-    );
-  }
-
   const now = new Date();
   const [row] = await conn
     .insert(applyExecutionRuns)
@@ -143,7 +136,7 @@ export async function startExtensionExecution(
       target: applyExecutionRuns.userId,
       setWhere: opts.takeover
         ? or(
-            and(eq(applyExecutionRuns.owner, "server"), eq(applyExecutionRuns.state, "blocked")),
+            eq(applyExecutionRuns.owner, "server"),
             and(eq(applyExecutionRuns.owner, "extension"), eq(applyExecutionRuns.executorId, executorId)),
           )
         : or(
@@ -208,7 +201,7 @@ export async function pauseExtensionExecution(
   if (!row) {
     throw new ExecutionOwnershipError("this browser does not own the run", "owned_by_other_extension");
   }
-  if (opts.stop) await releaseExtensionLeasesForUser(userId, conn);
+  await releaseExtensionLeasesForUser(userId, conn);
   return viewOf(row);
 }
 

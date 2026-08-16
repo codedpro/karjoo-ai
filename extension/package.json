@@ -1,8 +1,8 @@
 {
   "name": "karjoo-extension",
-  "version": "0.1.0",
+  "version": "0.5.3",
   "private": true,
-  "description": "Karjoo (کارجو) — MV3 browser extension: user-present, user-approved assisted apply for Iranian job boards.",
+  "description": "Karjoo MV3 multi-board queue executor for Jobinja and JobVision.",
   "type": "module",
   "scripts": {
     "clean": "rm -rf dist",

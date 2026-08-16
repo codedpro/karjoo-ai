@@ -25,14 +25,28 @@ export async function GET(request: Request): Promise<Response> {
         prefs.titles?.length ||
         prefs.remoteOnly,
     );
+    const jobvision = filters.boardFilters.jobvision;
     return json({
-      board: "jobinja",
       paused: filters.paused,
-      hasTargeting,
-      searchUrl: hasTargeting
-        ? buildSearchUrl({ ...prefs, sort: "published_at_desc" }, 1)
-        : null,
-      maxAgeDays: 45,
+      maxAgeDays: filters.maxAgeDays,
+      boards: [
+        {
+          board: "jobinja",
+          enabled: filters.boardFilters.jobinja.enabled,
+          hasTargeting,
+          searchUrl: hasTargeting
+            ? buildSearchUrl({ ...prefs, sort: "published_at_desc" }, 1)
+            : null,
+        },
+        {
+          board: "jobvision",
+          enabled: jobvision.enabled,
+          hasTargeting: jobvision.categoryKeys.length > 0 || jobvision.remoteOnly || jobvision.employmentTypeKeys.length > 0,
+          categoryKeys: jobvision.categoryKeys,
+          employmentTypeKeys: jobvision.employmentTypeKeys,
+          remoteOnly: jobvision.remoteOnly,
+        },
+      ],
     });
   });
 }
@@ -41,18 +55,22 @@ export async function POST(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
     const { userId } = await requireBearerSession(request, { requireKind: "extension" });
     const body = await parseJsonBody(request, browserDiscoveryImportSchema);
-    const listings: JobListing[] = body.listings.map((item) => ({
-      id: `jobinja:${item.externalId}`,
-      board: "jobinja",
+    const listings: JobListing[] = body.listings
+      .filter((item) => item.alreadyApplied !== true)
+      .map((item) => ({
+      id: `${body.board}:${item.externalId}`,
+      board: body.board,
       externalId: item.externalId,
       title: item.title,
       company: item.company ?? undefined,
       city: item.city ?? undefined,
       url: item.url,
-      description: item.description ?? undefined,
+      description: [
+        item.description ?? undefined,
+        item.gender ? `جنسیت: ${item.gender}` : undefined,
+      ].filter(Boolean).join("\n") || undefined,
       salary: item.salary ?? undefined,
       postedAt: item.postedAt,
-      applyType: "structured",
     }));
     return json(await enqueueBrowserDiscoveredListings(userId, listings));
   });

@@ -81,6 +81,7 @@ describe("applyFiltersInputSchema", () => {
       jobTypes: [],
       remoteOnly: false,
       paused: false,
+      maxAgeDays: 45,
     });
   });
 

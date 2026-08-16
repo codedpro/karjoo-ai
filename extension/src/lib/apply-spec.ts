@@ -39,7 +39,13 @@ export type ApplyStepKind =
  * executor-injected data (the runner provides the actual cover-letter text etc.;
  * the spec never carries raw values).
  */
-export type ApplyValueKey = "coverLetter" | "resumeFile" | "fullName" | "phone" | "email";
+export type ApplyValueKey =
+  | "coverLetter"
+  | "resumeFile"
+  | "resumeFileName"
+  | "fullName"
+  | "phone"
+  | "email";
 
 /** One declarative step in the apply flow (interpreted by the executor). */
 export interface ApplyStep {
@@ -109,25 +115,14 @@ const JOBINJA_SPEC: BoardApplySpec = {
     },
     {
       kind: "click",
-      selector: "#apply_choice_jobinja_profile",
-      optional: true,
-      note: "پیش‌فرض: ارسال با رزومه‌ی جابینجا.",
-    },
-    {
-      kind: "click",
       selector: "#apply_choice_uploaded_cv",
       requiresValueKey: "resumeFile",
-      // NOT every Jobinja job exposes an upload radio (~a third don't — many accept only the
-      // Jobinja-profile résumé). Optional → if it's absent, skip this + the upload step and
-      // fall back to #apply_choice_jobinja_profile (clicked above), rather than fail the apply.
-      optional: true,
-      note: "انتخابِ «آپلودِ رزومه» (فقط وقتی رزومه‌ی سفارشی داریم و رادیوی آپلود روی این آگهی هست).",
+      note: "انتخابِ «آپلودِ رزومه»؛ نبودن این مسیر اپلای را متوقف می‌کند.",
     },
     {
       kind: "upload",
       selector: "#apply-form input[type='file']",
       valueKey: "resumeFile",
-      optional: true,
       note: "آپلودِ رزومه‌ی سفارشیِ هدف‌گیری‌شده‌ی این آگهی (PDF).",
     },
     {
@@ -160,32 +155,19 @@ const JOBINJA_SPEC: BoardApplySpec = {
 };
 
 /* ──────────────────────────────  jobvision  ─────────────────────────────── */
-/** jobvision — scaffold (TODO(real-account)). SPA; token in localStorage; waitFor needed. */
+/** JobVision native apply is handled by its board-specific content adapter. */
 const JOBVISION_SPEC: BoardApplySpec = {
   board: "jobvision",
-  maturity: "scaffold",
+  maturity: "best-effort",
   urlPattern: /^https:\/\/(www\.)?jobvision\.ir\/jobs\/\d+/,
-  // TODO(real-account): سلکتورهای واقعیِ jobvision.
-  applyButtonSelector: "[data-test='apply-button']",
-  coverLetterFieldSelector: "[data-test='cover-letter']",
-  submitSelector: "[data-test='apply-submit']",
-  confirmSelector: "[data-test='apply-success']",
+  applyButtonSelector: ".jvt-btn-send-resume",
+  submitSelector: ".jvt-btn-send-resume",
   steps: [
-    { kind: "click", selector: "[data-test='apply-button']", note: "TODO(real-account): شروعِ اپلای." },
-    { kind: "waitFor", selector: "[data-test='apply-form']", note: "TODO(real-account): انتظار تا فرمِ SPA." },
-    {
-      kind: "fill",
-      selector: "[data-test='cover-letter']",
-      valueKey: "coverLetter",
-      optional: true,
-      note: "TODO(real-account): انگیزه‌نامه.",
-    },
-    { kind: "click", selector: "[data-test='apply-submit']", note: "TODO(real-account): ثبتِ نهایی." },
-    { kind: "waitFor", selector: "[data-test='apply-success']", note: "TODO(real-account): تأیید." },
+    { kind: "click", selector: ".jvt-btn-send-resume", note: "Native profile-resume apply button." },
   ],
   notes: [
     "SPA با توکن در localStorage (sessionShape=token).",
-    "TODO(real-account): همه‌ی سلکتورها با حسابِ واقعیِ jobvision صحت‌سنجی شوند.",
+    "JobVision uses its account-wide native profile resume; no per-job upload is performed.",
   ],
 };
 

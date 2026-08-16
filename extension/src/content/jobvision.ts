@@ -13,21 +13,23 @@ import { applyPrefill } from "@ext/content/apply-dom";
 import type { BackgroundToContent } from "@ext/lib/messages";
 
 /**
- * Collect the localStorage KEY NAMES that look like auth tokens. We read
- * `localStorage` keys and filter to candidates — we DO NOT read or return any
+ * Collect browser-storage KEY NAMES that look like auth tokens. We read
+ * local/session storage keys and filter to candidates — we DO NOT read or return any
  * value. The JWT itself stays in the page, owned by JobVision.
  */
 function probeLocalStorageKeys(): string[] {
   const candidates = sessionTokenKeys("jobvision").map((k) => k.toLowerCase());
-  const present: string[] = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key) continue;
-    if (candidates.includes(key.toLowerCase())) {
-      present.push(key); // key NAME only — never localStorage.getItem(key)
+  const present = new Set<string>();
+  for (const storage of [localStorage, sessionStorage]) {
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (!key) continue;
+      if (candidates.includes(key.toLowerCase())) {
+        present.add(key); // key NAME only — never storage.getItem(key)
+      }
     }
   }
-  return present;
+  return [...present];
 }
 
 chrome.runtime.onMessage.addListener((msg: BackgroundToContent, _sender, sendResponse) => {

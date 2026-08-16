@@ -20,9 +20,11 @@ import {
   jobvisionLoggedIn,
   eEstekhdamLoggedIn,
   irantalentLoggedIn,
+  sessionTokenKeys,
   sessionShapeOf,
   type CookieLike,
 } from "@ext/lib/board-detect";
+import { boardTabPatterns } from "@ext/lib/board-session";
 import {
   getApiOrigin,
   getSessionToken,
@@ -52,6 +54,9 @@ import type {
   ApplyResultReport,
   AutoApplySettings,
   AutoApplyStatus,
+  ApplyFilters,
+  JobinjaCategory,
+  BoardCatalog,
 } from "@ext/lib/types";
 import type { ScrapeProfileResult, BoardImportOutcome } from "@ext/lib/import-types";
 
@@ -102,9 +107,9 @@ async function probeBoardSession(board: BoardId): Promise<ProbeSessionResult> {
   // Token-shaped boards (JobVision, IranTalent): the token is in localStorage,
   // invisible to chrome.cookies. Ask the content script which KEYS exist (never
   // values) and decide a boolean from the key NAMES alone.
-  const keys = await probeLocalStorageKeysViaContentScript(board);
-  const loggedIn = board === "jobvision" ? jobvisionLoggedIn(keys) : irantalentLoggedIn(keys);
-  return { loggedIn };
+  const probe = await probeBrowserStorageKeys(board);
+  const loggedIn = board === "jobvision" ? jobvisionLoggedIn(probe.keys) : irantalentLoggedIn(probe.keys);
+  return loggedIn ? { loggedIn: true } : { loggedIn: false, reason: probe.reason };
 }
 
 /** The chrome.cookies domain filter for a cookie-shaped board. */
@@ -112,20 +117,72 @@ function boardCookieDomain(board: BoardId): string {
   return new URL(BOARDS[board].origin).hostname.replace(/^www\./, "");
 }
 
-/** Ask a token-shaped board tab's content script for its localStorage key NAMES only. */
-async function probeLocalStorageKeysViaContentScript(board: BoardId): Promise<string[]> {
-  const [tab] = await chrome.tabs.query({ url: `${BOARDS[board].origin}/*` });
-  if (!tab?.id) return [];
-  try {
-    const resp = (await chrome.tabs.sendMessage(tab.id, {
-      type: "PROBE_SESSION",
-      board,
-    })) as { localStorageKeys?: string[] } | undefined;
-    return resp?.localStorageKeys ?? [];
-  } catch {
-    // No content script ready (tab not on the board / not loaded) → not detectable.
-    return [];
+type StorageProbe = {
+  keys: string[];
+  reason: "no_tab" | "session_not_found" | "probe_unavailable";
+};
+
+/**
+ * Inspect every board tab, including account/candidate subdomains. Only matching
+ * storage KEY NAMES are returned; token values are never read.
+ */
+async function probeBrowserStorageKeys(board: BoardId): Promise<StorageProbe> {
+  const tabs = await chrome.tabs.query({ url: boardTabPatterns(BOARDS[board].origin) });
+  const candidates = sessionTokenKeys(board);
+  let probeSucceeded = false;
+
+  tabs.sort((a, b) => Number(Boolean(b.active)) - Number(Boolean(a.active)));
+  for (const tab of tabs) {
+    if (!tab.id) continue;
+
+    try {
+      const response = (await chrome.tabs.sendMessage(tab.id, {
+        type: "PROBE_SESSION",
+        board,
+      })) as { localStorageKeys?: string[] } | undefined;
+      if (Array.isArray(response?.localStorageKeys)) {
+        probeSucceeded = true;
+        if (response.localStorageKeys.length > 0) {
+          return { keys: response.localStorageKeys, reason: "session_not_found" };
+        }
+      }
+    } catch {
+      // Old tabs may not have the current content script. The scripting fallback
+      // below works immediately without asking the user to reload the page.
+    }
+
+    try {
+      const [execution] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        args: [candidates],
+        func: (candidateKeys: string[]) => {
+          const wanted = new Set(candidateKeys.map((key) => key.toLowerCase()));
+          const present = new Set<string>();
+          for (const storage of [window.localStorage, window.sessionStorage]) {
+            for (let index = 0; index < storage.length; index += 1) {
+              const key = storage.key(index);
+              if (key && wanted.has(key.toLowerCase())) present.add(key);
+            }
+          }
+          return [...present];
+        },
+      });
+      if (Array.isArray(execution?.result)) {
+        probeSucceeded = true;
+        if (execution.result.length > 0) {
+          return { keys: execution.result, reason: "session_not_found" };
+        }
+      }
+    } catch {
+      // Continue across tabs: another JobVision origin may own the active session.
+    }
   }
+
+  if (tabs.length === 0) return { keys: [], reason: "no_tab" };
+  return {
+    keys: [],
+    reason: probeSucceeded ? "session_not_found" : "probe_unavailable",
+  };
 }
 
 /* ── connect board (metadata-only POST — RULE 1) ───────────────────────── */
@@ -155,6 +212,32 @@ async function handleClaimQueue(): Promise<ApplyQueueItem[]> {
 async function handleFindJobs(): Promise<{ queued: number }> {
   const api = await apiFromStorage();
   return api.findJobs();
+}
+
+async function handleGetApplyFilters(): Promise<{ filters: ApplyFilters; previewUrl: string }> {
+  return (await apiFromStorage()).getApplyFilters();
+}
+
+async function handleSaveApplyFilters(
+  filters: Omit<ApplyFilters, "aiFilterEnabled">,
+): Promise<{ filters: ApplyFilters; previewUrl: string }> {
+  return (await apiFromStorage()).saveApplyFilters(filters);
+}
+
+async function handleGetJobinjaCategories(): Promise<JobinjaCategory[]> {
+  return (await apiFromStorage()).getJobinjaCategories();
+}
+
+async function handleGetBoardCatalog(board: "jobinja" | "jobvision"): Promise<BoardCatalog> {
+  return (await apiFromStorage()).getBoardCatalog(board);
+}
+
+async function handleRetryApplication(applicationId: string): Promise<{ ok: boolean; taskId: string }> {
+  return (await apiFromStorage()).retryApplication(applicationId);
+}
+
+async function handleGetApplicationResume(applicationId: string): Promise<string> {
+  return (await apiFromStorage()).getApplicationResumeHtml(applicationId);
 }
 
 /** Pre-fill (NEVER submit) the form in the relevant board tab. */
@@ -365,6 +448,18 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
       };
     case "SET_RUN_BACKGROUND":
       return { ok: true, data: await setRunBackground(msg.enabled) };
+    case "GET_APPLY_FILTERS":
+      return { ok: true, data: await handleGetApplyFilters() };
+    case "SAVE_APPLY_FILTERS":
+      return { ok: true, data: await handleSaveApplyFilters(msg.filters) };
+    case "GET_JOBINJA_CATEGORIES":
+      return { ok: true, data: await handleGetJobinjaCategories() };
+    case "GET_BOARD_CATALOG":
+      return { ok: true, data: await handleGetBoardCatalog(msg.board) };
+    case "RETRY_APPLICATION":
+      return { ok: true, data: await handleRetryApplication(msg.applicationId) };
+    case "GET_APPLICATION_RESUME":
+      return { ok: true, data: await handleGetApplicationResume(msg.applicationId) };
     case "JOBINJA_CVID":
       return { ok: true, data: await handleJobinjaCvid(msg.cvId) };
     default: {

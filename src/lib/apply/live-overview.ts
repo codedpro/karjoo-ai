@@ -14,6 +14,7 @@ export interface LiveApplyCounts {
   appliedToday: number;
   appliedTotal: number;
   appliedLast30d: number;
+  reviewNeeded: number;
 }
 
 export interface LiveApplyJob {
@@ -27,6 +28,7 @@ export interface LiveApplyJob {
   lastError: string | null;
   matchScore: number | null;
   hasTailoredResume: boolean;
+  resumeStrategy: "tailored_pdf" | "native_profile_resume";
   listing: {
     board: string;
     title: string;
@@ -34,6 +36,7 @@ export interface LiveApplyJob {
     city: string | null;
     url: string;
     postedAt: string | null;
+    description: string | null;
   };
 }
 
@@ -44,6 +47,9 @@ export interface LiveApplyResult {
   matchScore: number | null;
   happenedAt: string;
   hasResume: boolean;
+  resumeStrategy: "tailored_pdf" | "native_profile_resume";
+  resumeId: string | null;
+  retryEligible: boolean;
   reason: string | null;
   listing: {
     board: string;
@@ -51,6 +57,8 @@ export interface LiveApplyResult {
     company: string | null;
     city: string | null;
     url: string;
+    description: string | null;
+    postedAt: string | null;
   };
 }
 
@@ -104,6 +112,12 @@ export async function getLiveApplyOverview(
             and a.status = 'submitted'
             and coalesce(a.submitted_at, a.created_at) >= now() - interval '30 days'
         ) as applied_last_30d
+        ,(
+          select count(*)::int
+          from applications a
+          where a.user_id = ${userId}
+            and a.status in ('failed', 'skipped')
+        ) as review_needed
       from tasks t
       inner join matches m on m.id = t.match_id
       where m.user_id = ${userId}
@@ -130,7 +144,8 @@ export async function getLiveApplyOverview(
         l.company,
         l.city,
         l.url,
-        l.posted_at
+        l.posted_at,
+        l.description
       from tasks t
       inner join matches m on m.id = t.match_id
       inner join job_listings l on l.id = m.listing_id
@@ -150,12 +165,15 @@ export async function getLiveApplyOverview(
         a.match_score,
         a.reason,
         a.resume_id is not null as has_resume,
+        a.resume_id,
         coalesce(a.submitted_at, a.created_at) as happened_at,
         l.board,
         l.title,
         l.company,
         l.city,
-        l.url
+        l.url,
+        l.description,
+        l.posted_at
       from applications a
       inner join job_listings l on l.id = a.listing_id
       where a.user_id = ${userId}
@@ -178,6 +196,7 @@ export async function getLiveApplyOverview(
       lastError: (r.last_error as string | null) ?? null,
       matchScore: typeof r.match_score === "number" ? r.match_score : null,
       hasTailoredResume: r.has_tailored_resume === true,
+      resumeStrategy: r.board === "jobvision" ? "native_profile_resume" : "tailored_pdf",
       listing: {
         board: String(r.board),
         title: String(r.title),
@@ -185,6 +204,7 @@ export async function getLiveApplyOverview(
         city: (r.city as string | null) ?? null,
         url: String(r.url),
         postedAt: iso(r.posted_at),
+        description: (r.description as string | null) ?? null,
       },
     }));
 
@@ -196,6 +216,9 @@ export async function getLiveApplyOverview(
       matchScore: typeof r.match_score === "number" ? r.match_score : null,
       happenedAt: iso(r.happened_at) ?? new Date().toISOString(),
       hasResume: r.has_resume === true,
+      resumeStrategy: r.board === "jobvision" ? "native_profile_resume" : "tailored_pdf",
+      resumeId: r.resume_id ? String(r.resume_id) : null,
+      retryEligible: r.status === "failed",
       reason: (r.reason as string | null) ?? null,
       listing: {
         board: String(r.board),
@@ -203,6 +226,8 @@ export async function getLiveApplyOverview(
         company: (r.company as string | null) ?? null,
         city: (r.city as string | null) ?? null,
         url: String(r.url),
+        description: (r.description as string | null) ?? null,
+        postedAt: iso(r.posted_at),
       },
     }));
 
@@ -214,6 +239,7 @@ export async function getLiveApplyOverview(
       appliedToday: Number(countsRaw.applied_today ?? 0),
       appliedTotal: Number(countsRaw.applied_total ?? 0),
       appliedLast30d: Number(countsRaw.applied_last_30d ?? 0),
+      reviewNeeded: Number(countsRaw.review_needed ?? 0),
     },
     applying: allTasks.filter((t) => t.status === "leased"),
     queue: allTasks.filter((t) => t.status === "pending"),

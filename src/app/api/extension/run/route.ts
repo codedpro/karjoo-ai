@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 async function overview(userId: string) {
   const [run, live] = await Promise.all([
     readExecutionRun(userId),
-    getLiveApplyOverview(userId, { queueLimit: 20, recentLimit: 12 }),
+    getLiveApplyOverview(userId, { queueLimit: 100, recentLimit: 100 }),
   ]);
   return { run, ...live };
 }

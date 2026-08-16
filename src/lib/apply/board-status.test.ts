@@ -23,13 +23,14 @@ describe("BOARD_STATUS — جامعیت روی JobBoardId", () => {
     // بدونِ کلیدِ اضافه/گم‌شده — جدول باید کلِ یونیون را بپوشاند.
     expect(Object.keys(BOARD_STATUS).sort()).toEqual([...ALL_BOARDS].sort());
     for (const id of ALL_BOARDS) {
-      expect(["live", "coming_soon"]).toContain(BOARD_STATUS[id]);
+      expect(["live", "extension_only", "coming_soon"]).toContain(BOARD_STATUS[id]);
     }
   });
 
-  it("فقط جابینجا live است؛ بقیه coming_soon (داربست)", () => {
+  it("جابینجا live، جاب‌ویژن extension-only و بقیه داربست‌اند", () => {
     expect(BOARD_STATUS.jobinja).toBe("live");
-    for (const id of ALL_BOARDS.filter((b) => b !== "jobinja")) {
+    expect(BOARD_STATUS.jobvision).toBe("extension_only");
+    for (const id of ALL_BOARDS.filter((b) => b !== "jobinja" && b !== "jobvision")) {
       expect(BOARD_STATUS[id], id).toBe("coming_soon");
     }
   });

@@ -34,6 +34,8 @@ import type {
   BrowserDiscoveredListing,
   ExtensionDiscoveryConfig,
   ExtensionRunOverview,
+  ApplyFilters,
+  JobinjaCategory,
 } from "@ext/lib/types";
 import type { ImportPayloadBody } from "@ext/lib/import-payload";
 import type { SessionRefreshBody } from "@ext/lib/session-snapshot";
@@ -64,6 +66,8 @@ interface ServerClaimedItem {
   coverLetter: string | null;
   matchScore: number | null;
   listing: { title: string; company: string | null; city: string | null; url: string };
+  resume?: { id: string; title: string | null; downloadUrl: string } | null;
+  resumeStrategy?: "tailored_pdf" | "native_profile_resume";
 }
 interface ServerClaimResponse {
   count: number;
@@ -73,7 +77,11 @@ interface ServerClaimResponse {
    * OFF ("disabled") or the daily cap is reached ("quota_exceeded"). The runner
    * uses this to stop the tick without treating it as an error.
    */
-  reason?: "disabled" | "quota_exceeded";
+  reason?:
+    | "disabled"
+    | "quota_exceeded"
+    | "tailored_resume_generation_failed"
+    | "tailored_resume_missing";
 }
 
 /** Server shape for GET/PUT /api/auto-apply (control-plane contract). */
@@ -110,6 +118,28 @@ function importSummary(res: ServerImportResponse | undefined): string | undefine
   return undefined;
 }
 
+function fileNameFromDisposition(value: string | null): string | null {
+  if (!value) return null;
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(value)?.[1];
+  if (utf8) {
+    try {
+      return decodeURIComponent(utf8);
+    } catch {
+      return utf8;
+    }
+  }
+  return /filename="([^"]+)"/i.exec(value)?.[1] ?? null;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 /** Map the server's claimed item onto the extension's render-ready ApplyQueueItem. */
 function toApplyQueueItem(it: ServerClaimedItem): ApplyQueueItem {
   return {
@@ -121,6 +151,16 @@ function toApplyQueueItem(it: ServerClaimedItem): ApplyQueueItem {
     jobUrl: it.listing.url,
     coverLetter: it.coverLetter ?? "",
     matchScore: it.matchScore ?? undefined,
+    resumeStrategy: it.resumeStrategy ?? (it.board === "jobvision" ? "native_profile_resume" : "tailored_pdf"),
+    ...(it.resume
+      ? {
+          resume: {
+            id: it.resume.id,
+            title: it.resume.title,
+            downloadUrl: it.resume.downloadUrl,
+          },
+        }
+      : {}),
   };
 }
 
@@ -262,7 +302,10 @@ export class KarjooApi {
   async claimQueue(
     limit?: number,
     executorId?: string,
-  ): Promise<{ items: ApplyQueueItem[]; reason?: "disabled" | "quota_exceeded" }> {
+  ): Promise<{
+    items: ApplyQueueItem[];
+    reason?: ServerClaimResponse["reason"];
+  }> {
     const body = {
       ...(typeof limit === "number" ? { limit } : {}),
       ...(executorId ? { executorId } : {}),
@@ -275,6 +318,62 @@ export class KarjooApi {
       items: (res.items ?? []).map(toApplyQueueItem),
       ...(res.reason ? { reason: res.reason } : {}),
     };
+  }
+
+  async downloadTaskResume(downloadUrl: string): Promise<{ dataUrl: string; fileName: string }> {
+    const headers = new Headers({ accept: "application/pdf" });
+    if (this.token) headers.set("authorization", `Bearer ${this.token}`);
+    const res = await this.fetchImpl(`${this.origin}${downloadUrl}`, { method: "GET", headers });
+    if (!res.ok) throw new ApiError(res.status, `resume download failed (${res.status})`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const fileName = fileNameFromDisposition(res.headers.get("content-disposition")) ?? "resume.pdf";
+    return { dataUrl: `data:application/pdf;base64,${bytesToBase64(bytes)}`, fileName };
+  }
+
+  async getApplyFilters(): Promise<{ filters: ApplyFilters; previewUrl: string }> {
+    return this.request<{ filters: ApplyFilters; previewUrl: string }>("/api/apply/filters", {
+      method: "GET",
+    });
+  }
+
+  async saveApplyFilters(filters: Omit<ApplyFilters, "aiFilterEnabled">): Promise<{
+    filters: ApplyFilters;
+    previewUrl: string;
+  }> {
+    return this.request<{ filters: ApplyFilters; previewUrl: string }>("/api/apply/filters", {
+      method: "PUT",
+      body: JSON.stringify(filters),
+    });
+  }
+
+  async getJobinjaCategories(): Promise<JobinjaCategory[]> {
+    const response = await this.request<{ categories: JobinjaCategory[] }>(
+      "/api/boards/jobinja/categories",
+      { method: "GET" },
+    );
+    return response.categories ?? [];
+  }
+
+  async getBoardCatalog(board: "jobinja" | "jobvision"): Promise<import("@ext/lib/types").BoardCatalog> {
+    return this.request<import("@ext/lib/types").BoardCatalog>(`/api/boards/${board}/catalog`, { method: "GET" });
+  }
+
+  async retryApplication(applicationId: string): Promise<{ ok: boolean; taskId: string }> {
+    return this.request<{ ok: boolean; taskId: string }>(
+      `/api/applications/${encodeURIComponent(applicationId)}/retry`,
+      { method: "POST" },
+    );
+  }
+
+  async getApplicationResumeHtml(applicationId: string): Promise<string> {
+    const headers = new Headers({ accept: "text/html" });
+    if (this.token) headers.set("authorization", `Bearer ${this.token}`);
+    const res = await this.fetchImpl(
+      `${this.origin}/api/applications/${encodeURIComponent(applicationId)}/resume`,
+      { method: "GET", headers },
+    );
+    if (!res.ok) throw new ApiError(res.status, `resume view failed (${res.status})`);
+    return res.text();
   }
 
   /**
@@ -403,6 +502,7 @@ export class KarjooApi {
   }
 
   async importDiscoveredListings(
+    board: "jobinja" | "jobvision",
     listings: BrowserDiscoveredListing[],
   ): Promise<{
     ingested: number;
@@ -423,7 +523,7 @@ export class KarjooApi {
       "/api/extension/discovery",
       {
         method: "POST",
-        body: JSON.stringify({ board: "jobinja", listings }),
+        body: JSON.stringify({ board, listings }),
       },
     );
   }

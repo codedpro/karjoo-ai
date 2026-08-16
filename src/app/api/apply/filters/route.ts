@@ -17,7 +17,7 @@ import "server-only";
  * کاربر دقیقاً ببیند به چه جست‌وجویی اپلای خواهد شد.
  */
 import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
-import { getCurrentUser } from "@/lib/auth/http";
+import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { applyFiltersInputSchema } from "@/lib/apply/apply-filters-form";
 import {
   readApplyFilters,
@@ -52,9 +52,9 @@ function filtersResponse(filters: ApplyFilters) {
   return json({ filters, previewUrl: previewUrlFor(filters) });
 }
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
-    const user = await getCurrentUser();
+    const user = await getCurrentUserOrBearer(request);
     if (!user) return errorJson("احراز هویت لازم است", 401);
 
     const filters = await readApplyFilters(user.id);
@@ -64,7 +64,7 @@ export async function GET(): Promise<Response> {
 
 export async function PUT(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
-    const user = await getCurrentUser();
+    const user = await getCurrentUserOrBearer(request);
     if (!user) return errorJson("احراز هویت لازم است", 401);
 
     const input = await parseJsonBody(request, applyFiltersInputSchema);
@@ -83,6 +83,20 @@ export async function PUT(request: Request): Promise<Response> {
       ...(input.dailyLimit && input.dailyLimit > 0 ? { dailyLimit: input.dailyLimit } : {}),
       ...(input.weeklyLimit && input.weeklyLimit > 0 ? { weeklyLimit: input.weeklyLimit } : {}),
       aiFilterEnabled: current.aiFilterEnabled,
+      maxAgeDays: input.maxAgeDays,
+      boardFiltersVersion: 1,
+      boardFilters: input.boardFilters ?? {
+        jobinja: {
+          enabled: current.boardFilters.jobinja.enabled,
+          categoryKeys: input.categorySlugs,
+          cities: input.cities,
+          employmentTypeKeys: input.jobTypes,
+          remoteOnly: input.remoteOnly,
+          ...(input.minSalary ? { minSalary: input.minSalary } : {}),
+          ...(input.sort ? { sort: input.sort } : {}),
+        },
+        jobvision: current.boardFilters.jobvision,
+      },
     };
 
     const { filters } = await writeApplyFilters(user.id, next, {

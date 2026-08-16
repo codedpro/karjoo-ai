@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Logo } from "@/components/brand/logo";
 import { LedgerPanel } from "@/components/site-ledger-panel";
+import { KARJOO_EXTENSION_DOWNLOAD_PATH } from "@/lib/extension/version";
 import { site } from "@/lib/site";
 
 /**
@@ -282,7 +283,7 @@ export default function Home() {
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <a
-                    href="/karjoo-extension.zip"
+                    href={KARJOO_EXTENSION_DOWNLOAD_PATH}
                     download
                     className="rounded-md bg-[#FFB020] px-7 py-3.5 text-center text-base font-bold text-[#0C0D10] transition-transform hover:-translate-y-0.5"
                   >

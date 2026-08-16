@@ -18,6 +18,9 @@ import type {
   AutoApplyStatus,
   BrowserDiscoveredListing,
   ExtensionRunOverview,
+  ApplyFilters,
+  JobinjaCategory,
+  BoardCatalog,
 } from "@ext/lib/types";
 import type { ScrapeProfileResult, BoardImportOutcome } from "@ext/lib/import-types";
 import type { ApplyPlan } from "@ext/lib/apply-runner";
@@ -133,6 +136,19 @@ export interface SetRunBackgroundMsg {
   enabled: boolean;
 }
 
+export interface GetApplyFiltersMsg { type: "GET_APPLY_FILTERS" }
+export interface SaveApplyFiltersMsg {
+  type: "SAVE_APPLY_FILTERS";
+  filters: Omit<ApplyFilters, "aiFilterEnabled">;
+}
+export interface GetJobinjaCategoriesMsg { type: "GET_JOBINJA_CATEGORIES" }
+export interface GetBoardCatalogMsg { type: "GET_BOARD_CATALOG"; board: "jobinja" | "jobvision" }
+export interface RetryApplicationMsg { type: "RETRY_APPLICATION"; applicationId: string }
+export interface GetApplicationResumeMsg {
+  type: "GET_APPLICATION_RESUME";
+  applicationId: string;
+}
+
 /* ── background → content ──────────────────────────────────────────────── */
 
 /** Ask a content script whether the user is logged in on this board, locally. */
@@ -204,7 +220,13 @@ export type PopupToBackground =
   | FindJobsMsg
   | GetRunOverviewMsg
   | MutateRunMsg
-  | SetRunBackgroundMsg;
+  | SetRunBackgroundMsg
+  | GetApplyFiltersMsg
+  | SaveApplyFiltersMsg
+  | GetJobinjaCategoriesMsg
+  | GetBoardCatalogMsg
+  | RetryApplicationMsg
+  | GetApplicationResumeMsg;
 
 export type BackgroundToContent =
   | ProbeSessionMsg
@@ -222,6 +244,8 @@ export type BackgroundToImportContent = ScrapeProfileMsg;
 export interface ProbeSessionResult {
   /** Whether the user appears logged into the board IN THEIR OWN BROWSER. */
   loggedIn: boolean;
+  /** Non-secret diagnostic used only to render an accurate local status. */
+  reason?: "no_tab" | "session_not_found" | "probe_unavailable";
   /**
    * SAFETY: this NEVER includes the cookie value / token / password. It is a
    * boolean (+ optional non-secret label hint, e.g. a display name shown by the
@@ -240,6 +264,8 @@ export interface PrefillResult {
 /** Result of a CONTENT_APPLY (auto-apply execution) — non-secret summary only. */
 export interface ContentApplyResult {
   ok: boolean;
+  /** The board confirmed this application existed before this execution. */
+  alreadyApplied?: boolean;
   /** Non-secret debug trail of which steps ran. */
   ranSteps: string[];
   /** Short, non-secret reason on failure. */
@@ -264,6 +290,7 @@ export interface CaptureStorageResult {
 export type { ScrapeProfileResult, BoardImportOutcome };
 export type { AutoApplySettings, AutoApplyStatus };
 export type { ExtensionRunOverview };
+export type { ApplyFilters, JobinjaCategory, BoardCatalog };
 
 /** Generic ok/err envelope used by background → popup responses. */
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };

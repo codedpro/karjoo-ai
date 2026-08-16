@@ -40,6 +40,53 @@ export interface ApplyQueueItem {
   /** Optional structured answers to screening questions, drafted by AI. */
   screeningAnswers?: { question: string; answer: string }[];
   matchScore?: number;
+  resumeStrategy?: "tailored_pdf" | "native_profile_resume";
+  resume?: {
+    id: string;
+    title?: string | null;
+    downloadUrl: string;
+    fileName?: string;
+    dataUrl?: string;
+  };
+}
+
+export interface ApplyFilters {
+  categorySlugs: string[];
+  cities: string[];
+  jobTypes: string[];
+  remoteOnly: boolean;
+  minSalary?: number;
+  sort?: "relevance_desc" | "published_at_desc" | "salary_from_desc";
+  paused: boolean;
+  dailyLimit?: number;
+  weeklyLimit?: number;
+  aiFilterEnabled: boolean;
+  maxAgeDays: number;
+  boardFiltersVersion: 1;
+  boardFilters: Record<"jobinja" | "jobvision", BoardFilter>;
+}
+
+export interface BoardFilter {
+  enabled: boolean;
+  categoryKeys: string[];
+  cities: string[];
+  employmentTypeKeys: string[];
+  remoteOnly: boolean;
+  minSalary?: number;
+  sort?: string;
+}
+
+export interface BoardCatalogOption { key: string; label: string; englishLabel: string }
+export interface BoardCatalog {
+  board: "jobinja" | "jobvision";
+  categories: BoardCatalogOption[];
+  employmentTypes: BoardCatalogOption[];
+}
+
+export interface JobinjaCategory {
+  slug: string;
+  name: string;
+  englishName: string;
 }
 
 /**
@@ -118,7 +165,12 @@ export interface ExecutionRun {
 
 export interface LiveQueueJob {
   taskId: string;
+  matchId?: string;
   status: "pending" | "leased";
+  attempts?: number;
+  lastError?: string | null;
+  hasTailoredResume?: boolean;
+  resumeStrategy: "tailored_pdf" | "native_profile_resume";
   listing: {
     board: string;
     title: string;
@@ -126,6 +178,7 @@ export interface LiveQueueJob {
     city: string | null;
     url: string;
     postedAt: string | null;
+    description: string | null;
   };
 }
 
@@ -137,6 +190,7 @@ export interface ExtensionRunOverview {
     appliedToday: number;
     appliedTotal: number;
     appliedLast30d: number;
+    reviewNeeded: number;
   };
   applying: LiveQueueJob[];
   queue: LiveQueueJob[];
@@ -146,17 +200,22 @@ export interface ExtensionRunOverview {
     channel: "extension" | "worker" | null;
     happenedAt: string;
     reason: string | null;
+    hasResume: boolean;
+    resumeStrategy: "tailored_pdf" | "native_profile_resume";
+    resumeId: string | null;
+    retryEligible: boolean;
     listing: LiveQueueJob["listing"];
   }>;
   updatedAt: string;
 }
 
 export interface ExtensionDiscoveryConfig {
-  board: "jobinja";
   paused: boolean;
-  hasTargeting: boolean;
-  searchUrl: string | null;
   maxAgeDays: number;
+  boards: Array<
+    | { board: "jobinja"; enabled: boolean; hasTargeting: boolean; searchUrl: string | null }
+    | { board: "jobvision"; enabled: boolean; hasTargeting: boolean; categoryKeys: string[]; employmentTypeKeys: string[]; remoteOnly: boolean }
+  >;
 }
 
 export interface BrowserDiscoveredListing {
@@ -168,4 +227,6 @@ export interface BrowserDiscoveredListing {
   description?: string | null;
   salary?: string | null;
   postedAt: string;
+  gender?: string | null;
+  alreadyApplied?: boolean;
 }

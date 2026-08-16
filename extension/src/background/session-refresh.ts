@@ -68,6 +68,9 @@ export async function refreshOneBoard(
   board: BoardId,
   opts: RefreshOptions,
 ): Promise<void> {
+  // JobVision execution stays inside its own page. Never copy its OIDC/JWT value
+  // into extension storage or the cloud vault; login probing uses key names only.
+  if (board === "jobvision") return;
   const shape = sessionShapeOf(board);
   const snapshot: SessionSnapshot = {
     board,

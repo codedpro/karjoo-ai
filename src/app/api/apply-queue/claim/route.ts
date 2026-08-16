@@ -42,6 +42,7 @@ import {
   ExecutionOwnershipError,
   releaseStaleExtensionLeases,
 } from "@/lib/apply/execution-run";
+import { prepareNextTailoredResumeForQueue } from "@/lib/resume/queue-prep";
 
 // به DB دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -88,7 +89,21 @@ export async function POST(request: Request): Promise<Response> {
         throw error;
       }
       await releaseStaleExtensionLeases(userId);
-      const items = await claimUserApplyItems(userId, body.limit);
+      const prepared = await prepareNextTailoredResumeForQueue(userId);
+      const items = await claimUserApplyItems(userId, body.limit, undefined, {
+        requireTailoredResume: true,
+      });
+      if (prepared.status === "failed" && items.length === 0) {
+        return json({
+          count: 0,
+          items: [],
+          reason: "tailored_resume_generation_failed",
+          taskId: prepared.taskId,
+        });
+      }
+      if (prepared.status === "ready" && items.length === 0) {
+        return json({ count: 0, items: [], reason: "tailored_resume_missing" });
+      }
       return json({ count: items.length, items });
     }
 

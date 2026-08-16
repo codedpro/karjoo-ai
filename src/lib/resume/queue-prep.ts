@@ -17,6 +17,82 @@ export const DEFAULT_QUEUE_RESUME_PREP_LIMIT = 20;
 export const MAX_QUEUE_RESUME_PREP_LIMIT = 25;
 const QUEUE_RESUME_PREP_CONCURRENCY = 5;
 
+export type NextQueueResumeResult =
+  | { status: "empty" }
+  | { status: "ready"; taskId: string; listingId: string; generated: boolean }
+  | { status: "failed"; taskId: string; listingId: string };
+
+export async function prepareNextTailoredResumeForQueue(
+  userId: string,
+  opts: { db?: Database } = {},
+): Promise<NextQueueResumeResult> {
+  const conn = opts.db ?? defaultDb;
+  const hasTailoredResume = exists(
+    conn
+      .select({ one: sql`1` })
+      .from(resumes)
+      .where(
+        and(
+          eq(resumes.userId, userId),
+          eq(resumes.listingId, jobListings.id),
+          eq(resumes.isBase, false),
+        ),
+      ),
+  );
+  const [row] = await conn
+    .select({
+      taskId: tasks.id,
+      listingId: jobListings.id,
+      title: jobListings.title,
+      hasTailoredResume,
+    })
+    .from(tasks)
+    .innerJoin(matches, eq(matches.id, tasks.matchId))
+    .innerJoin(jobListings, eq(jobListings.id, matches.listingId))
+    .where(
+      and(
+        eq(matches.userId, userId),
+        eq(jobListings.board, "jobinja"),
+        eq(tasks.status, "pending"),
+        sql`${tasks.runAfter} <= now()`,
+      ),
+    )
+    .orderBy(sql`${jobListings.postedAt} DESC NULLS LAST`, tasks.createdAt)
+    .limit(1);
+
+  if (!row) return { status: "empty" };
+  if (row.hasTailoredResume) {
+    return { status: "ready", taskId: row.taskId, listingId: row.listingId, generated: false };
+  }
+
+  try {
+    await generateTailoredResume(userId, row.listingId, { db: conn, source: "auto_apply" });
+    await conn
+      .update(tasks)
+      .set({ lastError: null, updatedAt: sql`now()` })
+      .where(eq(tasks.id, row.taskId));
+    return { status: "ready", taskId: row.taskId, listingId: row.listingId, generated: true };
+  } catch (err) {
+    logger.warn("next queue resume preparation failed", {
+      path: "resume/queue-prep",
+      userId,
+      taskId: row.taskId,
+      listingId: row.listingId,
+      title: row.title,
+      err: err instanceof Error ? err : new Error(String(err)),
+    });
+    await conn
+      .update(tasks)
+      .set({
+        lastError: "tailored_resume_generation_failed",
+        runAfter: sql`now() + interval '30 minutes'`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(tasks.id, row.taskId));
+    return { status: "failed", taskId: row.taskId, listingId: row.listingId };
+  }
+}
+
 export async function prepareTailoredResumesForQueue(
   userId: string,
   opts: { limit?: number; db?: Database } = {},
@@ -53,6 +129,7 @@ export async function prepareTailoredResumesForQueue(
     .where(
       and(
         eq(matches.userId, userId),
+        eq(jobListings.board, "jobinja"),
         eq(tasks.status, "pending"),
         sql`${tasks.runAfter} <= now()`,
         not(hasTailoredResume),

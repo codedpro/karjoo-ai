@@ -43,6 +43,8 @@ export interface ExecuteOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Injectable clock (tests control elapsed time). */
   now?: () => number;
+  /** Injectable PDF attachment primitive for DOM-only tests. */
+  uploadPdf?: (input: HTMLInputElement, dataUrl: string, fileName: string) => void;
 }
 
 const DEFAULT_TIMEOUT = 15_000;
@@ -50,6 +52,17 @@ const DEFAULT_POLL = 200;
 
 function realSleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function uploadPdf(input: HTMLInputElement, dataUrl: string, fileName: string): void {
+  const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const file = new File([bytes], fileName, { type: "application/pdf" });
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  input.files = transfer.files;
 }
 
 /**
@@ -139,6 +152,7 @@ export async function executeApplyPlan(
     pollMs: options.pollMs ?? DEFAULT_POLL,
     sleep: options.sleep ?? realSleep,
     now: options.now ?? (() => Date.now()),
+    uploadPdf: options.uploadPdf ?? uploadPdf,
   };
 
   const ranSteps: string[] = [];
@@ -180,7 +194,7 @@ interface StepResult {
 async function runStep(
   doc: Document,
   step: ResolvedApplyStep,
-  opts: Required<Pick<ExecuteOptions, "stepTimeoutMs" | "pollMs" | "sleep" | "now">>,
+  opts: Required<Pick<ExecuteOptions, "stepTimeoutMs" | "pollMs" | "sleep" | "now" | "uploadPdf">>,
 ): Promise<StepResult> {
   switch (step.kind) {
     case "waitFor": {
@@ -224,13 +238,28 @@ async function runStep(
       return { ok: true };
     }
     case "upload": {
-      // Programmatic file upload of the user's résumé is not wired yet (the file
-      // bytes are not available to the content script without a host bridge). We
-      // skip it as optional so it never blocks an otherwise-complete apply; real
-      // résumé upload is a TODO(real-account) per board.
-      return step.optional
-        ? { ok: false, skipped: true }
-        : { ok: false, reason: `upload not supported yet: ${step.selector}` };
+      const el = find(doc, step.selector);
+      if (!isFillable(el) || tagOf(el) !== "INPUT") {
+        if (step.optional) return { ok: false, skipped: true };
+        return { ok: false, reason: `resume_upload_failed: input not found: ${step.selector}` };
+      }
+      if (!step.value?.startsWith("data:application/pdf;base64,")) {
+        return { ok: false, reason: "resume_upload_failed: PDF bytes are missing" };
+      }
+      try {
+        opts.uploadPdf(el as HTMLInputElement, step.value, step.fileName ?? "resume.pdf");
+        dispatch(el, "input");
+        dispatch(el, "change");
+        if ((el as HTMLInputElement).files?.length !== 1) {
+          return { ok: false, reason: "resume_upload_failed: browser rejected the file" };
+        }
+        return { ok: true };
+      } catch (error) {
+        return {
+          ok: false,
+          reason: `resume_upload_failed: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
     }
     default: {
       const _exhaustive: never = step.kind;

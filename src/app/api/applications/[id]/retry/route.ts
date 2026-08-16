@@ -1,18 +1,18 @@
 import "server-only";
 
 import { errorJson, json, withErrorHandling } from "@/lib/api/http";
-import { getCurrentUser } from "@/lib/auth/http";
+import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { retryFailedApplication } from "@/lib/apply/interview-prep";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   return withErrorHandling(async () => {
-    const user = await getCurrentUser();
+    const user = await getCurrentUserOrBearer(request);
     if (!user) return errorJson("احراز هویت لازم است", 401);
 
     const { id } = await params;

@@ -72,6 +72,16 @@ export interface CategoryOption {
 /** یک slug/شهرِ تمیزِ غیرخالی با سقفِ طول (جلوگیری از بدنه‌ی غول‌آسا). */
 const trimmedToken = (max: number) => z.string().trim().min(1).max(max);
 
+const boardFilterInputSchema = z.object({
+  enabled: z.boolean().default(false),
+  categoryKeys: z.array(trimmedToken(160)).max(100).default([]),
+  cities: z.array(trimmedToken(80)).max(50).default([]),
+  employmentTypeKeys: z.array(trimmedToken(120)).max(30).default([]),
+  remoteOnly: z.boolean().default(false),
+  minSalary: z.number().int().nonnegative().max(1_000_000_000).optional(),
+  sort: trimmedToken(80).optional(),
+});
+
 /**
  * بدنه‌ی PUT /api/apply/filters — جایگزینیِ کاملِ انتخاب‌های پیکر.
  *
@@ -98,6 +108,12 @@ export const applyFiltersInputSchema = z.object({
   dailyLimit: z.number().int().positive().max(10_000).optional(),
   /** سقفِ صف‌گذاری هفتگیِ کاربر. */
   weeklyLimit: z.number().int().positive().max(100_000).optional(),
+  maxAgeDays: z.number().int().min(1).max(45).default(45),
+  boardFiltersVersion: z.literal(1).optional(),
+  boardFilters: z.object({
+    jobinja: boardFilterInputSchema,
+    jobvision: boardFilterInputSchema,
+  }).optional(),
 });
 
 /** ورودیِ اعتبارسنجی‌شده‌ی فرم (خروجیِ zod — آرایه‌ها همیشه حاضرند). */

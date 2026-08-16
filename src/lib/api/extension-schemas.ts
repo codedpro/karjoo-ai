@@ -160,10 +160,12 @@ export const browserDiscoveredListingSchema = z.object({
   description: z.string().max(20_000).nullable().optional(),
   salary: z.string().max(500).nullable().optional(),
   postedAt: z.string().datetime(),
+  gender: z.string().trim().max(100).nullable().optional(),
+  alreadyApplied: z.boolean().optional(),
 }).strict();
 
 export const browserDiscoveryImportSchema = z.object({
-  board: z.literal("jobinja"),
+  board: z.enum(["jobinja", "jobvision"]),
   listings: z.array(browserDiscoveredListingSchema).max(100),
 }).strict();
 

@@ -84,12 +84,23 @@ describe("mergeApplyFilters", () => {
       categorySlugs: ["old"],
     };
     const merged = mergeApplyFilters(existing, {
+      ...EMPTY_APPLY_FILTERS,
       categorySlugs: ["new-a", "new-b"],
       cities: ["تهران"],
       jobTypes: [],
       remoteOnly: true,
       aiFilterEnabled: true,
       paused: false,
+      boardFilters: {
+        ...EMPTY_APPLY_FILTERS.boardFilters,
+        jobinja: {
+          enabled: true,
+          categoryKeys: ["new-a", "new-b"],
+          cities: ["تهران"],
+          employmentTypeKeys: [],
+          remoteOnly: true,
+        },
+      },
     });
     // مشتقاتِ interests دست‌نخورده.
     expect(merged.titles).toEqual(["برنامه‌نویس"]);
@@ -119,6 +130,7 @@ describe("mergeApplyFilters", () => {
 
   it("round-trip: merge سپس parse همان فیلترها را برمی‌گرداند", () => {
     const filters = {
+      ...EMPTY_APPLY_FILTERS,
       categorySlugs: ["a"],
       cities: ["تهران"],
       jobTypes: ["full"],
@@ -129,6 +141,18 @@ describe("mergeApplyFilters", () => {
       paused: true,
       dailyLimit: 100,
       weeklyLimit: 500,
+      boardFilters: {
+        ...EMPTY_APPLY_FILTERS.boardFilters,
+        jobinja: {
+          enabled: true,
+          categoryKeys: ["a"],
+          cities: ["تهران"],
+          employmentTypeKeys: ["full"],
+          remoteOnly: true,
+          minSalary: 12_000_000,
+          sort: "salary_from_desc",
+        },
+      },
     };
     expect(parseApplyFilters(mergeApplyFilters(null, filters))).toEqual(filters);
   });

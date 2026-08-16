@@ -45,9 +45,9 @@ export function getConnector(id: JobBoardId): JobBoardConnector | undefined {
  * تازه‌ای به یونیون اضافه شود، TypeScript تا زمانِ افزودنِ وضعیتِ آن اینجا کامپایل
  * نمی‌شود (fail-safe: پیش‌فرضِ ضمنی «زنده» وجود ندارد).
  */
-export const BOARD_STATUS: Record<JobBoardId, "live" | "coming_soon"> = {
+export const BOARD_STATUS: Record<JobBoardId, "live" | "extension_only" | "coming_soon"> = {
   jobinja: "live",
-  jobvision: "coming_soon",
+  jobvision: "extension_only",
   "e-estekhdam": "coming_soon",
   irantalent: "coming_soon",
   karboom: "coming_soon",
@@ -61,6 +61,12 @@ export const BOARD_STATUS: Record<JobBoardId, "live" | "coming_soon"> = {
  */
 export function isBoardLive(id: string): boolean {
   return BOARD_STATUS[id as JobBoardId] === "live";
+}
+
+/** Boards that can be connected in the extension, including browser-only adapters. */
+export function isBoardConnectable(id: string): boolean {
+  const status = BOARD_STATUS[id as JobBoardId];
+  return status === "live" || status === "extension_only";
 }
 
 /** فهرستِ شناسه‌ی سایت‌هایی که واقعاً کار می‌کنند — درزِ یکپارچگی برای orchestrator. */

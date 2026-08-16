@@ -49,6 +49,7 @@ export async function clearSessionToken(area: StorageArea = defaultArea()): Prom
     STORAGE_KEYS.sessionSnapshots,
     STORAGE_KEYS.autoApplySettings,
     STORAGE_KEYS.autoApplyStatus,
+    STORAGE_KEYS.interventionTabId,
   ]);
 }
 
@@ -201,4 +202,25 @@ export async function setNotifiedBlockedAt(
   area: StorageArea = defaultArea(),
 ): Promise<void> {
   await area.set({ [STORAGE_KEYS.notifiedBlockedAt]: value });
+}
+
+export async function getInterventionTabId(
+  area: StorageArea = defaultArea(),
+): Promise<number | null> {
+  const out = await area.get(STORAGE_KEYS.interventionTabId);
+  const value = out[STORAGE_KEYS.interventionTabId];
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+export async function setInterventionTabId(
+  tabId: number,
+  area: StorageArea = defaultArea(),
+): Promise<void> {
+  await area.set({ [STORAGE_KEYS.interventionTabId]: tabId });
+}
+
+export async function clearInterventionTabId(
+  area: StorageArea = defaultArea(),
+): Promise<void> {
+  await area.remove(STORAGE_KEYS.interventionTabId);
 }

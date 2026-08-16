@@ -45,7 +45,10 @@ import {
   PageHeader,
   toFaDigits,
 } from "@/components/dashboard/ui";
-import { KARJOO_EXTENSION_VERSION } from "@/lib/extension/version";
+import {
+  KARJOO_EXTENSION_DOWNLOAD_PATH,
+  KARJOO_EXTENSION_VERSION,
+} from "@/lib/extension/version";
 
 // راستی‌آزماییِ نشست → اجرای Node.
 export const runtime = "nodejs";
@@ -56,7 +59,7 @@ export const metadata: Metadata = {
 };
 
 /** آدرسِ فایلِ افزونه در public — دانلودِ یک‌کلیکی. */
-const EXTENSION_ZIP = "/karjoo-extension.zip";
+const EXTENSION_ZIP = KARJOO_EXTENSION_DOWNLOAD_PATH;
 
 export default async function ExtensionPage() {
   const user = await getDashboardUser();

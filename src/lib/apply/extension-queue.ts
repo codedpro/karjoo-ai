@@ -13,11 +13,12 @@ import "server-only";
  *
  * همه‌ی وابستگی‌ها قابلِ تزریق‌اند (db) تا بدونِ DB/شبکه‌ی زنده تست شوند.
  */
-import { and, eq, exists, gte, inArray, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, gte, inArray, lte, or, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import {
   applications,
+  candidateProfiles,
   jobListings,
   matches,
   resumes,
@@ -34,6 +35,7 @@ export interface ClaimedApplyItem {
   matchId: string;
   listingId: string;
   board: string;
+  resumeStrategy?: "tailored_pdf" | "native_profile_resume";
   /**
    * حالتِ این task: 'filter' (اپلای بر اساسِ فیلترِ خودِ سایت، بدونِ AI) یا 'ai' (تطبیقِ
    * پریمیوم بالای آستانه). اختیاری برای سازگاریِ عقب‌رو؛ claim همیشه پُرش می‌کند.
@@ -42,6 +44,11 @@ export interface ClaimedApplyItem {
   /** انگیزه‌نامه‌ی پیش‌نویس‌شده (از match/payload) برای پیش‌پُرکردنِ فرم. */
   coverLetter: string | null;
   matchScore: number | null;
+  resume?: {
+    id: string;
+    title: string | null;
+    downloadUrl: string;
+  } | null;
   listing: {
     title: string;
     company: string | null;
@@ -115,8 +122,7 @@ export async function claimUserApplyItems(
     opts.minScore === undefined
       ? undefined
       : or(filterModeCond, gte(matches.score, opts.minScore));
-  const tailoredResumeGate = opts.requireTailoredResume
-    ? exists(
+  const tailoredResumeExists = exists(
         conn
           .select({ one: sql`1` })
           .from(resumes)
@@ -127,7 +133,9 @@ export async function claimUserApplyItems(
               eq(resumes.isBase, false),
             ),
           ),
-      )
+      );
+  const tailoredResumeGate = opts.requireTailoredResume
+    ? or(sql`${jobListings.board} <> 'jobinja'`, tailoredResumeExists)
     : undefined;
 
   // ۱) task‌های آماده‌ی همین کاربر را با join به match پیدا کن.
@@ -188,23 +196,95 @@ export async function claimUserApplyItems(
     // polling است؛ بدونِ این bound هزینه با تاریخچه‌ی کاربر بی‌کران رشد می‌کند.
     .where(and(eq(matches.userId, userId), inArray(tasks.id, [...leasedSet])));
 
+  const resumeRows = await conn
+    .select({
+      id: resumes.id,
+      listingId: resumes.listingId,
+      title: resumes.title,
+    })
+    .from(resumes)
+    .where(
+      and(
+        eq(resumes.userId, userId),
+        eq(resumes.isBase, false),
+        inArray(resumes.listingId, detail.map((row) => row.listingId)),
+      ),
+    )
+    .orderBy(desc(resumes.updatedAt));
+  const resumeByListing = new Map<string, (typeof resumeRows)[number]>();
+  for (const resume of resumeRows) {
+    if (resume.listingId && !resumeByListing.has(resume.listingId)) {
+      resumeByListing.set(resume.listingId, resume);
+    }
+  }
+
   return detail
     .filter((d) => leasedSet.has(d.taskId))
-    .map((d) => ({
-      taskId: d.taskId,
-      matchId: d.matchId,
-      listingId: d.listingId,
-      board: d.board,
-      mode: isFilterModeTask(d.payload) ? ("filter" as const) : ("ai" as const),
-      coverLetter: d.coverLetter,
-      matchScore: d.matchScore,
-      listing: {
-        title: d.title,
-        company: d.company,
-        city: d.city,
-        url: d.url,
-      },
-    }));
+    .map((d) => {
+      const resume = resumeByListing.get(d.listingId) ?? null;
+      return {
+        taskId: d.taskId,
+        matchId: d.matchId,
+        listingId: d.listingId,
+        board: d.board,
+        resumeStrategy: d.board === "jobvision" ? ("native_profile_resume" as const) : ("tailored_pdf" as const),
+        mode: isFilterModeTask(d.payload) ? ("filter" as const) : ("ai" as const),
+        coverLetter: d.coverLetter,
+        matchScore: d.matchScore,
+        resume: resume
+          ? {
+              id: resume.id,
+              title: resume.title,
+              downloadUrl: `/api/apply-queue/${encodeURIComponent(d.taskId)}/resume.pdf`,
+            }
+          : null,
+        listing: {
+          title: d.title,
+          company: d.company,
+          city: d.city,
+          url: d.url,
+        },
+      };
+    });
+}
+
+export interface TaskTailoredResume {
+  id: string;
+  html: string;
+  title: string | null;
+  company: string | null;
+  fullName: string;
+}
+
+export async function getTaskTailoredResume(
+  userId: string,
+  taskId: string,
+  conn: ExtensionQueueDb = defaultDb,
+): Promise<TaskTailoredResume | null> {
+  const [row] = await conn
+    .select({
+      id: resumes.id,
+      html: resumes.content,
+      title: resumes.title,
+      company: jobListings.company,
+      fullName: candidateProfiles.fullName,
+    })
+    .from(tasks)
+    .innerJoin(matches, eq(tasks.matchId, matches.id))
+    .innerJoin(jobListings, eq(matches.listingId, jobListings.id))
+    .innerJoin(
+      resumes,
+      and(
+        eq(resumes.userId, userId),
+        eq(resumes.listingId, jobListings.id),
+        eq(resumes.isBase, false),
+      ),
+    )
+    .innerJoin(candidateProfiles, eq(candidateProfiles.userId, userId))
+    .where(and(eq(tasks.id, taskId), eq(matches.userId, userId)))
+    .orderBy(desc(resumes.updatedAt))
+    .limit(1);
+  return row ?? null;
 }
 
 /** نتیجه‌ی یک اقدامِ تأییدشده توسطِ کاربر در افزونه. */
@@ -248,9 +328,11 @@ export async function recordResult(
       matchScore: matches.score,
       coverLetter: matches.coverLetter,
       taskStatus: tasks.status,
+      board: jobListings.board,
     })
     .from(tasks)
     .innerJoin(matches, eq(tasks.matchId, matches.id))
+    .innerJoin(jobListings, eq(matches.listingId, jobListings.id))
     .where(and(eq(tasks.id, input.taskId), eq(matches.userId, input.userId)))
     .limit(1);
 
@@ -283,7 +365,7 @@ export async function recordResult(
       matchId: found.matchId,
       listingId: found.listingId,
       // رزومه‌ی واقعاً ارسال‌شده (سفارشیِ همین آگهی) — ستونِ بایگانی.
-      ...(tailored ? { resumeId: tailored.id } : {}),
+      ...(tailored && found.board === "jobinja" ? { resumeId: tailored.id } : {}),
       status: appStatus,
       channel: "extension",
       matchScore: found.matchScore,
@@ -299,6 +381,7 @@ export async function recordResult(
       set: {
         status: appStatus,
         channel: "extension",
+        ...(tailored && found.board === "jobinja" ? { resumeId: tailored.id } : {}),
         reason: input.reason ?? null,
         externalRef: input.externalRef ?? null,
         proof: input.proof ?? null,

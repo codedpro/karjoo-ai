@@ -54,6 +54,30 @@ export interface ApplyFilters {
   dailyLimit?: number;
   /** سقفِ صف‌گذاری در هفته. undefined = بدون سقف هفتگیِ کاربر. */
   weeklyLimit?: number;
+  /** Maximum posting age accepted by discovery (capped at 45 days). */
+  maxAgeDays: number;
+  /** Versioned per-board targeting; legacy Jobinja fields above remain mirrored. */
+  boardFiltersVersion: 1;
+  boardFilters: BoardApplyFilters;
+}
+
+export interface BoardFilter {
+  enabled: boolean;
+  categoryKeys: string[];
+  cities: string[];
+  employmentTypeKeys: string[];
+  remoteOnly: boolean;
+  minSalary?: number;
+  sort?: string;
+}
+
+export interface BoardApplyFilters {
+  jobinja: BoardFilter;
+  jobvision: BoardFilter;
+}
+
+function emptyBoardFilter(enabled = false): BoardFilter {
+  return { enabled, categoryKeys: [], cities: [], employmentTypeKeys: [], remoteOnly: false };
 }
 
 /** فیلترِ خالی (پیش‌فرضِ کاربرِ بدونِ انتخاب). */
@@ -64,6 +88,12 @@ export const EMPTY_APPLY_FILTERS: ApplyFilters = {
   remoteOnly: false,
   aiFilterEnabled: false,
   paused: false,
+  maxAgeDays: 45,
+  boardFiltersVersion: 1,
+  boardFilters: {
+    jobinja: emptyBoardFilter(true),
+    jobvision: emptyBoardFilter(false),
+  },
 };
 
 /** آرایه‌ی رشته‌ی تمیز و یکتا (trim‌شده، بدونِ خالی، بدونِ تکرار). */
@@ -93,6 +123,23 @@ function nonEmptyString(v: unknown): string | undefined {
   return t.length > 0 ? t : undefined;
 }
 
+function parseBoardFilter(raw: unknown, fallback: BoardFilter): BoardFilter {
+  const value = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const minSalary = positiveNumber(value.minSalary);
+  const sort = nonEmptyString(value.sort);
+  const hasValue = Object.keys(value).length > 0;
+  if (!hasValue) return { ...fallback };
+  return {
+    enabled: typeof value.enabled === "boolean" ? value.enabled : fallback.enabled,
+    categoryKeys: cleanStringArray(value.categoryKeys),
+    cities: cleanStringArray(value.cities),
+    employmentTypeKeys: cleanStringArray(value.employmentTypeKeys),
+    remoteOnly: value.remoteOnly === true,
+    ...(minSalary === undefined ? {} : { minSalary }),
+    ...(sort === undefined ? {} : { sort }),
+  };
+}
+
 /**
  * jsonbِ ذخیره‌شده (preferences) → ApplyFilters نوع‌دار. مقاوم در برابرِ داده‌ی کهنه/بدشکل
  * (کلیدهای نامعتبر بی‌سروصدا کنار می‌روند). تابعِ خالص.
@@ -103,13 +150,27 @@ export function parseApplyFilters(
   if (!raw || typeof raw !== "object") return { ...EMPTY_APPLY_FILTERS };
   const minSalary = positiveNumber(raw.minSalary);
   const sort = nonEmptyString(raw.sort);
-  return {
-    categorySlugs: cleanStringArray(raw.categorySlugs),
+  const legacyJobinja: BoardFilter = {
+    enabled: true,
+    categoryKeys: cleanStringArray(raw.categorySlugs),
     cities: cleanStringArray(raw.cities),
-    jobTypes: cleanStringArray(raw.jobTypes),
+    employmentTypeKeys: cleanStringArray(raw.jobTypes),
     remoteOnly: raw.remoteOnly === true,
     ...(minSalary === undefined ? {} : { minSalary }),
     ...(sort === undefined ? {} : { sort }),
+  };
+  const rawBoards = raw.boardFilters && typeof raw.boardFilters === "object"
+    ? raw.boardFilters as Record<string, unknown>
+    : {};
+  const jobinja = parseBoardFilter(rawBoards.jobinja, legacyJobinja);
+  const jobvision = parseBoardFilter(rawBoards.jobvision, emptyBoardFilter(false));
+  return {
+    categorySlugs: jobinja.categoryKeys,
+    cities: jobinja.cities,
+    jobTypes: jobinja.employmentTypeKeys,
+    remoteOnly: jobinja.remoteOnly,
+    ...(jobinja.minSalary === undefined ? {} : { minSalary: jobinja.minSalary }),
+    ...(jobinja.sort === undefined ? {} : { sort: jobinja.sort }),
     aiFilterEnabled: raw.aiFilterEnabled === true,
     paused: raw.paused === true,
     ...(positiveNumber(raw.dailyLimit) === undefined
@@ -118,6 +179,9 @@ export function parseApplyFilters(
     ...(positiveNumber(raw.weeklyLimit) === undefined
       ? {}
       : { weeklyLimit: Math.floor(positiveNumber(raw.weeklyLimit)!) }),
+    maxAgeDays: Math.min(45, Math.max(1, Math.floor(positiveNumber(raw.maxAgeDays) ?? 45))),
+    boardFiltersVersion: 1,
+    boardFilters: { jobinja, jobvision },
   };
 }
 
@@ -189,6 +253,26 @@ export function mergeApplyFilters(
   const weeklyLimit = positiveNumber(filters.weeklyLimit);
   if (weeklyLimit === undefined) delete base.weeklyLimit;
   else base.weeklyLimit = Math.floor(weeklyLimit);
+
+  const jobinja = parseBoardFilter(filters.boardFilters?.jobinja, {
+    enabled: true,
+    categoryKeys: filters.categorySlugs,
+    cities: filters.cities,
+    employmentTypeKeys: filters.jobTypes,
+    remoteOnly: filters.remoteOnly,
+    ...(filters.minSalary === undefined ? {} : { minSalary: filters.minSalary }),
+    ...(filters.sort === undefined ? {} : { sort: filters.sort }),
+  });
+  const jobvision = parseBoardFilter(filters.boardFilters?.jobvision, emptyBoardFilter(false));
+  base.boardFiltersVersion = 1;
+  base.boardFilters = { jobinja, jobvision };
+  base.maxAgeDays = Math.min(45, Math.max(1, Math.floor(filters.maxAgeDays || 45)));
+
+  // Compatibility for the existing dashboard and Jobinja orchestrator.
+  base.categorySlugs = jobinja.categoryKeys;
+  base.cities = jobinja.cities;
+  base.jobTypes = jobinja.employmentTypeKeys;
+  base.remoteOnly = jobinja.remoteOnly;
 
   return base;
 }

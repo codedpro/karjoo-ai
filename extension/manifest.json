@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Karjoo — assisted apply (کارجو)",
-  "version": "0.3.1",
-  "description": "Karjoo queue executor: discover filtered Jobinja jobs and apply with your profile resume in your own browser, with live progress and server takeover.",
+  "version": "0.5.3",
+  "description": "Karjoo multi-board queue executor with synced filters, live progress, history, retries, Jobinja tailored PDFs, and JobVision native apply.",
   "default_locale": "en",
   "icons": {
     "16": "icons/icon-16.png",
@@ -61,8 +61,7 @@
       "js": [
         "content/jobvision.js",
         "content/import/jobvision.js",
-        "content/apply/jobvision.js",
-        "content/session-probe.js"
+        "content/apply/jobvision.js"
       ],
       "run_at": "document_idle"
     },

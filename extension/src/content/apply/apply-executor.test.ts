@@ -1,8 +1,8 @@
 /**
  * apply-executor — drives a resolved APPLY_SPEC plan against a fake DOM (linkedom).
- * Proves: it fills the cover letter, clicks apply+submit in order, confirms
- * success, skips an absent OPTIONAL field, and FAILS (never blindly submits) when
- * a required selector is missing. Injected sleep/clock keep it instant + offline.
+ * Proves: it attaches the tailored PDF, clicks apply+submit in order, confirms
+ * success, and FAILS (never blindly submits) when required data or selectors are
+ * missing. Injected upload/timers keep it instant + offline.
  */
 import { describe, it, expect, vi } from "vitest";
 import { parseHTML } from "linkedom";
@@ -20,7 +20,15 @@ const immediate = {
   now: () => (immediateTime += 100),
   stepTimeoutMs: 10,
   pollMs: 1,
+  uploadPdf: (input: HTMLInputElement, _dataUrl: string, fileName: string) => {
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ name: fileName, type: "application/pdf" }],
+    });
+  },
 };
+
+const TEST_PDF = "data:application/pdf;base64,JVBERi0xLjQK";
 
 function jobinjaItem(over: Partial<ApplyQueueItem> = {}): ApplyQueueItem {
   return {
@@ -30,6 +38,13 @@ function jobinjaItem(over: Partial<ApplyQueueItem> = {}): ApplyQueueItem {
     jobUrl: "https://jobinja.ir/companies/acme/jobs/AbC123",
     coverLetter: over.coverLetter ?? "انگیزه‌نامه",
     matchScore: 0.9,
+    resume: {
+      id: "resume-1",
+      title: "رزومه اختصاصی",
+      downloadUrl: "/api/apply-queue/t1/resume.pdf",
+      dataUrl: TEST_PDF,
+      fileName: "tailored-resume.pdf",
+    },
     ...over,
   };
 }
@@ -38,21 +53,25 @@ function jobinjaItem(over: Partial<ApplyQueueItem> = {}): ApplyQueueItem {
 const JOBINJA_FORM = `
   <div class="c-slideToggle__mobileFormToggler"><button class="c-btn--primary">ارسال رزومه</button></div>
   <form id="apply-form">
-    <input id="apply_choice_jobinja_profile" type="radio">
+    <input id="apply_choice_uploaded_cv" type="radio">
+    <input name="cv_file" type="file">
     <button type="submit">ثبت</button>
   </form>
   <div class="js-flashMessageMsg">ثبت شد</div>
 `;
 
 describe("executeApplyPlan — jobinja best-effort happy path", () => {
-  it("selects the Jobinja profile resume and submits", async () => {
+  it("uploads the per-job tailored resume and submits", async () => {
     const d = doc(JOBINJA_FORM);
     const it = jobinjaItem({ coverLetter: "متن انگیزه" });
     const plan = buildApplyPlan(it, applyValuesFor(it))!;
     const res = await executeApplyPlan(plan, { doc: d, ...immediate });
 
     expect(res.ok).toBe(true);
-    expect(res.ranSteps.some((s) => s.includes("#apply_choice_jobinja_profile"))).toBe(true);
+    expect(res.ranSteps.some((s) => s.includes("#apply_choice_uploaded_cv"))).toBe(true);
+    expect(res.ranSteps.some((s) => s.startsWith("upload:"))).toBe(true);
+    expect((d.querySelector("input[type='file']") as HTMLInputElement).files?.[0]?.name)
+      .toBe("tailored-resume.pdf");
     expect(res.ranSteps.some((s) => s.startsWith("fill:"))).toBe(false);
     expect(res.ranSteps.filter((s) => s.startsWith("click:")).length).toBeGreaterThanOrEqual(2);
   });
@@ -65,6 +84,20 @@ describe("executeApplyPlan — jobinja best-effort happy path", () => {
     expect(res.ok).toBe(true);
     // No fill step was planned (optional, no value).
     expect(res.ranSteps.some((s) => s.startsWith("fill:"))).toBe(false);
+  });
+
+  it("does not submit when the tailored resume is missing", async () => {
+    const d = doc(JOBINJA_FORM);
+    const submit = d.querySelector("button[type='submit']") as HTMLButtonElement;
+    const submitted = vi.fn();
+    submit.addEventListener("click", submitted);
+    const it = jobinjaItem({ resume: undefined });
+    const plan = buildApplyPlan(it, applyValuesFor(it))!;
+    const res = await executeApplyPlan(plan, { doc: d, ...immediate });
+
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe("resume_upload_failed: PDF bytes are missing");
+    expect(submitted).not.toHaveBeenCalled();
   });
 });
 
@@ -156,6 +189,3 @@ describe("executeApplyPlan — no event-spoofing / detection-evasion surface", (
     expect(res.ok).toBe(true);
   });
 });
-
-// (vi imported to keep parity with other suites that spy; not all tests use it)
-void vi;

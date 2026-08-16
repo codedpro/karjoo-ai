@@ -123,6 +123,7 @@ describe("KarjooApi authed calls", () => {
         jobUrl: "https://jobinja.ir/j/1",
         coverLetter: "سلام",
         matchScore: 0.91,
+        resumeStrategy: "tailored_pdf",
       },
     ]);
   });

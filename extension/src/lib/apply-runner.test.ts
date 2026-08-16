@@ -118,12 +118,12 @@ describe("buildApplyPlan — APPLY_SPEC-driven fill", () => {
     expect(withPhone!.steps.find((s) => s.kind === "fill")?.value).toBe("09120000000");
   });
 
-  it("marks scaffold boards as scaffold", () => {
+  it("marks the JobVision native adapter as best-effort", () => {
     const it = item({
       board: "jobvision",
       jobUrl: "https://jobvision.ir/jobs/12345",
     });
     const plan = buildApplyPlan(it, applyValuesFor(it));
-    expect(plan!.maturity).toBe("scaffold");
+    expect(plan!.maturity).toBe("best-effort");
   });
 });

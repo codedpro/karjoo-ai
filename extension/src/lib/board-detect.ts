@@ -49,7 +49,14 @@ const EESTEKHDAM_SESSION_COOKIE_NAMES = [
  * JobVision (SPA) localStorage key candidates that hold the auth JWT. The content
  * script reports the SET OF KEYS present (not values); presence ⇒ logged in.
  */
-const JOBVISION_TOKEN_KEYS = ["token", "access_token", "auth_token", "jv_token", "userToken"];
+const JOBVISION_TOKEN_KEYS = [
+  "CandidateClient_v2",
+  "token",
+  "access_token",
+  "auth_token",
+  "jv_token",
+  "userToken",
+];
 
 /**
  * IranTalent (SPA) localStorage key candidates that hold the auth token. As with

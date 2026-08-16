@@ -108,6 +108,7 @@ export function shouldStopForCap(outcome: ResultOutcome): boolean {
 export interface ResolvedApplyStep extends ApplyStep {
   /** The literal value for fill/select steps (resolved from `values`). Omitted otherwise. */
   value?: string;
+  fileName?: string;
 }
 
 /** The per-item plan handed to the content-script executor. */
@@ -144,7 +145,17 @@ export function buildApplyPlan(item: ApplyQueueItem, values: ApplyValues): Apply
       const value = step.valueKey ? values[step.valueKey] : undefined;
       // Optional step with no value → skip it entirely (e.g. no cover letter field).
       if (value === undefined && step.optional) continue;
-      steps.push(value !== undefined ? { ...step, value } : { ...step });
+      steps.push(
+        value !== undefined
+          ? {
+              ...step,
+              value,
+              ...(step.kind === "upload" && values.resumeFileName
+                ? { fileName: values.resumeFileName }
+                : {}),
+            }
+          : { ...step },
+      );
     } else {
       steps.push({ ...step });
     }
@@ -153,9 +164,11 @@ export function buildApplyPlan(item: ApplyQueueItem, values: ApplyValues): Apply
   return { board: item.board, jobUrl: item.jobUrl, maturity: spec.maturity, steps };
 }
 
-/** Convenience: resolve the standard value map for an item (cover letter only for now). */
+/** Resolve text and the short-lived tailored-resume data URL for one item. */
 export function applyValuesFor(item: ApplyQueueItem): ApplyValues {
   const values: ApplyValues = {};
   if (item.coverLetter?.trim()) values.coverLetter = item.coverLetter.trim();
+  if (item.resume?.dataUrl) values.resumeFile = item.resume.dataUrl;
+  if (item.resume?.fileName) values.resumeFileName = item.resume.fileName;
   return values;
 }

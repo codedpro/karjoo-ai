@@ -21,7 +21,7 @@ import { boardAccounts } from "@/db/schema";
 import { HttpError, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
 import { requireBearerSession } from "@/lib/api/bearer-auth";
 import { boardConnectBodySchema } from "@/lib/api/extension-schemas";
-import { isBoardLive } from "@/lib/apply/registry";
+import { isBoardConnectable } from "@/lib/apply/registry";
 
 // به DB دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -60,7 +60,7 @@ export async function POST(request: Request): Promise<Response> {
     //    (BOARD_STATUS === "live") قابلِ اتصال‌اند؛ داربست‌ها (search/apply آن‌ها throw
     //    می‌کند) رد می‌شوند تا کاربر گمان نکند اتصالْ کاری می‌کند. ۴۰۹ (نه ۴۰۰) تا از
     //    خطای اعتبارسنجیِ بدنه (۴۰۰) قابلِ تمایز باشد؛ enumِ افزونه دست‌نخورده می‌ماند.
-    if (!isBoardLive(body.board)) {
+    if (!isBoardConnectable(body.board)) {
       throw new HttpError(
         409,
         "این سایت هنوز پشتیبانی نمی‌شود و به‌زودی اضافه می‌شود.",

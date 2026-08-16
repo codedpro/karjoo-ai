@@ -5,11 +5,15 @@ import {
   getNotifiedBlockedAt,
   getOrCreateExecutorId,
   getSessionToken,
+  getInterventionTabId,
+  setInterventionTabId,
+  clearInterventionTabId,
   setAutoApplyStatus,
   setNotifiedBlockedAt,
 } from "@ext/lib/storage";
 import {
   AUTO_APPLY_ALARM,
+  politenessDelayMs,
   SESSION_REFRESH_ALARM,
   SESSION_REFRESH_MINUTES,
 } from "@ext/lib/auto-apply-config";
@@ -19,6 +23,7 @@ import { planUsesVault, type ApplyQueueItem, type AutoApplyStatus, type Extensio
 import { refreshAllBoardSessions } from "@ext/background/session-refresh";
 import { sendToTab, waitForTabComplete } from "@ext/background/tab-utils";
 import type { ContentApplyResult, ContentDiscoveryResult } from "@ext/lib/messages";
+import { discoverJobvisionListings } from "@ext/lib/jobvision-discovery";
 
 let activeCycle: Promise<AutoApplyStatus> | null = null;
 
@@ -65,7 +70,10 @@ export async function mutateRun(
     ...((action === "start" || action === "takeover") ? { backgroundEnabled } : {}),
   });
   if (action === "start" || action === "takeover") {
+    await closeInterventionTab();
     void runAutoApplyTick(true);
+  } else if (action === "pause" || action === "stop") {
+    await closeInterventionTab();
   }
   return overview;
 }
@@ -130,13 +138,35 @@ async function discoverAndDrain(
 
   let lastDiscoveryAt = options.lastDiscoveryAt;
   const discovery = options.discoverDue ? await api.getDiscoveryConfig() : null;
-  if (discovery && !discovery.paused && discovery.hasTargeting && discovery.searchUrl) {
-    const result = await discoverJobinja(api, executorId, discovery.searchUrl, discovery.maxAgeDays);
-    lastDiscoveryAt = Date.now();
-    discovered = result.discovered;
-    if (result.blocked) {
-      return record({ ranAt, outcome: "error", submitted, failed, message: result.reason });
+  if (discovery && !discovery.paused) {
+    for (const board of discovery.boards) {
+      if (!board.enabled || !board.hasTargeting) continue;
+      if (board.board === "jobinja" && board.searchUrl) {
+        const result = await discoverJobinja(api, executorId, board.searchUrl, discovery.maxAgeDays);
+        discovered += result.discovered;
+        if (result.blocked) {
+          return record({ ranAt, outcome: "error", submitted, failed, message: result.reason });
+        }
+      } else if (board.board === "jobvision") {
+        const listings = await discoverJobvisionListings({
+          categoryKeys: board.categoryKeys,
+          employmentTypeKeys: board.employmentTypeKeys,
+          remoteOnly: board.remoteOnly,
+          maxAgeDays: discovery.maxAgeDays,
+        }, fetch, async (count) => {
+          await api.mutateExecutionRun({
+            action: "progress",
+            executorId,
+            progress: { stage: "discovering", board: "jobvision", discovered: discovered + count },
+          });
+        });
+        for (let index = 0; index < listings.length; index += 100) {
+          const imported = await api.importDiscoveredListings("jobvision", listings.slice(index, index + 100));
+          discovered += imported.ingested;
+        }
+      }
     }
+    lastDiscoveryAt = Date.now();
   }
 
   for (;;) {
@@ -144,7 +174,27 @@ async function discoverAndDrain(
       action: "heartbeat",
       executorId,
     });
+    await api.mutateExecutionRun({
+      action: "progress",
+      executorId,
+      progress: { stage: "claiming", discovered, submitted, failed, lastDiscoveryAt },
+    });
     const claim = await api.claimQueue(1, executorId);
+    if (
+      claim.reason === "tailored_resume_generation_failed" ||
+      claim.reason === "tailored_resume_missing"
+    ) {
+      await api.mutateExecutionRun({
+        action: "block",
+        executorId,
+        reason: claim.reason,
+      });
+      await notify(
+        "ساخت رزومه متوقف شد",
+        "رزومهٔ اختصاصی آماده نشد. هیچ رزومه‌ای برای جابینجا ارسال نشد.",
+      );
+      return record({ ranAt, outcome: "error", submitted, failed, message: claim.reason });
+    }
     const item = claim.items[0];
     if (!item) {
       if (options.backgroundEnabled) {
@@ -180,7 +230,12 @@ async function discoverAndDrain(
       },
     });
 
-    const result = await applyOne(item);
+    const result = await applyOne(api, executorId, item, {
+      discovered,
+      submitted,
+      failed,
+      lastDiscoveryAt,
+    });
     if (!result.ok && isBlockingReason(result.reason)) {
       const reason = result.reason ?? "jobinja_security_check";
       await api.mutateExecutionRun({ action: "block", executorId, taskId: item.id, reason });
@@ -190,12 +245,14 @@ async function discoverAndDrain(
 
     const report = buildApplyResultReport({
       id: item.id,
-      status: result.ok ? "submitted" : "failed",
+      status: result.alreadyApplied ? "skipped" : result.ok ? "submitted" : "failed",
+      ...(result.alreadyApplied ? { reason: "already_applied_on_board" } : {}),
       ...(!result.ok && result.reason ? { reason: result.reason } : {}),
     });
     await api.reportResult(report, executorId);
-    if (result.ok) submitted += 1;
-    else failed += 1;
+    if (result.ok && !result.alreadyApplied) submitted += 1;
+    else if (!result.ok) failed += 1;
+    await new Promise((resolve) => setTimeout(resolve, politenessDelayMs()));
   }
 }
 
@@ -211,63 +268,126 @@ async function discoverJobinja(
   const cutoff = Date.now() - maxAgeDays * 86_400_000;
   let tab: chrome.tabs.Tab | undefined;
 
-  while (url && !visited.has(url)) {
-    visited.add(url);
-    tab = tab?.id
-      ? await chrome.tabs.update(tab.id, { url, active: false })
-      : await chrome.tabs.create({ url, active: false });
-    if (!tab.id) throw new Error("could not open Jobinja discovery tab");
-    await waitForTabComplete(tab.id);
-    const page: ContentDiscoveryResult = await sendToTab<ContentDiscoveryResult>(
-      tab.id,
-      { type: "CONTENT_DISCOVER_JOBINJA" },
-    );
-    if (page.securityChallenge || page.loginRequired) {
-      const reason = page.securityChallenge ? "jobinja_security_check: discovery blocked" : "jobinja_login_required: discovery blocked";
+  let retainTab = false;
+  try {
+    while (url && !visited.has(url)) {
+      visited.add(url);
+      tab = tab?.id
+        ? await chrome.tabs.update(tab.id, { url, active: false })
+        : await chrome.tabs.create({ url, active: false });
+      if (!tab.id) throw new Error("could not open Jobinja discovery tab");
+      await waitForTabComplete(tab.id);
+      const page: ContentDiscoveryResult = await sendToTab<ContentDiscoveryResult>(
+        tab.id,
+        { type: "CONTENT_DISCOVER_JOBINJA" },
+      );
+      if (page.securityChallenge || page.loginRequired) {
+        const reason = page.securityChallenge ? "jobinja_security_check: discovery blocked" : "jobinja_login_required: discovery blocked";
+        await api.mutateExecutionRun({ action: "block", executorId, reason });
+        retainTab = true;
+        await retainInterventionTab(tab.id);
+        await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
+        await notify("کشف شغل متوقف شد", "صفحهٔ جابینجا را بررسی و ورود/تایید امنیتی را تکمیل کنید.");
+        return { discovered, blocked: true, reason };
+      }
+      if (page.listings.length > 0) {
+        const imported = await api.importDiscoveredListings("jobinja", page.listings);
+        discovered += imported.ingested;
+      }
       await api.mutateExecutionRun({
-        action: "block",
+        action: "progress",
         executorId,
-        reason,
+        progress: {
+          stage: "discovering",
+          discovered,
+          bulkApplyAvailable: page.bulkApplyAvailable,
+          lastDiscoveryAt: Date.now(),
+        },
       });
-      await notify("کشف شغل متوقف شد", "صفحهٔ جابینجا را بررسی و ورود/تایید امنیتی را تکمیل کنید.");
-      return { discovered, blocked: true, reason };
+      if (page.oldestPostedAt && new Date(page.oldestPostedAt).getTime() < cutoff) break;
+      url = page.nextUrl;
     }
-    if (page.listings.length > 0) {
-      const imported = await api.importDiscoveredListings(page.listings);
-      discovered += imported.ingested;
+    return { discovered, blocked: false };
+  } finally {
+    if (tab?.id && !retainTab) await chrome.tabs.remove(tab.id).catch(() => undefined);
+  }
+}
+
+async function applyOne(
+  api: KarjooApi,
+  executorId: string,
+  item: ApplyQueueItem,
+  progress: Record<string, unknown>,
+): Promise<ContentApplyResult> {
+  if (item.resumeStrategy === "tailored_pdf" && !item.resume) {
+    return { ok: false, ranSteps: [], reason: "tailored_resume_missing" };
+  }
+  let managed: { tab: chrome.tabs.Tab; created: boolean } | null = null;
+  let retainTab = false;
+  try {
+    let preparedItem = item;
+    if (item.resumeStrategy === "tailored_pdf" && item.resume) {
+      await api.mutateExecutionRun({
+        action: "progress",
+        executorId,
+        currentTaskId: item.id,
+        progress: { ...progress, stage: "downloading_resume", title: item.jobTitle, company: item.company ?? "" },
+      });
+      const resume = await api.downloadTaskResume(item.resume.downloadUrl);
+      preparedItem = {
+        ...item,
+        resume: { ...item.resume, dataUrl: resume.dataUrl, fileName: resume.fileName },
+      };
     }
+    const plan = buildApplyPlan(preparedItem, applyValuesFor(preparedItem));
+    if (!plan) return { ok: false, ranSteps: [], reason: "no apply spec for board" };
+
     await api.mutateExecutionRun({
       action: "progress",
       executorId,
-      progress: {
-        stage: "discovering",
-        discovered,
-        bulkApplyAvailable: page.bulkApplyAvailable,
-        lastDiscoveryAt: Date.now(),
-      },
+      currentTaskId: item.id,
+      progress: { ...progress, stage: "opening_job", title: item.jobTitle, company: item.company ?? "" },
     });
-    if (page.oldestPostedAt && new Date(page.oldestPostedAt).getTime() < cutoff) break;
-    url = page.nextUrl;
-  }
-  if (tab?.id) await chrome.tabs.remove(tab.id).catch(() => undefined);
-  return { discovered, blocked: false };
-}
-
-async function applyOne(item: ApplyQueueItem): Promise<ContentApplyResult> {
-  const plan = buildApplyPlan(item, applyValuesFor(item));
-  if (!plan) return { ok: false, ranSteps: [], reason: "no apply spec for board" };
-  try {
-    const tab = await ensureTab(item.jobUrl, BOARDS[item.board]?.origin ?? item.jobUrl);
-    if (!tab?.id) throw new Error("could not open the job page");
-    await waitForTabComplete(tab.id);
-    return await sendToTab<ContentApplyResult>(tab.id, { type: "CONTENT_APPLY", plan });
+    managed = await ensureManagedTab(item.jobUrl, BOARDS[item.board]?.origin ?? item.jobUrl);
+    if (!managed.tab.id) throw new Error("could not open the job page");
+    await waitForTabComplete(managed.tab.id);
+    await api.mutateExecutionRun({
+      action: "progress",
+      executorId,
+      currentTaskId: item.id,
+      progress: { ...progress, stage: item.resumeStrategy === "tailored_pdf" ? "uploading_resume" : "applying", title: item.jobTitle, company: item.company ?? "" },
+    });
+    const result = await sendToTab<ContentApplyResult>(managed.tab.id, {
+      type: "CONTENT_APPLY",
+      plan,
+    });
+    if (!result.ok && isBlockingReason(result.reason) && managed.created) {
+      retainTab = true;
+      await retainInterventionTab(managed.tab.id);
+      await chrome.tabs.update(managed.tab.id, { active: true }).catch(() => undefined);
+    }
+    return result;
   } catch (error) {
-    return { ok: false, ranSteps: [], reason: error instanceof Error ? error.message : String(error) };
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      ranSteps: [],
+      reason: /resume download/i.test(reason) ? `resume_download_failed: ${reason}` : reason,
+    };
+  } finally {
+    if (managed?.tab.id && shouldCloseManagedTab(managed.created, retainTab)) {
+      await chrome.tabs.remove(managed.tab.id).catch(() => undefined);
+    }
   }
 }
 
 function isBlockingReason(reason?: string): boolean {
-  return Boolean(reason && /jobinja_(security_check|login_required)/.test(reason));
+  return Boolean(
+    reason &&
+      /(jobinja_(security_check|login_required)|jobvision_(login_required|captcha_required|security_challenge|resume_setup_required)|tailored_resume_|resume_(render|download|upload)_failed)/.test(
+        reason,
+      ),
+  );
 }
 
 async function notifyBlockedRun(overview: ExtensionRunOverview): Promise<void> {
@@ -293,14 +413,32 @@ export async function runSessionRefreshTick(): Promise<void> {
   await refreshAllBoardSessions(api, { pushToVault: planUsesVault(await api.getPlan()) });
 }
 
-async function ensureTab(jobUrl: string, origin: string): Promise<chrome.tabs.Tab | undefined> {
+async function ensureManagedTab(
+  jobUrl: string,
+  origin: string,
+): Promise<{ tab: chrome.tabs.Tab; created: boolean }> {
   const existing = await chrome.tabs.query({ url: `${origin}/*` });
   const match = existing.find((tab) => tab.url && sameJob(tab.url, jobUrl));
   if (match?.id !== undefined) {
     await chrome.tabs.update(match.id, { active: false });
-    return match;
+    return { tab: match, created: false };
   }
-  return chrome.tabs.create({ url: jobUrl, active: false });
+  const tab = await chrome.tabs.create({ url: jobUrl, active: false });
+  return { tab, created: true };
+}
+
+async function retainInterventionTab(tabId: number): Promise<void> {
+  const previous = await getInterventionTabId();
+  if (previous !== null && previous !== tabId) {
+    await chrome.tabs.remove(previous).catch(() => undefined);
+  }
+  await setInterventionTabId(tabId);
+}
+
+async function closeInterventionTab(): Promise<void> {
+  const tabId = await getInterventionTabId();
+  if (tabId !== null) await chrome.tabs.remove(tabId).catch(() => undefined);
+  await clearInterventionTabId();
 }
 
 function sameJob(a: string, b: string): boolean {
@@ -311,4 +449,9 @@ function sameJob(a: string, b: string): boolean {
   } catch {
     return a === b;
   }
+}
+
+/** Close only tabs opened by this executor; keep one only for required user intervention. */
+export function shouldCloseManagedTab(created: boolean, retainedForIntervention: boolean): boolean {
+  return created && !retainedForIntervention;
 }
