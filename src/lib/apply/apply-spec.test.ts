@@ -26,17 +26,19 @@ describe("APPLY_SPEC — ساختار", () => {
     }
   });
 
-  it("jobinja «best-effort واقعی» است؛ بقیه داربست", () => {
+  it("jobinja و e-estekhdam آماده‌اند؛ jobvision و irantalent داربست", () => {
     expect(APPLY_SPEC.jobinja.maturity).toBe("best-effort");
     expect(isApplySpecReady("jobinja")).toBe(true);
-    for (const board of ["jobvision", "e-estekhdam", "irantalent"] as const) {
+    expect(APPLY_SPEC["e-estekhdam"].maturity).toBe("best-effort");
+    expect(isApplySpecReady("e-estekhdam")).toBe(true);
+    for (const board of ["jobvision", "irantalent"] as const) {
       expect(APPLY_SPEC[board].maturity).toBe("scaffold");
       expect(isApplySpecReady(board)).toBe(false);
     }
   });
 
   it("داربست‌ها TODO(real-account) را در note/notes دارند", () => {
-    for (const board of ["jobvision", "e-estekhdam", "irantalent"] as const) {
+    for (const board of ["jobvision", "irantalent"] as const) {
       const spec = APPLY_SPEC[board];
       const blob = JSON.stringify({ steps: spec.steps, notes: spec.notes });
       expect(blob, board).toContain("TODO(real-account)");

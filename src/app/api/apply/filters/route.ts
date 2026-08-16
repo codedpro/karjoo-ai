@@ -96,6 +96,7 @@ export async function PUT(request: Request): Promise<Response> {
           ...(input.sort ? { sort: input.sort } : {}),
         },
         jobvision: current.boardFilters.jobvision,
+        "e-estekhdam": current.boardFilters["e-estekhdam"],
       },
     };
 

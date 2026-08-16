@@ -354,7 +354,9 @@ export class KarjooApi {
     return response.categories ?? [];
   }
 
-  async getBoardCatalog(board: "jobinja" | "jobvision"): Promise<import("@ext/lib/types").BoardCatalog> {
+  async getBoardCatalog(
+    board: "jobinja" | "jobvision" | "e-estekhdam",
+  ): Promise<import("@ext/lib/types").BoardCatalog> {
     return this.request<import("@ext/lib/types").BoardCatalog>(`/api/boards/${board}/catalog`, { method: "GET" });
   }
 
@@ -502,7 +504,7 @@ export class KarjooApi {
   }
 
   async importDiscoveredListings(
-    board: "jobinja" | "jobvision",
+    board: "jobinja" | "jobvision" | "e-estekhdam",
     listings: BrowserDiscoveredListing[],
   ): Promise<{
     ingested: number;

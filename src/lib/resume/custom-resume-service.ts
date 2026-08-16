@@ -84,6 +84,8 @@ export interface GenerateDeps {
 export interface TailoredResumeResult {
   id: string;
   headline: string;
+  summary: string;
+  fullName: string;
   html: string;
   jobTitle: string | null;
 }
@@ -1271,7 +1273,14 @@ export async function generateTailoredResume(
     id = row!.id;
   }
 
-  return { id, headline: data.headline ?? profile.fullName, html, jobTitle: job.title ?? null };
+  return {
+    id,
+    headline: data.headline ?? profile.fullName,
+    summary: data.summary,
+    fullName: data.fullName,
+    html,
+    jobTitle: job.title ?? null,
+  };
 }
 
 /** رزومه‌ی هدف‌گیری‌شده‌ی ذخیره‌شده (HTML) را برای یک مالک برمی‌گرداند (پیش‌نمایش/رندرِ PDF). */

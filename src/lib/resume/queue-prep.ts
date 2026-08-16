@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, exists, not, sql } from "drizzle-orm";
+import { and, eq, exists, inArray, not, sql } from "drizzle-orm";
 
 import { db as defaultDb, type Database } from "@/db";
 import { jobListings, matches, resumes, tasks } from "@/db/schema";
@@ -44,6 +44,9 @@ export async function prepareNextTailoredResumeForQueue(
       taskId: tasks.id,
       listingId: jobListings.id,
       title: jobListings.title,
+      board: jobListings.board,
+      matchId: matches.id,
+      coverLetter: matches.coverLetter,
       hasTailoredResume,
     })
     .from(tasks)
@@ -52,7 +55,7 @@ export async function prepareNextTailoredResumeForQueue(
     .where(
       and(
         eq(matches.userId, userId),
-        eq(jobListings.board, "jobinja"),
+        inArray(jobListings.board, ["jobinja", "e-estekhdam"]),
         eq(tasks.status, "pending"),
         sql`${tasks.runAfter} <= now()`,
       ),
@@ -61,12 +64,21 @@ export async function prepareNextTailoredResumeForQueue(
     .limit(1);
 
   if (!row) return { status: "empty" };
-  if (row.hasTailoredResume) {
+  if (row.hasTailoredResume && (row.board !== "e-estekhdam" || row.coverLetter?.trim())) {
     return { status: "ready", taskId: row.taskId, listingId: row.listingId, generated: false };
   }
 
   try {
-    await generateTailoredResume(userId, row.listingId, { db: conn, source: "auto_apply" });
+    const generated = await generateTailoredResume(userId, row.listingId, {
+      db: conn,
+      source: "auto_apply",
+    });
+    if (row.board === "e-estekhdam") {
+      await conn
+        .update(matches)
+        .set({ coverLetter: coverLetterFromResume(generated), updatedAt: sql`now()` })
+        .where(eq(matches.id, row.matchId));
+    }
     await conn
       .update(tasks)
       .set({ lastError: null, updatedAt: sql`now()` })
@@ -122,6 +134,8 @@ export async function prepareTailoredResumesForQueue(
       taskId: tasks.id,
       listingId: jobListings.id,
       title: jobListings.title,
+      board: jobListings.board,
+      matchId: matches.id,
     })
     .from(tasks)
     .innerJoin(matches, eq(matches.id, tasks.matchId))
@@ -129,7 +143,7 @@ export async function prepareTailoredResumesForQueue(
     .where(
       and(
         eq(matches.userId, userId),
-        eq(jobListings.board, "jobinja"),
+        inArray(jobListings.board, ["jobinja", "e-estekhdam"]),
         eq(tasks.status, "pending"),
         sql`${tasks.runAfter} <= now()`,
         not(hasTailoredResume),
@@ -140,10 +154,16 @@ export async function prepareTailoredResumesForQueue(
 
   async function prepareOne(row: (typeof rows)[number]): Promise<"prepared" | "failed"> {
     try {
-      await generateTailoredResume(userId, row.listingId, {
+      const generated = await generateTailoredResume(userId, row.listingId, {
         db: conn,
         source: "auto_apply",
       });
+      if (row.board === "e-estekhdam") {
+        await conn
+          .update(matches)
+          .set({ coverLetter: coverLetterFromResume(generated), updatedAt: sql`now()` })
+          .where(eq(matches.id, row.matchId));
+      }
       await conn
         .update(tasks)
         .set({ lastError: null, updatedAt: sql`now()` })
@@ -180,4 +200,28 @@ export async function prepareTailoredResumesForQueue(
   }
 
   return { attempted: rows.length, prepared, failed };
+}
+
+function coverLetterFromResume(result: {
+  fullName: string;
+  headline: string;
+  summary: string;
+  jobTitle: string | null;
+}): string {
+  const summary = result.summary.trim().slice(0, 1_400);
+  const isPersian = /[\u0600-\u06ff]/.test(`${summary} ${result.jobTitle ?? ""}`);
+  if (isPersian) {
+    return [
+      "سلام،",
+      summary,
+      "رزومه پیوست شده است و خوشحال می‌شوم درباره تجربه و توانایی‌هایم بیشتر گفتگو کنیم.",
+      `با احترام،\n${result.fullName}`,
+    ].join("\n\n");
+  }
+  return [
+    "Hello,",
+    summary,
+    "My resume is attached, and I would welcome the opportunity to discuss my experience and capabilities.",
+    `Kind regards,\n${result.fullName}`,
+  ].join("\n\n");
 }

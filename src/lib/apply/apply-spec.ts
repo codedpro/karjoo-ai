@@ -11,8 +11,8 @@
  * نشستِ *خودِ کاربر* پر می‌شوند (اقدام به‌عنوانِ کاربرِ مجاز).
  *
  * وضعیت: jobinja «best-effort واقعی» (سلکتورهای محتمل بر اساسِ ساختارِ فرمِ jobinja)؛
- * jobvision/e-estekhdam/irantalent داربست‌اند با TODO(real-account) چون فرمِ ثبتِ
- * احرازهویت‌شده‌شان بدونِ حسابِ واقعی قابلِ تأیید نیست.
+ * jobvision/irantalent داربست‌اند با TODO(real-account). ای‌استخدام با API رسمی
+ * فرم ATS در نشست فعال افزونه اجرا می‌شود.
  */
 
 /** شناسه‌ی سایت‌هایی که APPLY_SPEC دارند — هم‌راستا با jobBoardEnum/registry. */
@@ -217,42 +217,34 @@ const JOBVISION_SPEC: BoardApplySpec = {
 
 /* ────────────────────────────  e-estekhdam  ─────────────────────────────── */
 /**
- * e-estekhdam — داربست (TODO(real-account)).
- *
- * بسیاری از آگهی‌های e-estekhdam «تماس از طریقِ متن» (applyType=contact) هستند؛ برای
- * آگهی‌های دارای فرمِ ساختاریافته این داربست استفاده می‌شود. سلکتورها placeholder‌اند.
+ * e-estekhdam — فرم ATS رسمی از داخل نشست فعال مرورگر.
  */
 const E_ESTEKHDAM_SPEC: BoardApplySpec = {
   board: "e-estekhdam",
-  maturity: "scaffold",
+  maturity: "best-effort",
   urlPattern: /^https:\/\/(www\.)?e-estekhdam\.com\/.+/,
-  // TODO(real-account): سلکتورهای واقعیِ فرمِ اپلایِ e-estekhdam.
-  applyButtonSelector: ".job-apply-btn",
-  coverLetterFieldSelector: "textarea[name='message']",
-  submitSelector: "form.apply-form button[type='submit']",
-  confirmSelector: ".apply-success",
+  applyButtonSelector: "button",
+  coverLetterFieldSelector: "textarea.inp-description",
+  submitSelector: "button[type='submit']",
   steps: [
     {
-      kind: "click",
-      selector: ".job-apply-btn",
-      note: "TODO(real-account): شروعِ اپلای (برای آگهیِ ساختاریافته).",
+      kind: "upload",
+      selector: "input[type='file']",
+      valueKey: "resumeFile",
+      requiresValueKey: "resumeFile",
+      note: "PDF اختصاصی در فرم multipart رسمی ATS ارسال می‌شود.",
     },
     {
       kind: "fill",
-      selector: "textarea[name='message']",
+      selector: "textarea.inp-description",
       valueKey: "coverLetter",
       optional: true,
-      note: "TODO(real-account): پیام/انگیزه‌نامه.",
-    },
-    {
-      kind: "click",
-      selector: "form.apply-form button[type='submit']",
-      note: "TODO(real-account): ثبت.",
+      note: "متن معرفی اختیاری همراه رزومه.",
     },
   ],
   notes: [
-    "بسیاری از آگهی‌ها contact-in-text‌اند (applyType=contact) و این جریان روی آن‌ها اعمال نمی‌شود.",
-    "TODO(real-account): سلکتورها با حسابِ واقعی صحت‌سنجی شوند.",
+    "فقط آگهی‌های ats=true وارد صف مرورگر می‌شوند.",
+    "ارسال از نشست فعال افزونه انجام می‌شود؛ CAPTCHA نیازمند اقدام کاربر است.",
   ],
 };
 

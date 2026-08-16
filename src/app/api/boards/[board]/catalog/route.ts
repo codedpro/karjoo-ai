@@ -3,6 +3,7 @@ import "server-only";
 import { json, withErrorHandling } from "@/lib/api/http";
 import { getJobinjaCategories } from "@/lib/apply/boards/jobinja-categories";
 import { getJobvisionCatalog } from "@/lib/apply/boards/jobvision-catalog";
+import { getEEstekhdamCatalog } from "@/lib/apply/boards/eestekhdam-catalog";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,7 @@ export async function GET(
 ): Promise<Response> {
   return withErrorHandling(async () => {
     const { board } = await context.params;
+    if (board === "e-estekhdam") return json(await getEEstekhdamCatalog());
     if (board === "jobvision") return json(await getJobvisionCatalog());
     if (board === "jobinja") {
       const { categories } = await getJobinjaCategories();

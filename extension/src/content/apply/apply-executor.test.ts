@@ -169,6 +169,7 @@ describe("executeApplyPlan — no event-spoofing / detection-evasion surface", (
     const plan = {
       board: "jobinja" as const,
       jobUrl: "https://jobinja.ir/companies/x/jobs/Y",
+      jobTitle: "Software Engineer",
       maturity: "best-effort" as const,
       steps: [{ kind: "fill" as const, selector: "#message", value: "x" }],
     };
@@ -181,6 +182,7 @@ describe("executeApplyPlan — no event-spoofing / detection-evasion surface", (
     const plan = {
       board: "jobinja" as const,
       jobUrl: "https://jobinja.ir/companies/x/jobs/Y",
+      jobTitle: "Software Engineer",
       maturity: "best-effort" as const,
       steps: [{ kind: "click" as const, selector: "::::bad", optional: true }],
     };

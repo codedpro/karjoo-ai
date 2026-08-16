@@ -26,6 +26,7 @@ export async function GET(request: Request): Promise<Response> {
         prefs.remoteOnly,
     );
     const jobvision = filters.boardFilters.jobvision;
+    const eEstekhdam = filters.boardFilters["e-estekhdam"];
     return json({
       paused: filters.paused,
       maxAgeDays: filters.maxAgeDays,
@@ -45,6 +46,19 @@ export async function GET(request: Request): Promise<Response> {
           categoryKeys: jobvision.categoryKeys,
           employmentTypeKeys: jobvision.employmentTypeKeys,
           remoteOnly: jobvision.remoteOnly,
+        },
+        {
+          board: "e-estekhdam",
+          enabled: eEstekhdam.enabled,
+          hasTargeting:
+            eEstekhdam.categoryKeys.length > 0 ||
+            eEstekhdam.cities.length > 0 ||
+            eEstekhdam.remoteOnly ||
+            eEstekhdam.employmentTypeKeys.length > 0,
+          categoryKeys: eEstekhdam.categoryKeys,
+          cities: eEstekhdam.cities,
+          employmentTypeKeys: eEstekhdam.employmentTypeKeys,
+          remoteOnly: eEstekhdam.remoteOnly,
         },
       ],
     });

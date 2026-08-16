@@ -165,7 +165,7 @@ export const browserDiscoveredListingSchema = z.object({
 }).strict();
 
 export const browserDiscoveryImportSchema = z.object({
-  board: z.enum(["jobinja", "jobvision"]),
+  board: z.enum(["jobinja", "jobvision", "e-estekhdam"]),
   listings: z.array(browserDiscoveredListingSchema).max(100),
 }).strict();
 

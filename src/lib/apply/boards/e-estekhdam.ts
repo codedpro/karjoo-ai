@@ -9,11 +9,8 @@ import type {
 } from "@/lib/apply/types";
 
 /**
- * کانکتور ای‌استخدام (e-estekhdam.com) — داربست.
- *
- * نوعِ اپلایِ این سایت «تماس» است: در بیشترِ آگهی‌ها، «اپلای» یعنی ارسالِ پیام/تماس
- * از روی اطلاعاتِ متنِ آگهی، نه یک فرمِ ساختاریافته (بخش ۷ سند معماری). نشست — در
- * صورتِ نیاز — کوکی است.
+ * کانکتور ای‌استخدام (e-estekhdam.com). کشف و ارسالِ واقعی در افزونه انجام می‌شود
+ * چون فرم ATS به نشستِ فعال مرورگر و گاهی تایید انسانی وابسته است.
  *
  * هنوز هیچ اسکریپینگ/اتوماسیونی پیاده نشده است: scrapePublic/search/apply داربست‌اند
  * و در فازهای بعد (با رعایتِ robots.txt و شرایطِ استفاده) پیاده می‌شوند. این فایل صرفاً
@@ -22,8 +19,7 @@ import type {
 export const eEstekhdam: JobBoardConnector = {
   id: "e-estekhdam",
   displayName: "ای‌استخدام",
-  // اپلای = پیام/تماس از روی متنِ آگهی (نه فرمِ ساختاریافته).
-  applyType: "contact",
+  applyType: "structured",
   sessionShape: "cookie",
 
   async scrapePublic(_prefs: JobPreferences): Promise<JobListing[]> {

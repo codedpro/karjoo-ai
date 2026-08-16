@@ -113,6 +113,7 @@ export const applyFiltersInputSchema = z.object({
   boardFilters: z.object({
     jobinja: boardFilterInputSchema,
     jobvision: boardFilterInputSchema,
+    "e-estekhdam": boardFilterInputSchema,
   }).optional(),
 });
 

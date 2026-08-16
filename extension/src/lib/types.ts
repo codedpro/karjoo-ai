@@ -63,7 +63,7 @@ export interface ApplyFilters {
   aiFilterEnabled: boolean;
   maxAgeDays: number;
   boardFiltersVersion: 1;
-  boardFilters: Record<"jobinja" | "jobvision", BoardFilter>;
+  boardFilters: Record<"jobinja" | "jobvision" | "e-estekhdam", BoardFilter>;
 }
 
 export interface BoardFilter {
@@ -78,7 +78,7 @@ export interface BoardFilter {
 
 export interface BoardCatalogOption { key: string; label: string; englishLabel: string }
 export interface BoardCatalog {
-  board: "jobinja" | "jobvision";
+  board: "jobinja" | "jobvision" | "e-estekhdam";
   categories: BoardCatalogOption[];
   employmentTypes: BoardCatalogOption[];
 }
@@ -215,6 +215,7 @@ export interface ExtensionDiscoveryConfig {
   boards: Array<
     | { board: "jobinja"; enabled: boolean; hasTargeting: boolean; searchUrl: string | null }
     | { board: "jobvision"; enabled: boolean; hasTargeting: boolean; categoryKeys: string[]; employmentTypeKeys: string[]; remoteOnly: boolean }
+    | { board: "e-estekhdam"; enabled: boolean; hasTargeting: boolean; categoryKeys: string[]; cities: string[]; employmentTypeKeys: string[]; remoteOnly: boolean }
   >;
 }
 

@@ -24,6 +24,7 @@ import { refreshAllBoardSessions } from "@ext/background/session-refresh";
 import { sendToTab, waitForTabComplete } from "@ext/background/tab-utils";
 import type { ContentApplyResult, ContentDiscoveryResult } from "@ext/lib/messages";
 import { discoverJobvisionListings } from "@ext/lib/jobvision-discovery";
+import { discoverEEstekhdamListings } from "@ext/lib/eestekhdam-discovery";
 
 let activeCycle: Promise<AutoApplyStatus> | null = null;
 
@@ -164,6 +165,31 @@ async function discoverAndDrain(
           const imported = await api.importDiscoveredListings("jobvision", listings.slice(index, index + 100));
           discovered += imported.ingested;
         }
+      } else if (board.board === "e-estekhdam") {
+        const listings = await discoverEEstekhdamListings({
+          categoryKeys: board.categoryKeys,
+          cities: board.cities,
+          employmentTypeKeys: board.employmentTypeKeys,
+          remoteOnly: board.remoteOnly,
+          maxAgeDays: discovery.maxAgeDays,
+        }, fetch, async (count) => {
+          await api.mutateExecutionRun({
+            action: "progress",
+            executorId,
+            progress: {
+              stage: "discovering",
+              board: "e-estekhdam",
+              discovered: discovered + count,
+            },
+          });
+        });
+        for (let index = 0; index < listings.length; index += 100) {
+          const imported = await api.importDiscoveredListings(
+            "e-estekhdam",
+            listings.slice(index, index + 100),
+          );
+          discovered += imported.ingested;
+        }
       }
     }
     lastDiscoveryAt = Date.now();
@@ -239,7 +265,10 @@ async function discoverAndDrain(
     if (!result.ok && isBlockingReason(result.reason)) {
       const reason = result.reason ?? "jobinja_security_check";
       await api.mutateExecutionRun({ action: "block", executorId, taskId: item.id, reason });
-      await notify("اپلای متوقف شد", "جابینجا نیاز به ورود یا تایید امنیتی دارد. صف حفظ شد.");
+      await notify(
+        "اپلای متوقف شد",
+        "سایت کاریابی نیاز به ورود، تکمیل فرم یا تایید امنیتی دارد. صف حفظ شد.",
+      );
       return record({ ranAt, outcome: "error", submitted, failed, message: reason });
     }
 
@@ -384,7 +413,7 @@ async function applyOne(
 function isBlockingReason(reason?: string): boolean {
   return Boolean(
     reason &&
-      /(jobinja_(security_check|login_required)|jobvision_(login_required|captcha_required|security_challenge|resume_setup_required)|tailored_resume_|resume_(render|download|upload)_failed)/.test(
+      /(jobinja_(security_check|login_required)|jobvision_(login_required|captcha_required|security_challenge|resume_setup_required)|eestekhdam_(login_required|captcha_required|security_challenge|form_unavailable|position_required|external_form_required|session_incomplete)|tailored_resume_|resume_(render|download|upload)_failed)/.test(
         reason,
       ),
   );
@@ -394,7 +423,10 @@ async function notifyBlockedRun(overview: ExtensionRunOverview): Promise<void> {
   const blockedAt = overview.run.blockedAt;
   if (overview.run.state !== "blocked" || !blockedAt || blockedAt === await getNotifiedBlockedAt()) return;
   await setNotifiedBlockedAt(blockedAt);
-  await notify("اپلای سرور متوقف شد", "جابینجا سرور را محدود کرد. افزونه را باز و «ادامه با افزونه» را بزنید.");
+  await notify(
+    "اپلای سرور متوقف شد",
+    "سایت کاریابی اجرای سرور را محدود کرد. افزونه را باز و «ادامه با افزونه» را بزنید.",
+  );
 }
 
 async function notify(title: string, message: string): Promise<void> {

@@ -41,7 +41,7 @@
 
           <section class="controls" aria-label="کنترل صف">
             <div class="mode-line">
-              <div><strong>اجرای صف چندسایتی</strong><span>جابینجا: PDF اختصاصی · جاب‌ویژن: رزومه پروفایل</span></div>
+              <div><strong>اجرای صف چندسایتی</strong><span>جابینجا و ای‌استخدام: PDF اختصاصی · جاب‌ویژن: رزومه پروفایل</span></div>
               <label class="switch" title="ادامه در پس‌زمینه"><input id="backgroundToggle" type="checkbox" checked /><span></span></label>
             </div>
             <div id="ownerLine" class="owner-line"></div>
@@ -76,6 +76,7 @@
               <div class="board-switch" role="tablist">
                 <button class="board-tab active" data-board="jobinja" type="button">جابینجا</button>
                 <button class="board-tab" data-board="jobvision" type="button">جاب‌ویژن</button>
+                <button class="board-tab" data-board="e-estekhdam" type="button">ای‌استخدام</button>
               </div>
               <label class="check board-enabled"><input id="boardEnabledInput" type="checkbox" /> کشف و اپلای برای این سایت فعال باشد</label>
               <div class="board-connect"><span id="boardSessionStatus">در حال بررسی ورود…</span><button id="connectBoardBtn" type="button">بررسی و اتصال</button></div>
@@ -103,7 +104,7 @@
         <div id="historyView" class="view hidden">
           <section aria-labelledby="recentTitle">
             <div class="section-head"><h2 id="recentTitle">تاریخچه اپلای</h2><span>همگام با سرور</span></div>
-            <label class="field history-filter"><span>جست‌وجو و سایت</span><span class="history-controls"><input id="historySearch" type="search" placeholder="عنوان یا شرکت" /><select id="historyBoard"><option value="all">همه سایت‌ها</option><option value="jobinja">جابینجا</option><option value="jobvision">جاب‌ویژن</option></select></span></label>
+            <label class="field history-filter"><span>جست‌وجو و سایت</span><span class="history-controls"><input id="historySearch" type="search" placeholder="عنوان یا شرکت" /><select id="historyBoard"><option value="all">همه سایت‌ها</option><option value="jobinja">جابینجا</option><option value="jobvision">جاب‌ویژن</option><option value="e-estekhdam">ای‌استخدام</option></select></span></label>
             <ul id="recentList" class="recent-list"></ul>
             <button id="historyMore" class="load-more hidden" type="button">نمایش موارد بیشتر</button>
             <p id="recentEmpty" class="empty">هنوز نتیجه‌ای ثبت نشده است.</p>

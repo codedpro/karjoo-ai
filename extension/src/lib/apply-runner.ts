@@ -115,6 +115,7 @@ export interface ResolvedApplyStep extends ApplyStep {
 export interface ApplyPlan {
   board: ApplyQueueItem["board"];
   jobUrl: string;
+  jobTitle: string;
   /** Maturity of the spec used — "scaffold" boards are best-effort only. */
   maturity: "best-effort" | "scaffold";
   steps: ResolvedApplyStep[];
@@ -161,7 +162,13 @@ export function buildApplyPlan(item: ApplyQueueItem, values: ApplyValues): Apply
     }
   }
 
-  return { board: item.board, jobUrl: item.jobUrl, maturity: spec.maturity, steps };
+  return {
+    board: item.board,
+    jobUrl: item.jobUrl,
+    jobTitle: item.jobTitle,
+    maturity: spec.maturity,
+    steps,
+  };
 }
 
 /** Resolve text and the short-lived tailored-resume data URL for one item. */

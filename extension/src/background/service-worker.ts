@@ -92,6 +92,7 @@ async function handleGetIdentity(): Promise<Identity | null> {
 /* ── local board-session detection (RULE 1: boolean only) ──────────────── */
 
 async function probeBoardSession(board: BoardId): Promise<ProbeSessionResult> {
+  if (board === "e-estekhdam") return probeEEstekhdamSession();
   // Cookie-shaped boards (Jobinja, e-estekhdam): read cookie NAMES via
   // chrome.cookies and decide a boolean. The cookie VALUE is never read out of
   // the browser, never sent to Karjoo (RULE 1).
@@ -110,6 +111,49 @@ async function probeBoardSession(board: BoardId): Promise<ProbeSessionResult> {
   const probe = await probeBrowserStorageKeys(board);
   const loggedIn = board === "jobvision" ? jobvisionLoggedIn(probe.keys) : irantalentLoggedIn(probe.keys);
   return loggedIn ? { loggedIn: true } : { loggedIn: false, reason: probe.reason };
+}
+
+/** Ask e-estekhdam's own session endpoint inside a site tab and return only a boolean. */
+async function probeEEstekhdamSession(): Promise<ProbeSessionResult> {
+  const tabs = await chrome.tabs.query({ url: boardTabPatterns(BOARDS["e-estekhdam"].origin) });
+  if (tabs.length === 0) return { loggedIn: false, reason: "no_tab" };
+  tabs.sort((a, b) => Number(Boolean(b.active)) - Number(Boolean(a.active)));
+  let probeSucceeded = false;
+  for (const tab of tabs) {
+    if (!tab.id) continue;
+    try {
+      const [execution] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: async () => {
+          try {
+            const response = await fetch("/search-api/auth/session", {
+              method: "POST",
+              headers: { accept: "application/json", "content-type": "application/json" },
+              credentials: "include",
+              body: "{}",
+            });
+            if (!response.ok) return false;
+            const payload = await response.json() as { data?: unknown };
+            return Boolean(
+              payload.data &&
+              typeof payload.data === "object" &&
+              Object.keys(payload.data as Record<string, unknown>).length > 0,
+            );
+          } catch {
+            return false;
+          }
+        },
+      });
+      probeSucceeded = true;
+      if (execution?.result === true) return { loggedIn: true };
+    } catch {
+      // Continue with another e-estekhdam tab; stale tabs can reject injection.
+    }
+  }
+  return {
+    loggedIn: false,
+    reason: probeSucceeded ? "session_not_found" : "probe_unavailable",
+  };
 }
 
 /** The chrome.cookies domain filter for a cookie-shaped board. */
@@ -228,7 +272,9 @@ async function handleGetJobinjaCategories(): Promise<JobinjaCategory[]> {
   return (await apiFromStorage()).getJobinjaCategories();
 }
 
-async function handleGetBoardCatalog(board: "jobinja" | "jobvision"): Promise<BoardCatalog> {
+async function handleGetBoardCatalog(
+  board: "jobinja" | "jobvision" | "e-estekhdam",
+): Promise<BoardCatalog> {
   return (await apiFromStorage()).getBoardCatalog(board);
 }
 

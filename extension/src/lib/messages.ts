@@ -142,7 +142,10 @@ export interface SaveApplyFiltersMsg {
   filters: Omit<ApplyFilters, "aiFilterEnabled">;
 }
 export interface GetJobinjaCategoriesMsg { type: "GET_JOBINJA_CATEGORIES" }
-export interface GetBoardCatalogMsg { type: "GET_BOARD_CATALOG"; board: "jobinja" | "jobvision" }
+export interface GetBoardCatalogMsg {
+  type: "GET_BOARD_CATALOG";
+  board: "jobinja" | "jobvision" | "e-estekhdam";
+}
 export interface RetryApplicationMsg { type: "RETRY_APPLICATION"; applicationId: string }
 export interface GetApplicationResumeMsg {
   type: "GET_APPLICATION_RESUME";

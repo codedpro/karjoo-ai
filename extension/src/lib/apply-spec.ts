@@ -175,28 +175,30 @@ const JOBVISION_SPEC: BoardApplySpec = {
 /** e-estekhdam — scaffold (TODO(real-account)). Many ads are contact-in-text. */
 const E_ESTEKHDAM_SPEC: BoardApplySpec = {
   board: "e-estekhdam",
-  maturity: "scaffold",
+  maturity: "best-effort",
   urlPattern: /^https:\/\/(www\.)?e-estekhdam\.com\/.+/,
-  // TODO(real-account): سلکتورهای واقعیِ فرمِ e-estekhdam.
-  applyButtonSelector: ".job-apply-btn",
-  coverLetterFieldSelector: "textarea[name='message']",
-  submitSelector: "form.apply-form button[type='submit']",
-  confirmSelector: ".apply-success",
+  applyButtonSelector: "button",
+  coverLetterFieldSelector: "textarea.inp-description",
+  submitSelector: "button[type='submit']",
   steps: [
-    { kind: "click", selector: ".job-apply-btn", note: "TODO(real-account): شروعِ اپلای (آگهیِ ساختاریافته)." },
+    {
+      kind: "upload",
+      selector: "input[type='file']",
+      valueKey: "resumeFile",
+      requiresValueKey: "resumeFile",
+      note: "فایل PDF اختصاصی که توسط API ای‌استخدام ارسال می‌شود.",
+    },
     {
       kind: "fill",
-      selector: "textarea[name='message']",
+      selector: "textarea.inp-description",
       valueKey: "coverLetter",
       optional: true,
-      note: "TODO(real-account): پیام/انگیزه‌نامه.",
+      note: "متن معرفی اختیاری که همراه رزومه ارسال می‌شود.",
     },
-    { kind: "click", selector: "form.apply-form button[type='submit']", note: "TODO(real-account): ثبت." },
-    { kind: "waitFor", selector: ".apply-success", note: "TODO(real-account): تأیید." },
   ],
   notes: [
-    "بسیاری از آگهی‌ها contact-in-text‌اند و این جریان روی آن‌ها اعمال نمی‌شود.",
-    "TODO(real-account): سلکتورها با حسابِ واقعی صحت‌سنجی شوند.",
+    "فقط آگهی‌های ATS با فرم داخلی وارد صف می‌شوند.",
+    "اسکریپت محتوا فرم multipart رسمی سایت را با نشست فعال مرورگر ارسال می‌کند.",
   ],
 };
 

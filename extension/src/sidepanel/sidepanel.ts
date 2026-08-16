@@ -45,7 +45,8 @@ let selectedCategories = new Set<string>();
 let filtersLoaded = false;
 let filtersDirty = false;
 let filtersState: ApplyFilters | null = null;
-let filterBoard: "jobinja" | "jobvision" = "jobinja";
+type FilterBoard = "jobinja" | "jobvision" | "e-estekhdam";
+let filterBoard: FilterBoard = "jobinja";
 const catalogs = new Map<string, BoardCatalog>();
 const connectedBoards = new Set<string>();
 let sessionProbeInFlight: Promise<void> | null = null;
@@ -139,7 +140,7 @@ function render(overview: ExtensionRunOverview): void {
   alert.textContent = run.state === "blocked"
     ? (run.blockedReason?.startsWith("resume_") || run.blockedReason?.startsWith("tailored_resume_")
       ? "رزومهٔ اختصاصی آماده یا آپلود نشد. هیچ رزومه‌ای ارسال نشده است؛ پس از رفع خطا دوباره شروع کنید."
-      : "جابینجا نیاز به ورود یا بررسی امنیتی دارد. صف حفظ شده است.")
+      : "سایت کاریابی نیاز به ورود، تکمیل فرم یا بررسی امنیتی دارد. صف حفظ شده است.")
     : run.owner === "server"
       ? "اجرای فعلی در اختیار سرور است. می‌توانید همین حالا آن را به افزونه منتقل کنید."
       : "";
@@ -281,13 +282,15 @@ async function action(actionName: "start" | "takeover" | "pause" | "stop"): Prom
 async function loadFilters(force = false): Promise<void> {
   if (filtersDirty && !force) return;
   try {
-    const [response, jobinjaCatalog, jobvisionCatalog] = await Promise.all([
+    const [response, jobinjaCatalog, jobvisionCatalog, eEstekhdamCatalog] = await Promise.all([
       send<{ filters: ApplyFilters; previewUrl: string }>({ type: "GET_APPLY_FILTERS" }),
       send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "jobinja" }),
       send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "jobvision" }),
+      send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "e-estekhdam" }),
     ]);
     catalogs.set("jobinja", jobinjaCatalog);
     catalogs.set("jobvision", jobvisionCatalog);
+    catalogs.set("e-estekhdam", eEstekhdamCatalog);
     filtersState = response.filters;
     fillFilters(response.filters);
     filtersLoaded = true;
@@ -298,12 +301,13 @@ async function loadFilters(force = false): Promise<void> {
 
 function fillFilters(filters: ApplyFilters): void {
   const board = filters.boardFilters[filterBoard];
+  const employment = employmentKeys(filterBoard);
   selectedCategories = new Set(board.categoryKeys);
   ($<HTMLInputElement>("boardEnabledInput")).checked = board.enabled;
   ($<HTMLInputElement>("citiesInput")).value = board.cities.join("، ");
-  ($<HTMLInputElement>("fulltimeInput")).checked = board.employmentTypeKeys.includes(filterBoard === "jobinja" ? "is_fulltime" : "full-time");
-  ($<HTMLInputElement>("parttimeInput")).checked = board.employmentTypeKeys.includes(filterBoard === "jobinja" ? "is_parttime" : "part-time");
-  ($<HTMLInputElement>("projectInput")).checked = board.employmentTypeKeys.includes("project-based");
+  ($<HTMLInputElement>("fulltimeInput")).checked = board.employmentTypeKeys.includes(employment.fulltime);
+  ($<HTMLInputElement>("parttimeInput")).checked = board.employmentTypeKeys.includes(employment.parttime);
+  ($<HTMLInputElement>("projectInput")).checked = board.employmentTypeKeys.includes(employment.project);
   ($<HTMLInputElement>("remoteInput")).checked = board.remoteOnly;
   ($<HTMLInputElement>("salaryInput")).value = board.minSalary ? String(board.minSalary) : "";
   ($<HTMLSelectElement>("sortInput")).value = board.sort ?? "published_at_desc";
@@ -312,7 +316,7 @@ function fillFilters(filters: ApplyFilters): void {
   ($("discoveryPausedInput") as HTMLInputElement).checked = filters.paused;
   ($<HTMLInputElement>("maxAgeInput")).value = String(filters.maxAgeDays);
   $("projectLabel").classList.toggle("hidden", filterBoard === "jobinja");
-  $("sortField").classList.toggle("hidden", filterBoard === "jobvision");
+  $("sortField").classList.toggle("hidden", filterBoard !== "jobinja");
   document.querySelectorAll<HTMLButtonElement>(".board-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.board === filterBoard);
   });
@@ -325,7 +329,7 @@ function missingSessionLabel(status: ProbeSessionResult): string {
   return "ورود معتبر تشخیص داده نشد";
 }
 
-async function detectAndConnectBoard(board: "jobinja" | "jobvision", openSiteOnMissing: boolean): Promise<void> {
+async function detectAndConnectBoard(board: FilterBoard, openSiteOnMissing: boolean): Promise<void> {
   $("boardSessionStatus").textContent = "در حال بررسی ورود…";
   const status = await send<ProbeSessionResult>({ type: "DETECT_BOARD", board });
   if (board !== filterBoard) return;
@@ -333,7 +337,11 @@ async function detectAndConnectBoard(board: "jobinja" | "jobvision", openSiteOnM
     $("boardSessionStatus").textContent = missingSessionLabel(status);
     connectedBoards.delete(board);
     if (openSiteOnMissing) {
-      const url = board === "jobvision" ? "https://jobvision.ir/jobs" : "https://jobinja.ir/jobs";
+      const url = board === "jobvision"
+        ? "https://jobvision.ir/jobs"
+        : board === "e-estekhdam"
+          ? "https://www.e-estekhdam.com/search"
+          : "https://jobinja.ir/jobs";
       await chrome.tabs.create({ url, active: true });
     }
     return;
@@ -386,11 +394,26 @@ function optionalPositive(id: string): number | undefined {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : undefined;
 }
 
+function employmentKeys(board: FilterBoard): {
+  fulltime: string;
+  parttime: string;
+  project: string;
+} {
+  if (board === "jobinja") {
+    return { fulltime: "is_fulltime", parttime: "is_parttime", project: "" };
+  }
+  if (board === "e-estekhdam") {
+    return { fulltime: "تمام-وقت", parttime: "پاره-وقت", project: "پروژه‌ای" };
+  }
+  return { fulltime: "full-time", parttime: "part-time", project: "project-based" };
+}
+
 function collectBoardFilter(): BoardFilter {
   const jobTypes: string[] = [];
-  if (($<HTMLInputElement>("fulltimeInput")).checked) jobTypes.push(filterBoard === "jobinja" ? "is_fulltime" : "full-time");
-  if (($<HTMLInputElement>("parttimeInput")).checked) jobTypes.push(filterBoard === "jobinja" ? "is_parttime" : "part-time");
-  if (filterBoard === "jobvision" && ($<HTMLInputElement>("projectInput")).checked) jobTypes.push("project-based");
+  const employment = employmentKeys(filterBoard);
+  if (($<HTMLInputElement>("fulltimeInput")).checked) jobTypes.push(employment.fulltime);
+  if (($<HTMLInputElement>("parttimeInput")).checked) jobTypes.push(employment.parttime);
+  if (employment.project && ($<HTMLInputElement>("projectInput")).checked) jobTypes.push(employment.project);
   const cities = ($("citiesInput") as HTMLInputElement).value
     .split(/[,،]/)
     .map((value) => value.trim())
@@ -441,7 +464,7 @@ document.querySelectorAll<HTMLButtonElement>(".board-tab").forEach((button) => {
   button.addEventListener("click", () => {
     if (!filtersState) return;
     saveActiveBoardDraft();
-    filterBoard = button.dataset.board as "jobinja" | "jobvision";
+    filterBoard = button.dataset.board as FilterBoard;
     fillFilters(filtersState);
     filtersDirty = true;
     void refreshBoardSessionStatus(true);
