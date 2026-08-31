@@ -164,7 +164,7 @@ export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentAp
   if (typeof jobId !== "number" && typeof jobId !== "string") {
     return { ok: false, ranSteps: ["session"], reason: "eestekhdam_form_unavailable" };
   }
-  if (detailData.ats === false) {
+  if (detailData.ats !== true) {
     return { ok: false, ranSteps: ["session"], reason: "eestekhdam_form_unavailable" };
   }
   const selected = choosePosition(arrayData(positionsResponse.body), plan.jobTitle);

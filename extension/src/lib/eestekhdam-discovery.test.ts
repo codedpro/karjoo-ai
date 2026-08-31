@@ -33,6 +33,20 @@ describe("e-estekhdam discovery", () => {
     expect(JSON.stringify(listing)).not.toMatch(/cookie|token|authorization/i);
   });
 
+  it("rejects a listing when either search or detail says no internal ATS form", () => {
+    const search = { id: 12, uuid: "abc12", ats: 0, title: "Contact only" };
+    const detail = {
+      data: {
+        id: 12,
+        uuid: "abc12",
+        shortTitle: "Contact only",
+        date: "2026-08-16",
+        ats: false,
+      },
+    };
+    expect(mapEEstekhdamDetail(search, detail)).toBeNull();
+  });
+
   it("imports only fresh ATS jobs and sends native filters", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-16T12:00:00Z"));

@@ -66,6 +66,7 @@ export function mapEEstekhdamDetail(
 ): BrowserDiscoveredListing | null {
   const search = record(searchValue);
   const detail = record(record(detailValue).data ?? detailValue);
+  if (search.ats !== true || detail.ats !== true) return null;
   const uuid = text(detail.uuid) ?? text(search.uuid);
   const id = detail.id ?? search.id;
   const title = text(detail.shortTitle) ?? text(detail.title) ?? text(search.short_title) ?? text(search.title);
