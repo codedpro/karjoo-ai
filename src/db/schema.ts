@@ -140,6 +140,12 @@ export const auditEventTypeEnum = pgEnum("audit_event_type", [
   "admin_plan_changed", // ادمین پلنِ کاربر را دستی تغییر داد.
   "admin_credit_adjusted", // ادمین اعتبارِ کیف‌پولِ کاربر را دستی کم/زیاد کرد.
   "admin_access_changed", // ادمین دسترسیِ کاربر را بست یا باز کرد.
+  // ورودِ خودکارِ سمتِ سرور با اعتبارنامه‌ی ذخیره‌شده. چون اینجا رمزِ عبورِ کاربر نگه
+  // داشته می‌شود، هر لمسِ آن ردیفِ ممیزیِ جداگانه دارد: کِی ذخیره شد، هر بار که برای
+  // ورود استفاده شد و نتیجه‌اش چه بود، و کِی حذف شد.
+  "credential_stored", // کاربر اعتبارنامه‌ی ورودِ خودکار را ذخیره/به‌روزرسانی کرد.
+  "credential_removed", // اعتبارنامه حذف شد (کاربر یا سیستم).
+  "credential_login", // سرور با اعتبارنامه‌ی ذخیره‌شده وارد شد (metadata: نتیجه).
 ]);
 
 /** نوعِ یک نشستِ احرازهویت: وب (داشبورد) یا افزونه‌ی مرورگر. */
@@ -496,6 +502,45 @@ export const boardAccounts = pgTable(
  * فقط داده‌ی رمزشده ذخیره می‌شود؛ کلید KMS صرفاً روی کنترل‌پلین است.
  * شامل کوکی‌ها و توکن‌های localStorage/IndexedDB (برای جاب‌ویژن SPA لازم است).
  */
+/**
+ * اعتبارنامه‌ی ورودِ سایت کاریابی — رمزشده، برای ورودِ خودکارِ سمتِ سرور.
+ *
+ * فقط زمانی پر می‌شود که کاربر صریحاً «ورود خودکار» را فعال کند. برخلافِ session_blobs
+ * که نشستِ منقضی‌شدنی نگه می‌دارد، اینجا رمزِ عبور ذخیره می‌شود؛ برای همین هر رکورد
+ * saltِ خودش را دارد و کلیدش با HKDF از کلیدِ اصلی مشتق می‌شود (بخشِ
+ * lib/vault/credential-crypto.ts). یک رکورد به‌ازای هر حسابِ سایت.
+ */
+export const boardCredentials = pgTable(
+  "board_credentials",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    boardAccountId: uuid("board_account_id")
+      .notNull()
+      .references(() => boardAccounts.id, { onDelete: "cascade" }),
+    /** اعتبارنامه‌ی رمزشده (username+password) — هرگز متنِ ساده. */
+    ciphertext: text("ciphertext").notNull(),
+    iv: text("iv").notNull(),
+    /** saltِ مخصوصِ همین رکورد برای مشتق‌سازیِ کلید. */
+    salt: text("salt").notNull(),
+    keyVersion: integer("key_version").notNull().default(1),
+    /** نامِ کاربریِ ماسک‌شده — فقط برای نمایش در داشبورد. */
+    usernameHint: text("username_hint").notNull(),
+    /** آخرین نتیجه‌ی تلاشِ ورودِ خودکار (برای نمایش و توقفِ تکرارِ بی‌فایده). */
+    lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    lastLoginStatus: text("last_login_status"),
+    /** تلاش‌های ناموفقِ پیاپی؛ بعد از سقف، ورودِ خودکار تا مداخله‌ی کاربر قفل می‌شود. */
+    failureCount: integer("failure_count").notNull().default(0),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("board_credentials_account_uq").on(t.boardAccountId),
+  ],
+);
+
+export type BoardCredentialRow = typeof boardCredentials.$inferSelect;
+
 export const sessionBlobs = pgTable(
   "session_blobs",
   {

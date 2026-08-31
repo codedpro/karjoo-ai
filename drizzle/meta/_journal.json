@@ -162,6 +162,20 @@
       "when": 1786720982804,
       "tag": "0022_elite_mandrill",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788181203135,
+      "tag": "0023_steady_misty_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788181509629,
+      "tag": "0024_flowery_shadow_king",
+      "breakpoints": true
     }
   ]
 }

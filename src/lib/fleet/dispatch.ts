@@ -39,6 +39,7 @@ import {
 } from "@/lib/apply/extension-queue";
 import { decryptSession } from "@/lib/vault/crypto";
 import { readSessionBlob, type Board } from "@/lib/vault/store";
+import { refreshSessionFromStoredCredential } from "@/lib/apply/login/session-provider";
 import { listUserIdsForNode } from "@/lib/fleet/assign";
 import { logger } from "@/lib/observability/logger";
 import {
@@ -99,6 +100,8 @@ export interface ClaimFleetDeps {
   ) => Promise<ClaimedApplyItem[]>;
   /** خواننده‌ی نشستِ رمزشده + رمزگشای آن (پیش‌فرض vault). */
   loadSession?: (userId: string, board: Board) => Promise<string | null>;
+  /** نشست را با اعتبارنامه‌ی ذخیره‌شده می‌سازد؛ true یعنی حالا نشست هست. */
+  renewSession?: (userId: string, board: Board) => Promise<boolean>;
   /** خواننده‌ی HTMLِ رزومه‌ی سفارشیِ این آگهی (پیش‌فرض از جدولِ resumes؛ نبود → null). */
   loadResumeHtml?: (userId: string, listingId: string) => Promise<string | null>;
   /** آزادسازی task وقتی رزومه‌ی هدف‌گیری‌شده ساخته/خوانده نشد. */
@@ -150,7 +153,7 @@ async function defaultLoadSession(
  * این مسیر هرگز به رزومه‌ی عمومیِ پروفایل fallback نمی‌کند. رزومه‌های هدف‌گیری‌شده در
  * مرحله‌ی prepare ساخته می‌شوند؛ claim فقط HTML موجود را می‌خواند.
  */
-async function defaultLoadResumeHtml(
+export async function defaultLoadResumeHtml(
   userId: string,
   listingId: string,
   db: FleetDispatchDb,
@@ -225,8 +228,10 @@ export async function claimFleetJobs(
   const claimItems =
     deps.claimItems ??
     (async (userId: string, lim: number, minScore: number) => {
-      // IranTalent is browser-only: its authenticated PDF replacement and apply
-      // transaction must run inside the user's active extension session.
+      // IranTalent is excluded from the PLAYWRIGHT fleet, not from the server: its
+      // apply is pure HTTP, so it runs on the control plane instead (see
+      // fleet/irantalent-runner.ts). Handing it to a worker node would drive the
+      // apply-spec's DOM steps, which that board has no form for.
       const allowedBoards = enabledApplyBoards(await readApplyFilters(userId, db)).filter(
         (board) => board !== "irantalent",
       );
@@ -239,6 +244,13 @@ export async function claimFleetJobs(
   const loadSession =
     deps.loadSession ??
     ((userId: string, board: Board) => defaultLoadSession(userId, board, db));
+  // وقتی نشستی در خزانه نیست (یا منقضی شده) و کاربر «ورودِ خودکار» را فعال کرده،
+  // سرور خودش یک‌بار وارد می‌شود و نشست می‌سازد. اگر اعتبارنامه‌ای نباشد، بی‌سروصدا
+  // false برمی‌گردد و کار همان‌طور که قبلاً بود به مسیرِ افزونه می‌افتد.
+  const renewSession =
+    deps.renewSession ??
+    ((userId: string, board: Board) =>
+      refreshSessionFromStoredCredential(userId, board, { db }));
   const loadResumeHtml =
     deps.loadResumeHtml ??
     ((userId: string, listingId: string) => defaultLoadResumeHtml(userId, listingId, db));
@@ -314,7 +326,11 @@ export async function claimFleetJobs(
     // ۴) برای هر آیتم نشست را رمزگشایی کن (فقط چون نود به این کاربر تخصیص دارد).
     for (const item of items) {
       if (jobs.length >= safeLimit) break;
-      const session = await loadSession(userId, item.board as Board);
+      const board = item.board as Board;
+      let session = await loadSession(userId, board);
+      if (!session && (await renewSession(userId, board))) {
+        session = await loadSession(userId, board);
+      }
       if (!session) continue; // بدونِ نشست، کار اجراشدنی نیست — رد.
       const resumeHtml = await loadResumeHtml(userId, item.listingId);
       if (!resumeHtml) {
@@ -429,7 +445,7 @@ export async function recordFleetResult(
  * نامِ فایلِ رزومه برای آپلود: «نام کامل _ نامِ شرکت». همین نام در سایتِ کارفرما دیده
  * می‌شود، پس نباید ردی از ابزار داشته باشد (پیش‌تر `karjoo-resume-<tag>-<ts>.pdf` بود).
  */
-async function buildResumeFileName(
+export async function buildResumeFileName(
   userId: string,
   company: string | null | undefined,
   db: FleetDispatchDb,

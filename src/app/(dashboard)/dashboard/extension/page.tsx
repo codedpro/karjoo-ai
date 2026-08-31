@@ -31,6 +31,8 @@ import {
   ConnectedDevicesPanel,
   PairExtensionPanel,
 } from "@/components/dashboard/pair-extension-panel";
+import { BoardCredentialsPanel } from "@/components/dashboard/board-credentials-panel";
+import { readCredentialPanelData } from "@/components/dashboard/board-credentials-data";
 import {
   IconBolt,
   IconDownload,
@@ -64,6 +66,7 @@ const EXTENSION_ZIP = KARJOO_EXTENSION_DOWNLOAD_PATH;
 export default async function ExtensionPage() {
   const user = await getDashboardUser();
   if (!user) redirect("/login");
+  const credentialData = await readCredentialPanelData(user.userId);
 
   return (
     <div className="space-y-8">
@@ -89,6 +92,7 @@ export default async function ExtensionPage() {
         <div className="space-y-6">
           <PairExtensionPanel />
           <ConnectedDevicesPanel />
+          <BoardCredentialsPanel {...credentialData} />
           <Callout tone="success" icon={<IconShield />} title="کنترل با شماست">
             افزونه فقط در مرورگرِ خودتان کار می‌کند و تاگلِ «اپلای خودکار» داخلِ خودش هر
             لحظه خاموش‌شدنی است.
