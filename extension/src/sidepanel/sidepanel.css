@@ -159,3 +159,7 @@ fieldset label, .check { display: flex; align-items: center; gap: 6px; font-size
   flex: none; padding: 6px 10px; border-radius: 8px;
   background: #6b4e07; color: #fff; font-size: 9px; text-decoration: none;
 }
+
+/* A run whose heartbeat has gone silent: say so instead of showing a stage
+   nobody is executing. */
+#stage.stalled { color: #b4541f; }

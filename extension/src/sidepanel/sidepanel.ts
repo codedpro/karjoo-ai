@@ -73,10 +73,35 @@ let lastProviderRefreshAt = 0;
 let queueVisible = 20;
 let historyVisible = 20;
 
+/**
+ * Chrome kills a busy service worker without answering its open messages, and an
+ * unanswered `sendMessage` never settles. Every caller wraps its work in
+ * setBusy(true)/finally setBusy(false), so one hung message left every button in
+ * the panel permanently `disabled` — the "buttons do nothing" failure. Time out
+ * instead, so a dead worker costs one failed action, not the whole UI.
+ */
+const SEND_TIMEOUT_MS = 15_000;
+
 async function send<T>(message: PopupToBackground): Promise<T> {
-  const response = await chrome.runtime.sendMessage(message) as Result<T>;
+  const response = await withTimeout(
+    chrome.runtime.sendMessage(message) as Promise<Result<T>>,
+    SEND_TIMEOUT_MS,
+  );
   if (!response?.ok) throw new Error(response?.error ?? "خطای ناشناخته");
   return response.data;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("افزونه پاسخ نداد. چند لحظه بعد دوباره تلاش کنید.")),
+      ms,
+    );
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error: unknown) => { clearTimeout(timer); reject(error); },
+    );
+  });
 }
 
 function showError(error: unknown): void {
@@ -149,8 +174,24 @@ async function refresh(): Promise<void> {
   }
 }
 
+/**
+ * How long without a heartbeat before a "running" run is really dead. The
+ * background heartbeats every drain iteration and every discovery page, so a
+ * couple of minutes of silence means the worker was killed, not that it is busy.
+ */
+const STALE_HEARTBEAT_MS = 150_000;
+
+function heartbeatAgeMs(run: ExtensionRunOverview["run"]): number {
+  const beat = run.heartbeatAt ? Date.parse(run.heartbeatAt) : Number.NaN;
+  return Number.isFinite(beat) ? Date.now() - beat : Number.POSITIVE_INFINITY;
+}
+
 function render(overview: ExtensionRunOverview): void {
   const { run, counts } = overview;
+  // A run row keeps its last progress forever, so a service worker that Chrome
+  // killed mid-discovery leaves the panel claiming "discovering" with nobody
+  // executing. Trust the heartbeat over the stored stage.
+  const stalled = run.state === "running" && heartbeatAgeMs(run) > STALE_HEARTBEAT_MS;
   $("queued").textContent = String(counts.queued);
   $("today").textContent = String(counts.appliedToday);
   $("total").textContent = String(counts.appliedTotal);
@@ -169,15 +210,20 @@ function render(overview: ExtensionRunOverview): void {
     : run.owner === "extension"
       ? "این مرورگر مالک اجرای صف است."
       : "صف در حال حاضر مالک فعال ندارد.";
-  $("startBtn").classList.toggle("hidden", run.owner === "server" || (run.state === "running" && run.owner === "extension"));
+  $("startBtn").classList.toggle(
+    "hidden",
+    run.owner === "server" || (run.state === "running" && run.owner === "extension" && !stalled),
+  );
   $("pauseBtn").classList.toggle("hidden", run.state !== "running" || run.owner !== "extension");
   $("stopBtn").classList.toggle("hidden", run.owner !== "extension");
   $("takeoverBtn").classList.toggle("hidden", run.owner !== "server" || run.state === "completed");
 
   const alert = $("alert");
-  const showAlert = run.state === "blocked" || run.owner === "server";
+  const showAlert = run.state === "blocked" || run.owner === "server" || stalled;
   alert.classList.toggle("hidden", !showAlert);
-  alert.textContent = run.state === "blocked"
+  alert.textContent = stalled
+    ? "اجرای صف در این مرورگر متوقف شده است. «توقف» و سپس «شروع» را بزنید تا دوباره راه بیفتد."
+    : run.state === "blocked"
     ? (run.blockedReason?.startsWith("resume_") || run.blockedReason?.startsWith("tailored_resume_")
       ? "رزومهٔ اختصاصی آماده یا آپلود نشد. هیچ رزومه‌ای ارسال نشده است؛ پس از رفع خطا دوباره شروع کنید."
       : "سایت کاریابی نیاز به ورود، تکمیل فرم یا بررسی امنیتی دارد. صف حفظ شده است.")
@@ -186,7 +232,10 @@ function render(overview: ExtensionRunOverview): void {
       : "";
 
   const stage = typeof run.progress.stage === "string" ? run.progress.stage : run.state;
-  $("stage").textContent = stageLabels[stage] ?? stage;
+  $("stage").textContent = stalled
+    ? "متوقف شده — اجرا در مرورگر ادامه پیدا نکرد"
+    : (stageLabels[stage] ?? stage);
+  $("stage").classList.toggle("stalled", stalled);
   $("currentJob").textContent = [run.progress.title, run.progress.company].filter(Boolean).join(" · ") ||
     (run.blockedReason ?? "هنوز کاری در حال انجام نیست.");
   document.querySelector(".pulse")?.classList.toggle("running", run.state === "running");

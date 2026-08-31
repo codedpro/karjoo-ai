@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import { applyExecutionRuns, matches, tasks } from "@/db/schema";
@@ -192,6 +192,26 @@ export async function startExtensionExecution(
   return viewOf(row);
 }
 
+/**
+ * A run that has not heartbeated for this long is not executing anywhere: the
+ * browser was closed, or Chrome killed the service worker mid-task.
+ */
+export const STALE_RUN_MS = 150_000;
+
+/**
+ * Which run may this browser pause or stop?
+ *
+ * Pause needs real ownership. STOP is the user's unambiguous "halt my queue", so
+ * it also accepts a run whose heartbeat has gone silent — that run is executing
+ * nowhere, and demanding a live executorId there left the user with a Stop
+ * button that could never work. Exported so the rule is testable without a DB.
+ */
+export function stoppableRunCondition(executorId: string, stop: boolean) {
+  const mine = eq(applyExecutionRuns.executorId, executorId);
+  if (!stop) return mine;
+  return or(mine, lt(applyExecutionRuns.heartbeatAt, new Date(Date.now() - STALE_RUN_MS)));
+}
+
 export async function pauseExtensionExecution(
   userId: string,
   executorId: string,
@@ -212,7 +232,11 @@ export async function pauseExtensionExecution(
       and(
         eq(applyExecutionRuns.userId, userId),
         eq(applyExecutionRuns.owner, "extension"),
-        eq(applyExecutionRuns.executorId, executorId),
+        // STOP is the user's unambiguous "halt my queue", so it must not depend
+        // on a browser that is no longer running. A run whose heartbeat has gone
+        // silent is executing nowhere, and demanding a matching executorId there
+        // left the user with a Stop button that could never work.
+        stoppableRunCondition(executorId, opts.stop === true),
       ),
     )
     .returning();

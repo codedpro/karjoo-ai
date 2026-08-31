@@ -258,7 +258,7 @@ describe("transient gateway errors (a control-plane deploy)", () => {
 describe("build identification", () => {
   it("tells the server which build is calling, so a stale copy is visible", async () => {
     const seen: Headers[] = [];
-    const fetchImpl = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
       seen.push(new Headers(init?.headers));
       return new Response("{}", { status: 200 });
     });
@@ -275,7 +275,7 @@ describe("build identification", () => {
 
   it("omits the header rather than failing when there is no extension runtime", async () => {
     const seen: Headers[] = [];
-    const fetchImpl = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (_url: URL | RequestInfo, init?: RequestInit) => {
       seen.push(new Headers(init?.headers));
       return new Response("{}", { status: 200 });
     });

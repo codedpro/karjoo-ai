@@ -81,6 +81,7 @@ export async function mutateRun(
     await closeInterventionTab();
     void runAutoApplyTick(true).catch(logTickFailure);
   } else if (action === "pause" || action === "stop") {
+    abortActiveCycle();
     await closeInterventionTab();
   }
   return overview;
@@ -93,6 +94,17 @@ export async function setRunBackground(enabled: boolean): Promise<ExtensionRunOv
   const overview = await api.getExecutionRun();
   if (overview.run.owner !== "extension" || overview.run.executorId !== executorId) return overview;
   return api.mutateExecutionRun({ action: "heartbeat", executorId, backgroundEnabled: enabled });
+}
+
+/**
+ * Bumped by pause/stop. The in-flight cycle compares the generation it started
+ * with against this and gives up at its next checkpoint, so pressing Stop halts
+ * discovery now instead of after the current board finishes paginating.
+ */
+let cycleGeneration = 0;
+
+export function abortActiveCycle(): void {
+  cycleGeneration += 1;
 }
 
 export async function runAutoApplyTick(force = false): Promise<AutoApplyStatus> {
@@ -116,6 +128,7 @@ const DISCOVERY_LISTING_CEILING = 300;
 
 async function runCycle(force: boolean): Promise<AutoApplyStatus> {
   const ranAt = Date.now();
+  const generation = cycleGeneration;
   try {
     const api = await apiOrNull();
     if (!api) return record({ ranAt, outcome: "not_paired", submitted: 0, failed: 0 });
@@ -136,6 +149,7 @@ async function runCycle(force: boolean): Promise<AutoApplyStatus> {
     // of live ads kept every tick busy paginating while 6k tasks sat pending.
     const queueIsDeep = Number(overview.counts.queued ?? 0) >= DISCOVERY_QUEUE_CEILING;
     return discoverAndDrain(api, executorId, {
+      aborted: () => cycleGeneration !== generation,
       backgroundEnabled: overview.run.backgroundEnabled,
       discoverDue:
         !queueIsDeep &&
@@ -156,7 +170,13 @@ async function runCycle(force: boolean): Promise<AutoApplyStatus> {
 async function discoverAndDrain(
   api: KarjooApi,
   executorId: string,
-  options: { backgroundEnabled: boolean; discoverDue: boolean; lastDiscoveryAt: number },
+  options: {
+    backgroundEnabled: boolean;
+    discoverDue: boolean;
+    lastDiscoveryAt: number;
+    /** True once the user pressed pause/stop — abandon the cycle promptly. */
+    aborted: () => boolean;
+  },
 ): Promise<AutoApplyStatus> {
   const ranAt = Date.now();
   let discovered = 0;
@@ -171,7 +191,7 @@ async function discoverAndDrain(
   const discovery = options.discoverDue ? await api.getDiscoveryConfig() : null;
   if (discovery && !discovery.paused) {
     for (const board of discovery.boards) {
-      if (Date.now() >= discoveryDeadline) break;
+      if (options.aborted() || Date.now() >= discoveryDeadline) break;
       if (!board.enabled || !board.hasTargeting) continue;
       if (board.board === "jobinja" && board.searchUrl) {
         const result = await discoverJobinja(api, executorId, board.searchUrl, discovery.maxAgeDays);
@@ -261,6 +281,9 @@ async function discoverAndDrain(
   }
 
   for (;;) {
+    if (options.aborted()) {
+      return record({ ranAt, outcome: "disabled", submitted, failed });
+    }
     await api.mutateExecutionRun({
       action: "heartbeat",
       executorId,
