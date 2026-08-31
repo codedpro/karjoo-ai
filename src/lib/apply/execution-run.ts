@@ -94,6 +94,34 @@ export async function readExecutionRun(
 }
 
 /** Assign the queue to one browser. Explicit takeover may replace any server-owned run. */
+/**
+ * When may an extension claim (or re-claim) the shared run?
+ *
+ * Only when nobody is actually executing it. `blocked` is in BOTH lists because a
+ * blocked run is stopped by definition — it is parked waiting for the user to
+ * clear a login or a captcha — so ANY browser must be able to pick it back up.
+ * Leaving `blocked` out stranded users whose executorId had changed (a reinstall,
+ * a second browser, a new profile): the upsert matched nothing, `start` threw
+ * "queue ownership changed", and there was no path back to a running queue.
+ *
+ * Exported so the rule is testable without a database.
+ */
+export function reclaimableRunCondition(executorId: string, takeover: boolean) {
+  const mine = and(
+    eq(applyExecutionRuns.owner, "extension"),
+    eq(applyExecutionRuns.executorId, executorId),
+  );
+  return takeover
+    ? or(eq(applyExecutionRuns.owner, "server"), mine, eq(applyExecutionRuns.state, "blocked"))
+    : or(
+        isNull(applyExecutionRuns.owner),
+        mine,
+        eq(applyExecutionRuns.state, "paused"),
+        eq(applyExecutionRuns.state, "completed"),
+        eq(applyExecutionRuns.state, "blocked"),
+      );
+}
+
 export async function startExtensionExecution(
   userId: string,
   executorId: string,
@@ -134,17 +162,7 @@ export async function startExtensionExecution(
     })
     .onConflictDoUpdate({
       target: applyExecutionRuns.userId,
-      setWhere: opts.takeover
-        ? or(
-            eq(applyExecutionRuns.owner, "server"),
-            and(eq(applyExecutionRuns.owner, "extension"), eq(applyExecutionRuns.executorId, executorId)),
-          )
-        : or(
-            isNull(applyExecutionRuns.owner),
-            and(eq(applyExecutionRuns.owner, "extension"), eq(applyExecutionRuns.executorId, executorId)),
-            eq(applyExecutionRuns.state, "paused"),
-            eq(applyExecutionRuns.state, "completed"),
-          ),
+      setWhere: reclaimableRunCondition(executorId, opts.takeover === true),
       set: {
         state: "running",
         owner: "extension",

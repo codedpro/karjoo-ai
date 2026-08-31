@@ -29,12 +29,8 @@ import {
   withProviderEnabled,
 } from "@ext/lib/provider-manager";
 import {
-  jobinjaLoggedIn,
   jobvisionLoggedIn,
-  eEstekhdamLoggedIn,
   sessionTokenKeys,
-  sessionShapeOf,
-  type CookieLike,
 } from "@ext/lib/board-detect";
 import { boardTabPatterns } from "@ext/lib/board-session";
 import { probeIranTalentIdentity } from "@ext/lib/irantalent-session";
@@ -105,30 +101,94 @@ async function handleGetIdentity(): Promise<Identity | null> {
 
 /* ── local board-session detection (RULE 1: boolean only) ──────────────── */
 
+/**
+ * Every ACTIVE provider now answers with a board-specific AUTHENTICATED identity
+ * probe rather than a guess at cookie/localStorage key names. Guessed names were
+ * the bug: Jobinja hands its `JSESSID` cookie to anonymous visitors too, so name
+ * matching reported "signed in" for anyone who had merely opened the homepage.
+ * Each probe returns only a boolean, an optional non-secret label, and a bounded
+ * reason — never a cookie value or token (RULE 1).
+ */
 async function probeBoardSession(board: BoardId): Promise<ProbeSessionResult> {
+  // Jobinja / e-estekhdam: ask the site from inside one of its own tabs, so the
+  // user's first-party cookies apply.
+  if (board === "jobinja") return probeJobinjaSession();
   if (board === "e-estekhdam") return probeEEstekhdamSession();
-  // IranTalent answers authoritatively from its own profile endpoint, so it needs
-  // no open tab — see irantalent-session.ts for why the token is read there.
+  // IranTalent: its own profile endpoint, reachable from the background because
+  // the bearer token is rebuilt from the site's cookie (see irantalent-session.ts).
   if (board === "irantalent") return probeIranTalentIdentity();
-  // Cookie-shaped boards (Jobinja, e-estekhdam): read cookie NAMES via
-  // chrome.cookies and decide a boolean. The cookie VALUE is never read out of
-  // the browser, never sent to Karjoo (RULE 1).
-  if (sessionShapeOf(board) === "cookie") {
-    const host = boardCookieDomain(board);
-    const cookies = await chrome.cookies.getAll({ domain: host });
-    const cookieLikes: CookieLike[] = cookies.map((c) => ({ name: c.name, value: c.value }));
-    const loggedIn =
-      board === "jobinja" ? jobinjaLoggedIn(cookieLikes) : eEstekhdamLoggedIn(cookieLikes);
-    return loggedIn ? { loggedIn } : { loggedIn, reason: "logged_out" };
+  // JobVision: SPA whose JWT lives in localStorage, invisible to chrome.cookies.
+  // A content script reports which KEYS exist — never their values.
+  if (board === "jobvision") {
+    const probe = await probeBrowserStorageKeys(board);
+    return jobvisionLoggedIn(probe.keys)
+      ? { loggedIn: true }
+      : { loggedIn: false, reason: probe.reason };
   }
+  // Not an active provider; report honestly instead of guessing.
+  return { loggedIn: false, reason: "probe_unavailable" };
+}
 
-  // Token-shaped boards (JobVision): the token is in localStorage, invisible to
-  // chrome.cookies. Ask the content script which KEYS exist (never values) and
-  // decide a boolean from the key NAMES alone.
-  const probe = await probeBrowserStorageKeys(board);
-  return jobvisionLoggedIn(probe.keys)
-    ? { loggedIn: true }
-    : { loggedIn: false, reason: probe.reason };
+/**
+ * Ask Jobinja whether THIS browser is signed in, by requesting the user's own
+ * authenticated CV page from inside a jobinja.ir tab. Anonymous visitors are
+ * redirected to /login/user; a signed-in user gets the page. Returns a boolean
+ * plus an optional non-secret display name — never a cookie value (RULE 1).
+ */
+async function probeJobinjaSession(): Promise<ProbeSessionResult> {
+  const tabs = await chrome.tabs.query({ url: boardTabPatterns(BOARDS.jobinja.origin) });
+  if (tabs.length === 0) return { loggedIn: false, reason: "no_tab" };
+  tabs.sort((a, b) => Number(Boolean(b.active)) - Number(Boolean(a.active)));
+  let probeSucceeded = false;
+  let sawLogout = false;
+  for (const tab of tabs) {
+    if (!tab.id) continue;
+    try {
+      const [execution] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: async () => {
+          try {
+            const response = await fetch("/app/cv-builder", {
+              headers: { accept: "text/html" },
+              credentials: "include",
+              redirect: "follow",
+            });
+            if (!response.ok) return { ok: false, loggedIn: false };
+            // A logged-out request lands on the login page after the redirect.
+            if (/\/login(\/|$)/.test(new URL(response.url).pathname)) {
+              return { ok: true, loggedIn: false };
+            }
+            const html = await response.text();
+            if (/name=["']?_token|id=["']?login-form|\/login\/user/i.test(html) &&
+                !/cv-builder/i.test(html)) {
+              return { ok: true, loggedIn: false };
+            }
+            const label = /<meta[^>]+name=["']user-name["'][^>]+content=["']([^"']{1,80})["']/i
+              .exec(html)?.[1];
+            return { ok: true, loggedIn: true, ...(label ? { label } : {}) };
+          } catch {
+            return { ok: false, loggedIn: false };
+          }
+        },
+      });
+      const result = execution?.result as
+        { ok: boolean; loggedIn: boolean; label?: string } | undefined;
+      if (!result?.ok) continue;
+      probeSucceeded = true;
+      if (result.loggedIn) {
+        return result.label
+          ? { loggedIn: true, accountLabelHint: result.label }
+          : { loggedIn: true };
+      }
+      sawLogout = true;
+    } catch {
+      // Continue with another jobinja tab; stale tabs can reject injection.
+    }
+  }
+  return {
+    loggedIn: false,
+    reason: probeSucceeded && sawLogout ? "logged_out" : "probe_unavailable",
+  };
 }
 
 /** Ask e-estekhdam's own session endpoint inside a site tab and return only a boolean. */
@@ -172,11 +232,6 @@ async function probeEEstekhdamSession(): Promise<ProbeSessionResult> {
     loggedIn: false,
     reason: probeSucceeded ? "session_not_found" : "probe_unavailable",
   };
-}
-
-/** The chrome.cookies domain filter for a cookie-shaped board. */
-function boardCookieDomain(board: BoardId): string {
-  return new URL(BOARDS[board].origin).hostname.replace(/^www\./, "");
 }
 
 type StorageProbe = {
@@ -304,7 +359,9 @@ async function handleManageProvider(
   action: "pause" | "resume" | "login" | "reconnect" | "disconnect",
 ): Promise<ProviderState[]> {
   if (action === "login") {
-    await chrome.tabs.create({ url: PROVIDER_JOBS_URLS[board], active: true });
+    const existing = await chrome.tabs.query({ url: boardTabPatterns(BOARDS[board].origin) });
+    if (existing[0]?.id) await chrome.tabs.update(existing[0].id, { active: true });
+    else await chrome.tabs.create({ url: PROVIDER_JOBS_URLS[board], active: true });
     return handleGetProviderStates();
   }
 
@@ -320,14 +377,37 @@ async function handleManageProvider(
     return handleGetProviderStates();
   }
 
-  const probe = await probeBoardSession(board);
-  if (!probe.loggedIn) {
-    await chrome.tabs.create({ url: PROVIDER_JOBS_URLS[board], active: true });
-    return handleGetProviderStates();
-  }
+  const probe = await reconnectProbe(board);
+  if (!probe.loggedIn) return handleGetProviderStates();
   await handleConnectBoard(board, probe.accountLabelHint);
   await setProviderEnabled(board, true);
   return handleGetProviderStates();
+}
+
+/**
+ * Probe for reconnect, opening or focusing the provider's own site when the probe
+ * needs a tab, then re-probing once that tab has loaded.
+ *
+ * Without this the tab-backed probes (Jobinja, e-estekhdam) always failed the
+ * first time — there was no tab yet — so "reconnect" opened the site and did
+ * nothing, and the user had to click a second time. That is what made a provider
+ * disconnected from Karjoo feel like it had no way back.
+ */
+async function reconnectProbe(board: ActiveProviderId): Promise<ProbeSessionResult> {
+  const first = await probeBoardSession(board);
+  if (first.loggedIn || first.reason !== "no_tab") return first;
+
+  const existing = await chrome.tabs.query({ url: boardTabPatterns(BOARDS[board].origin) });
+  const tab = existing[0]?.id
+    ? await chrome.tabs.update(existing[0].id, { active: true })
+    : await chrome.tabs.create({ url: PROVIDER_JOBS_URLS[board], active: true });
+  if (!tab?.id) return first;
+  try {
+    await waitForTabComplete(tab.id);
+  } catch {
+    return first;
+  }
+  return probeBoardSession(board);
 }
 
 /* ── apply queue ───────────────────────────────────────────────────────── */

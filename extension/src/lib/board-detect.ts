@@ -1,56 +1,30 @@
 /**
- * Local board-session detection (pure logic).
+ * Board session SHAPE metadata (pure logic).
  *
  * ════════════════════════════════════════════════════════════════════════════
- * LEGITIMACY RULE 1: these helpers decide ONLY a boolean — "does the user appear
- * logged into this board IN THEIR OWN BROWSER?" — from session-SHAPED signals.
- * They take cookie/localStorage KEY names (and at most a presence/length check),
- * and return true/false. They DELIBERATELY never return, log, or forward the
- * actual cookie value / token. The secret stays in the browser, owned by the site.
+ * LEGITIMACY RULE 1: nothing here returns, logs, or forwards a cookie value or
+ * token. The secret stays in the browser, owned by the site.
  * ════════════════════════════════════════════════════════════════════════════
  *
- * Jobinja/e-estekhdam → auth lives in a session COOKIE → read key NAMES via
- *             chrome.cookies.
- * JobVision → SPA: auth is a JWT in localStorage → a content script reports which
- *             KEYS exist (never the value).
- * IranTalent → SPA, but its OAuth envelope lives in a first-party COOKIE, so it
- *             is cookie-shaped like Jobinja.
+ * This module used to decide "is the user logged in?" by matching cookie and
+ * localStorage KEY NAMES. That was wrong, and it shipped a real bug: Jobinja
+ * hands its `JSESSID` cookie to ANONYMOUS visitors too, so the name match said
+ * "signed in" for anyone who had merely opened jobinja.ir. Every active provider
+ * now uses a board-specific AUTHENTICATED identity probe instead — it asks the
+ * board itself (see background/service-worker.ts and lib/irantalent-session.ts).
+ *
+ * What remains here is the session SHAPE each board uses, which the session
+ * refresh path still needs:
+ *
+ *   • cookie → Jobinja, e-estekhdam, IranTalent (a first-party cookie).
+ *   • token  → JobVision (a JWT in localStorage).
  */
 import type { BoardId } from "@ext/lib/config";
 
 /**
- * Jobinja session-cookie name candidates. Jobinja is a classic server-rendered
- * Laravel-style app, so the framework session cookie indicates a logged-in
- * session. We match by name only.
- */
-// Verified live (2026-07-01) against a real logged-in Jobinja session: the auth
-// cookies are `JSESSID` (Laravel session), `remember_<hash>` (remember-me), and
-// `user_mode`. `startsWith` (see jobinjaLoggedIn) handles the hashed remember-me name.
-const JOBINJA_SESSION_COOKIE_NAMES = [
-  "JSESSID",
-  "remember_",
-  "user_mode",
-  "jobinja_session",
-  "laravel_session",
-  "PHPSESSID",
-];
-
-/**
- * e-estekhdam session-cookie name candidates. Also a server-rendered app whose
- * login is held in a session COOKIE; matched by NAME only (value never read out).
- */
-const EESTEKHDAM_SESSION_COOKIE_NAMES = [
-  "e-estekhdam_session",
-  "estekhdam_session",
-  "laravel_session",
-  "remember_web",
-  "PHPSESSID",
-  "XSRF-TOKEN",
-];
-
-/**
- * JobVision (SPA) localStorage key candidates that hold the auth JWT. The content
- * script reports the SET OF KEYS present (not values); presence ⇒ logged in.
+ * JobVision (SPA) localStorage key candidates that hold the auth JWT. Used to
+ * decide WHICH keys a content script should look for — presence only, never the
+ * value. This is a capture hint, not a login decision.
  */
 const JOBVISION_TOKEN_KEYS = [
   "CandidateClient_v2",
@@ -62,71 +36,14 @@ const JOBVISION_TOKEN_KEYS = [
 ];
 
 /**
- * IranTalent session-cookie names. IranTalent is an SPA, but — unlike JobVision —
- * it keeps its OAuth envelope in a first-party COOKIE (`auth_token_irantalent_new`),
- * which its own http service reads to build the Authorization header. Verified
- * live (2026-08-31) against the site's shipped bundle. Matched by NAME only.
- */
-const IRANTALENT_SESSION_COOKIE_NAMES = ["auth_token_irantalent_new"];
-
-/** A cookie as seen by chrome.cookies — we only ever look at `.name`/length here. */
-export interface CookieLike {
-  name: string;
-  /** Present so callers can pass real cookies; this module never forwards it. */
-  value?: string;
-}
-
-/**
- * Decide whether a Jobinja session cookie is present. Matches by NAME against
- * known session-cookie names; requires a non-empty value to count (an empty
- * cookie is a logged-out remnant) — but the value itself is never returned.
- */
-export function jobinjaLoggedIn(cookies: CookieLike[]): boolean {
-  return cookies.some(
-    (c) =>
-      JOBINJA_SESSION_COOKIE_NAMES.some((name) => c.name.toLowerCase().startsWith(name.toLowerCase())) &&
-      (c.value === undefined || c.value.length > 0),
-  );
-}
-
-/**
  * Decide whether JobVision auth token keys are present in the reported key set.
  * Input is the LIST OF localStorage KEY NAMES the content script found — never
- * the token values.
+ * the token values. JobVision only writes these once a candidate has signed in,
+ * so unlike Jobinja's cookie their presence really does mean a session exists.
  */
 export function jobvisionLoggedIn(localStorageKeys: string[]): boolean {
   const lower = localStorageKeys.map((k) => k.toLowerCase());
   return JOBVISION_TOKEN_KEYS.some((k) => lower.includes(k.toLowerCase()));
-}
-
-/** e-estekhdam login = a known session COOKIE name present (value never read out). */
-export function eEstekhdamLoggedIn(cookies: CookieLike[]): boolean {
-  return cookies.some(
-    (c) =>
-      EESTEKHDAM_SESSION_COOKIE_NAMES.some((name) =>
-        c.name.toLowerCase().startsWith(name.toLowerCase()),
-      ) &&
-      (c.value === undefined || c.value.length > 0),
-  );
-}
-
-/** IranTalent login = its auth COOKIE present with a non-empty value (value never read out). */
-export function irantalentLoggedIn(cookies: CookieLike[]): boolean {
-  return cookies.some(
-    (c) =>
-      IRANTALENT_SESSION_COOKIE_NAMES.some((name) =>
-        c.name.toLowerCase().startsWith(name.toLowerCase()),
-      ) &&
-      (c.value === undefined || c.value.length > 0),
-  );
-}
-
-/** Cookie names the background worker should request from chrome.cookies for a board. */
-export function sessionCookieNames(board: BoardId): string[] {
-  if (board === "jobinja") return [...JOBINJA_SESSION_COOKIE_NAMES];
-  if (board === "e-estekhdam") return [...EESTEKHDAM_SESSION_COOKIE_NAMES];
-  if (board === "irantalent") return [...IRANTALENT_SESSION_COOKIE_NAMES];
-  return [];
 }
 
 /** localStorage key candidates a content script should probe for (presence only). */
@@ -135,7 +52,11 @@ export function sessionTokenKeys(board: BoardId): string[] {
   return [];
 }
 
-/** Whether a board's login lives in a cookie (server-rendered) or a localStorage token (SPA). */
+/**
+ * Whether a board's login lives in a cookie or a localStorage token. JobVision is
+ * the only token-shaped board; IranTalent is an SPA but keeps its OAuth envelope
+ * in a first-party cookie (`auth_token_irantalent_new`).
+ */
 export function sessionShapeOf(board: BoardId): "cookie" | "token" {
   return board === "jobvision" ? "token" : "cookie";
 }

@@ -6,36 +6,11 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  jobinjaLoggedIn,
   jobvisionLoggedIn,
-  eEstekhdamLoggedIn,
-  irantalentLoggedIn,
-  sessionCookieNames,
   sessionTokenKeys,
   sessionShapeOf,
 } from "@ext/lib/board-detect";
 
-describe("jobinjaLoggedIn (cookie-shaped)", () => {
-  it("true when a known session cookie is present with a value", () => {
-    expect(jobinjaLoggedIn([{ name: "jobinja_session", value: "abc123" }])).toBe(true);
-    expect(jobinjaLoggedIn([{ name: "laravel_session", value: "x" }])).toBe(true);
-    expect(jobinjaLoggedIn([{ name: "remember_web_xyz", value: "x" }])).toBe(true);
-  });
-
-  it("false when no session cookie present", () => {
-    expect(jobinjaLoggedIn([{ name: "_ga", value: "GA1.2" }])).toBe(false);
-    expect(jobinjaLoggedIn([])).toBe(false);
-  });
-
-  it("false for an empty-valued (logged-out remnant) session cookie", () => {
-    expect(jobinjaLoggedIn([{ name: "jobinja_session", value: "" }])).toBe(false);
-  });
-
-  it("treats presence as enough when value is omitted by the caller", () => {
-    // The detector must work even if the caller deliberately withholds values.
-    expect(jobinjaLoggedIn([{ name: "PHPSESSID" }])).toBe(true);
-  });
-});
 
 describe("jobvisionLoggedIn (token-shaped, localStorage key names only)", () => {
   it("true when an auth-token key is present", () => {
@@ -53,44 +28,19 @@ describe("jobvisionLoggedIn (token-shaped, localStorage key names only)", () => 
   });
 });
 
-describe("eEstekhdamLoggedIn (cookie-shaped)", () => {
-  it("true when a known session cookie is present with a value", () => {
-    expect(eEstekhdamLoggedIn([{ name: "estekhdam_session", value: "abc" }])).toBe(true);
-    expect(eEstekhdamLoggedIn([{ name: "laravel_session", value: "x" }])).toBe(true);
-  });
-  it("false with no session cookie / empty value", () => {
-    expect(eEstekhdamLoggedIn([{ name: "_ga", value: "x" }])).toBe(false);
-    expect(eEstekhdamLoggedIn([{ name: "PHPSESSID", value: "" }])).toBe(false);
-    expect(eEstekhdamLoggedIn([])).toBe(false);
-  });
-});
 
-describe("irantalentLoggedIn (cookie-shaped, name only)", () => {
-  it("true when the site's own auth cookie is present with a value", () => {
-    expect(irantalentLoggedIn([{ name: "auth_token_irantalent_new", value: "{...}" }])).toBe(true);
-  });
-  it("false with no auth cookie / an emptied one", () => {
-    expect(irantalentLoggedIn([{ name: "_ga", value: "x" }])).toBe(false);
-    expect(irantalentLoggedIn([{ name: "auth_token_irantalent_new", value: "" }])).toBe(false);
-    expect(irantalentLoggedIn([])).toBe(false);
-  });
-});
 
 describe("which signals to probe per board", () => {
   it("jobinja → cookie names, no localStorage keys", () => {
-    expect(sessionCookieNames("jobinja").length).toBeGreaterThan(0);
     expect(sessionTokenKeys("jobinja")).toEqual([]);
   });
   it("jobvision → localStorage keys, no cookie names", () => {
     expect(sessionTokenKeys("jobvision").length).toBeGreaterThan(0);
-    expect(sessionCookieNames("jobvision")).toEqual([]);
   });
   it("e-estekhdam → cookie names (server-rendered)", () => {
-    expect(sessionCookieNames("e-estekhdam").length).toBeGreaterThan(0);
     expect(sessionTokenKeys("e-estekhdam")).toEqual([]);
   });
   it("irantalent → cookie names (SPA with a first-party auth cookie)", () => {
-    expect(sessionCookieNames("irantalent")).toEqual(["auth_token_irantalent_new"]);
     expect(sessionTokenKeys("irantalent")).toEqual([]);
   });
 });
@@ -101,5 +51,26 @@ describe("sessionShapeOf", () => {
     expect(sessionShapeOf("e-estekhdam")).toBe("cookie");
     expect(sessionShapeOf("jobvision")).toBe("token");
     expect(sessionShapeOf("irantalent")).toBe("cookie");
+  });
+});
+
+describe("no board decides login from guessed cookie names any more", () => {
+  it("exposes no cookie-name login helper — that was the Jobinja false positive", async () => {
+    const module = await import("@ext/lib/board-detect");
+    for (const removed of [
+      "jobinjaLoggedIn",
+      "eEstekhdamLoggedIn",
+      "irantalentLoggedIn",
+      "sessionCookieNames",
+    ]) {
+      expect(module, removed).not.toHaveProperty(removed);
+    }
+  });
+
+  it("keeps only the session SHAPE, which the refresh path still needs", () => {
+    expect(sessionShapeOf("jobinja")).toBe("cookie");
+    expect(sessionShapeOf("e-estekhdam")).toBe("cookie");
+    expect(sessionShapeOf("irantalent")).toBe("cookie");
+    expect(sessionShapeOf("jobvision")).toBe("token");
   });
 });
