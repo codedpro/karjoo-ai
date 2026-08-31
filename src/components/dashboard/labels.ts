@@ -8,6 +8,7 @@ export const BOARD_LABELS: Record<string, string> = {
   jobvision: "جاب‌ویژن",
   jobinja: "جابینجا",
   "e-estekhdam": "ای‌استخدام",
+  irantalent: "ایران‌تلنت",
   karboom: "کاربوم",
   linkedin: "لینکدین",
 };

@@ -94,10 +94,10 @@ export const BOARDS = {
     id: "irantalent" as const,
     displayName: "ایران‌تلنت",
     origin: "https://www.irantalent.com",
-    /** IranTalent is an SPA; auth is a token in localStorage (TBD per docs §7). */
-    sessionShape: "token" as const,
+    /** IranTalent stores its OAuth token in a first-party cookie. */
+    sessionShape: "cookie" as const,
     /** The signed-in user's own profile/CV page. */
-    profilePath: "/profile",
+    profilePath: "/candidate/cv/edit",
   },
 } as const;
 
@@ -107,7 +107,7 @@ export type BoardId = keyof typeof BOARDS;
 export const BOARD_IDS = Object.keys(BOARDS) as BoardId[];
 
 /** Providers that are production-ready in the unified extension manager. */
-export const ACTIVE_PROVIDER_IDS = ["jobinja", "jobvision", "e-estekhdam"] as const;
+export const ACTIVE_PROVIDER_IDS = ["jobinja", "jobvision", "e-estekhdam", "irantalent"] as const;
 export type ActiveProviderId = (typeof ACTIVE_PROVIDER_IDS)[number];
 
 export function isActiveProviderId(value: string): value is ActiveProviderId {
@@ -118,4 +118,5 @@ export const PROVIDER_JOBS_URLS: Record<ActiveProviderId, string> = {
   jobinja: "https://jobinja.ir/jobs",
   jobvision: "https://jobvision.ir/jobs",
   "e-estekhdam": "https://www.e-estekhdam.com/search",
+  irantalent: "https://www.irantalent.com/jobs",
 };

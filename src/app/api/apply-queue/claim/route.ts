@@ -66,6 +66,15 @@ function clampToRemaining(requested: number, remaining: number | null): number {
   return Math.max(0, Math.min(requested, remaining));
 }
 
+/**
+ * Boards the pre-executor claim paths may lease. IranTalent is excluded: it is
+ * extension-only and every one of its tasks must carry a tailored PDF, which
+ * only the executor path (`requireTailoredResume`) guarantees. Older extension
+ * builds therefore never see an IranTalent task instead of applying to one with
+ * the base profile resume.
+ */
+const LEGACY_CLAIM_BOARDS = ["jobinja", "jobvision", "e-estekhdam"] as const;
+
 export async function POST(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
     // ۱) احراز هویت — فقط نشستِ افزونه.
@@ -148,7 +157,7 @@ export async function POST(request: Request): Promise<Response> {
           userId,
           clampToRemaining(body.limit, filterRemaining),
           undefined,
-          { minScore: AI_TASKS_EXCLUDED_MIN_SCORE },
+          { minScore: AI_TASKS_EXCLUDED_MIN_SCORE, allowedBoards: LEGACY_CLAIM_BOARDS },
         );
         return json({ count: filterItems.length, items: filterItems });
       }
@@ -160,7 +169,7 @@ export async function POST(request: Request): Promise<Response> {
       userId,
       clampToRemaining(body.limit, remaining),
       undefined,
-      { minScore },
+      { minScore, allowedBoards: LEGACY_CLAIM_BOARDS },
     );
 
     return json({ count: items.length, items });

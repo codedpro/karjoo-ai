@@ -225,7 +225,11 @@ export async function claimFleetJobs(
   const claimItems =
     deps.claimItems ??
     (async (userId: string, lim: number, minScore: number) => {
-      const allowedBoards = enabledApplyBoards(await readApplyFilters(userId, db));
+      // IranTalent is browser-only: its authenticated PDF replacement and apply
+      // transaction must run inside the user's active extension session.
+      const allowedBoards = enabledApplyBoards(await readApplyFilters(userId, db)).filter(
+        (board) => board !== "irantalent",
+      );
       return claimUserApplyItems(userId, lim, db, {
         minScore,
         requireTailoredResume: true,

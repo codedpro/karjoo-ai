@@ -75,6 +75,7 @@ export interface BoardApplyFilters {
   jobinja: BoardFilter;
   jobvision: BoardFilter;
   "e-estekhdam": BoardFilter;
+  irantalent: BoardFilter;
 }
 
 export type ActiveApplyBoard = keyof BoardApplyFilters;
@@ -104,6 +105,7 @@ export const EMPTY_APPLY_FILTERS: ApplyFilters = {
     jobinja: emptyBoardFilter(true),
     jobvision: emptyBoardFilter(false),
     "e-estekhdam": emptyBoardFilter(false),
+    irantalent: emptyBoardFilter(false),
   },
 };
 
@@ -176,6 +178,7 @@ export function parseApplyFilters(
   const jobinja = parseBoardFilter(rawBoards.jobinja, legacyJobinja);
   const jobvision = parseBoardFilter(rawBoards.jobvision, emptyBoardFilter(false));
   const eEstekhdam = parseBoardFilter(rawBoards["e-estekhdam"], emptyBoardFilter(false));
+  const irantalent = parseBoardFilter(rawBoards.irantalent, emptyBoardFilter(false));
   return {
     categorySlugs: jobinja.categoryKeys,
     cities: jobinja.cities,
@@ -193,7 +196,7 @@ export function parseApplyFilters(
       : { weeklyLimit: Math.floor(positiveNumber(raw.weeklyLimit)!) }),
     maxAgeDays: Math.min(45, Math.max(1, Math.floor(positiveNumber(raw.maxAgeDays) ?? 45))),
     boardFiltersVersion: 1,
-    boardFilters: { jobinja, jobvision, "e-estekhdam": eEstekhdam },
+    boardFilters: { jobinja, jobvision, "e-estekhdam": eEstekhdam, irantalent },
   };
 }
 
@@ -280,8 +283,12 @@ export function mergeApplyFilters(
     filters.boardFilters?.["e-estekhdam"],
     emptyBoardFilter(false),
   );
+  const irantalent = parseBoardFilter(
+    filters.boardFilters?.irantalent,
+    emptyBoardFilter(false),
+  );
   base.boardFiltersVersion = 1;
-  base.boardFilters = { jobinja, jobvision, "e-estekhdam": eEstekhdam };
+  base.boardFilters = { jobinja, jobvision, "e-estekhdam": eEstekhdam, irantalent };
   base.maxAgeDays = Math.min(45, Math.max(1, Math.floor(filters.maxAgeDays || 45)));
 
   // Compatibility for the existing dashboard and Jobinja orchestrator.

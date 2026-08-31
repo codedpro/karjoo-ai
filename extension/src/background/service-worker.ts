@@ -22,17 +22,22 @@ import {
 import { ApiError, KarjooApi } from "@ext/lib/api-client";
 import { buildConnectPayload } from "@ext/lib/connect-payload";
 import { buildImportPayload } from "@ext/lib/import-payload";
-import { deriveProviderState, withProviderEnabled } from "@ext/lib/provider-manager";
+import {
+  deriveProviderState,
+  needsKarjooReconcile,
+  reconciledProviderState,
+  withProviderEnabled,
+} from "@ext/lib/provider-manager";
 import {
   jobinjaLoggedIn,
   jobvisionLoggedIn,
   eEstekhdamLoggedIn,
-  irantalentLoggedIn,
   sessionTokenKeys,
   sessionShapeOf,
   type CookieLike,
 } from "@ext/lib/board-detect";
 import { boardTabPatterns } from "@ext/lib/board-session";
+import { probeIranTalentIdentity } from "@ext/lib/irantalent-session";
 import {
   getApiOrigin,
   getSessionToken,
@@ -102,6 +107,9 @@ async function handleGetIdentity(): Promise<Identity | null> {
 
 async function probeBoardSession(board: BoardId): Promise<ProbeSessionResult> {
   if (board === "e-estekhdam") return probeEEstekhdamSession();
+  // IranTalent answers authoritatively from its own profile endpoint, so it needs
+  // no open tab — see irantalent-session.ts for why the token is read there.
+  if (board === "irantalent") return probeIranTalentIdentity();
   // Cookie-shaped boards (Jobinja, e-estekhdam): read cookie NAMES via
   // chrome.cookies and decide a boolean. The cookie VALUE is never read out of
   // the browser, never sent to Karjoo (RULE 1).
@@ -111,15 +119,16 @@ async function probeBoardSession(board: BoardId): Promise<ProbeSessionResult> {
     const cookieLikes: CookieLike[] = cookies.map((c) => ({ name: c.name, value: c.value }));
     const loggedIn =
       board === "jobinja" ? jobinjaLoggedIn(cookieLikes) : eEstekhdamLoggedIn(cookieLikes);
-    return { loggedIn };
+    return loggedIn ? { loggedIn } : { loggedIn, reason: "logged_out" };
   }
 
-  // Token-shaped boards (JobVision, IranTalent): the token is in localStorage,
-  // invisible to chrome.cookies. Ask the content script which KEYS exist (never
-  // values) and decide a boolean from the key NAMES alone.
+  // Token-shaped boards (JobVision): the token is in localStorage, invisible to
+  // chrome.cookies. Ask the content script which KEYS exist (never values) and
+  // decide a boolean from the key NAMES alone.
   const probe = await probeBrowserStorageKeys(board);
-  const loggedIn = board === "jobvision" ? jobvisionLoggedIn(probe.keys) : irantalentLoggedIn(probe.keys);
-  return loggedIn ? { loggedIn: true } : { loggedIn: false, reason: probe.reason };
+  return jobvisionLoggedIn(probe.keys)
+    ? { loggedIn: true }
+    : { loggedIn: false, reason: probe.reason };
 }
 
 /** Ask e-estekhdam's own session endpoint inside a site tab and return only a boolean. */
@@ -261,11 +270,26 @@ async function handleGetProviderStates(): Promise<ProviderState[]> {
   ]);
   const statusByBoard = new Map(boards.map((account) => [account.board, account.status ?? null]));
 
-  return ACTIVE_PROVIDER_IDS.map((board, index) => deriveProviderState({
+  const states = ACTIVE_PROVIDER_IDS.map((board, index) => deriveProviderState({
     board,
     enabled: filters.boardFilters[board].enabled,
     serverStatus: statusByBoard.get(board),
     probe: probes[index]!,
+  }));
+
+  // Read-and-reconcile: a real local session is the source of truth for "is this
+  // provider usable?", so when we find one we bring Karjoo's own metadata into
+  // line instead of showing a stale "login required". Idempotent — a provider
+  // already marked connected reconciles to false and no write is made.
+  return Promise.all(states.map(async (state, index) => {
+    if (!needsKarjooReconcile(state)) return state;
+    try {
+      await handleConnectBoard(state.board, probes[index]!.accountLabelHint);
+      return reconciledProviderState(state);
+    } catch {
+      // Karjoo is unreachable or refused; report what we actually observed.
+      return state;
+    }
   }));
 }
 
@@ -341,7 +365,7 @@ async function handleGetJobinjaCategories(): Promise<JobinjaCategory[]> {
 }
 
 async function handleGetBoardCatalog(
-  board: "jobinja" | "jobvision" | "e-estekhdam",
+  board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent",
 ): Promise<BoardCatalog> {
   return (await apiFromStorage()).getBoardCatalog(board);
 }

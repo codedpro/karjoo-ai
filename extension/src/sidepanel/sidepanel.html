@@ -84,6 +84,7 @@
                 <button class="board-tab active" data-board="jobinja" type="button">جابینجا</button>
                 <button class="board-tab" data-board="jobvision" type="button">جاب‌ویژن</button>
                 <button class="board-tab" data-board="e-estekhdam" type="button">ای‌استخدام</button>
+                <button class="board-tab" data-board="irantalent" type="button">ایران‌تلنت</button>
               </div>
               <label class="check board-enabled"><input id="boardEnabledInput" type="checkbox" /> کشف و اپلای برای این سایت فعال باشد</label>
               <div class="board-connect"><span id="boardSessionStatus">در حال بررسی ورود…</span><button id="connectBoardBtn" type="button">بررسی و اتصال</button></div>
@@ -94,7 +95,7 @@
               <div id="categoryOptions" class="check-list"></div>
             </section>
             <section class="form-grid">
-              <label class="field full"><span>شهرها</span><input id="citiesInput" type="text" placeholder="تهران، اصفهان" /><small>چند شهر را با ویرگول جدا کنید.</small></label>
+              <label id="citiesField" class="field full"><span>شهرها</span><input id="citiesInput" type="text" placeholder="تهران، اصفهان" /><small>چند شهر را با ویرگول جدا کنید.</small></label>
               <fieldset class="full"><legend>نوع همکاری</legend><label><input id="fulltimeInput" type="checkbox" /> تمام‌وقت</label><label><input id="parttimeInput" type="checkbox" /> پاره‌وقت</label><label id="projectLabel"><input id="projectInput" type="checkbox" /> پروژه‌ای</label></fieldset>
               <label class="check full"><input id="remoteInput" type="checkbox" /> فقط دورکاری</label>
               <label class="field"><span>حداقل حقوق</span><input id="salaryInput" type="number" min="0" step="1000000" placeholder="بدون محدودیت" /></label>
@@ -111,7 +112,7 @@
         <div id="historyView" class="view hidden">
           <section aria-labelledby="recentTitle">
             <div class="section-head"><h2 id="recentTitle">تاریخچه اپلای</h2><span>همگام با سرور</span></div>
-            <label class="field history-filter"><span>جست‌وجو و سایت</span><span class="history-controls"><input id="historySearch" type="search" placeholder="عنوان یا شرکت" /><select id="historyBoard"><option value="all">همه سایت‌ها</option><option value="jobinja">جابینجا</option><option value="jobvision">جاب‌ویژن</option><option value="e-estekhdam">ای‌استخدام</option></select></span></label>
+            <label class="field history-filter"><span>جست‌وجو و سایت</span><span class="history-controls"><input id="historySearch" type="search" placeholder="عنوان یا شرکت" /><select id="historyBoard"><option value="all">همه سایت‌ها</option><option value="jobinja">جابینجا</option><option value="jobvision">جاب‌ویژن</option><option value="e-estekhdam">ای‌استخدام</option><option value="irantalent">ایران‌تلنت</option></select></span></label>
             <ul id="recentList" class="recent-list"></ul>
             <button id="historyMore" class="load-more hidden" type="button">نمایش موارد بیشتر</button>
             <p id="recentEmpty" class="empty">هنوز نتیجه‌ای ثبت نشده است.</p>

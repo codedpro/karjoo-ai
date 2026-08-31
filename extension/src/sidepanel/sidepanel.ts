@@ -12,6 +12,7 @@ import type { ProbeSessionResult } from "@ext/lib/messages";
 import {
   ACTIVE_PROVIDER_IDS,
   BOARDS,
+  PROVIDER_JOBS_URLS,
   type ActiveProviderId,
 } from "@ext/lib/config";
 
@@ -58,7 +59,7 @@ let selectedCategories = new Set<string>();
 let filtersLoaded = false;
 let filtersDirty = false;
 let filtersState: ApplyFilters | null = null;
-type FilterBoard = "jobinja" | "jobvision" | "e-estekhdam";
+type FilterBoard = "jobinja" | "jobvision" | "e-estekhdam" | "irantalent";
 let filterBoard: FilterBoard = "jobinja";
 const catalogs = new Map<string, BoardCatalog>();
 const connectedBoards = new Set<string>();
@@ -458,15 +459,18 @@ async function action(actionName: "start" | "takeover" | "pause" | "stop"): Prom
 async function loadFilters(force = false): Promise<void> {
   if (filtersDirty && !force) return;
   try {
-    const [response, jobinjaCatalog, jobvisionCatalog, eEstekhdamCatalog] = await Promise.all([
-      send<{ filters: ApplyFilters; previewUrl: string }>({ type: "GET_APPLY_FILTERS" }),
-      send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "jobinja" }),
-      send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "jobvision" }),
-      send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "e-estekhdam" }),
-    ]);
+    const [response, jobinjaCatalog, jobvisionCatalog, eEstekhdamCatalog, iranTalentCatalog] =
+      await Promise.all([
+        send<{ filters: ApplyFilters; previewUrl: string }>({ type: "GET_APPLY_FILTERS" }),
+        send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "jobinja" }),
+        send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "jobvision" }),
+        send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "e-estekhdam" }),
+        send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "irantalent" }),
+      ]);
     catalogs.set("jobinja", jobinjaCatalog);
     catalogs.set("jobvision", jobvisionCatalog);
     catalogs.set("e-estekhdam", eEstekhdamCatalog);
+    catalogs.set("irantalent", iranTalentCatalog);
     filtersState = response.filters;
     fillFilters(response.filters);
     filtersLoaded = true;
@@ -493,14 +497,22 @@ function fillFilters(filters: ApplyFilters): void {
   ($<HTMLInputElement>("maxAgeInput")).value = String(filters.maxAgeDays);
   $("projectLabel").classList.toggle("hidden", filterBoard === "jobinja");
   $("sortField").classList.toggle("hidden", filterBoard !== "jobinja");
+  // JobVision and IranTalent target by category only — hide a control that would
+  // silently do nothing on those boards.
+  $("citiesField").classList.toggle("hidden", !BOARDS_WITH_CITY_TARGETING.has(filterBoard));
   document.querySelectorAll<HTMLButtonElement>(".board-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.board === filterBoard);
   });
   renderCategories();
 }
 
+/** Boards whose discovery actually filters by city. */
+const BOARDS_WITH_CITY_TARGETING = new Set<FilterBoard>(["jobinja", "e-estekhdam"]);
+
 function missingSessionLabel(status: ProbeSessionResult): string {
   if (status.reason === "no_tab") return "صفحهٔ سایت در مرورگر باز نیست";
+  if (status.reason === "security_challenge") return "سایت بررسی امنیتی خواسته است؛ در همان صفحه تأیید کنید";
+  if (status.reason === "logged_out") return "وارد حساب این سایت نشده‌اید";
   if (status.reason === "probe_unavailable") return "بررسی صفحه ممکن نشد؛ صفحه را بازخوانی کنید";
   return "ورود معتبر تشخیص داده نشد";
 }
@@ -513,12 +525,7 @@ async function detectAndConnectBoard(board: FilterBoard, openSiteOnMissing: bool
     $("boardSessionStatus").textContent = missingSessionLabel(status);
     connectedBoards.delete(board);
     if (openSiteOnMissing) {
-      const url = board === "jobvision"
-        ? "https://jobvision.ir/jobs"
-        : board === "e-estekhdam"
-          ? "https://www.e-estekhdam.com/search"
-          : "https://jobinja.ir/jobs";
-      await chrome.tabs.create({ url, active: true });
+      await chrome.tabs.create({ url: PROVIDER_JOBS_URLS[board], active: true });
     }
     return;
   }
@@ -580,6 +587,10 @@ function employmentKeys(board: FilterBoard): {
   }
   if (board === "e-estekhdam") {
     return { fulltime: "تمام-وقت", parttime: "پاره-وقت", project: "پروژه‌ای" };
+  }
+  if (board === "irantalent") {
+    // IranTalent filters by lookup id (type 17), not by slug.
+    return { fulltime: "186", parttime: "187", project: "189" };
   }
   return { fulltime: "full-time", parttime: "part-time", project: "project-based" };
 }

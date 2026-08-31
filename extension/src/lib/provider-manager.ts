@@ -26,6 +26,24 @@ export function deriveProviderState(input: {
   };
 }
 
+/**
+ * Should the caller push Karjoo's board-account metadata back to `connected`?
+ *
+ * True only when the user is really signed into the provider IN THIS BROWSER and
+ * the provider is still enabled — so an explicit Karjoo disconnect (which also
+ * disables the provider) is never silently undone. Deriving this from the state
+ * alone keeps the flow idempotent: once the metadata says `connected`, the next
+ * read returns false and no further write happens.
+ */
+export function needsKarjooReconcile(state: ProviderState): boolean {
+  return state.enabled && state.localSession && state.serverStatus !== "connected";
+}
+
+/** Apply a completed reconcile to a previously derived state, without re-probing. */
+export function reconciledProviderState(state: ProviderState): ProviderState {
+  return { ...state, serverStatus: "connected", state: "connected" };
+}
+
 /** Return a complete filters payload with only one provider's enabled flag changed. */
 export function withProviderEnabled(
   filters: ApplyFilters,

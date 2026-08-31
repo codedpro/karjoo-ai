@@ -5,7 +5,12 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { BOARD_STATUS, isBoardLive, liveBoardIds } from "@/lib/apply/registry";
+import {
+  BOARD_STATUS,
+  isBoardConnectable,
+  isBoardLive,
+  liveBoardIds,
+} from "@/lib/apply/registry";
 import type { JobBoardId } from "@/lib/apply/types";
 
 // همه‌ی مقادیرِ یونیونِ JobBoardId (types.ts:74-80) — منبعِ حقیقتِ کلیدها.
@@ -27,11 +32,27 @@ describe("BOARD_STATUS — جامعیت روی JobBoardId", () => {
     }
   });
 
-  it("جابینجا live، جاب‌ویژن extension-only و بقیه داربست‌اند", () => {
+  it("جابینجا live، سه ارائه‌دهنده‌ی فعالِ دیگر extension-only و بقیه داربست‌اند", () => {
     expect(BOARD_STATUS.jobinja).toBe("live");
-    expect(BOARD_STATUS.jobvision).toBe("extension_only");
-    for (const id of ALL_BOARDS.filter((b) => b !== "jobinja" && b !== "jobvision")) {
+    for (const id of ["jobvision", "e-estekhdam", "irantalent"] as const) {
+      expect(BOARD_STATUS[id], id).toBe("extension_only");
+    }
+    for (const id of ["karboom", "linkedin"] as const) {
       expect(BOARD_STATUS[id], id).toBe("coming_soon");
+    }
+  });
+});
+
+describe("isBoardConnectable", () => {
+  it("هر چهار ارائه‌دهنده‌ی فعال قابلِ اتصال‌اند — وگرنه وضعیت هرگز connected نمی‌شود", () => {
+    for (const id of ["jobinja", "jobvision", "e-estekhdam", "irantalent"] as const) {
+      expect(isBoardConnectable(id), id).toBe(true);
+    }
+  });
+
+  it("سایت‌های خارج از دامنه و شناسه‌ی ناشناخته قابلِ اتصال نیستند (fail-closed)", () => {
+    for (const id of ["karboom", "linkedin", "bogus", ""]) {
+      expect(isBoardConnectable(id), id).toBe(false);
     }
   });
 });
@@ -41,7 +62,7 @@ describe("isBoardLive", () => {
     expect(isBoardLive("jobinja")).toBe(true);
   });
 
-  it("برای داربست‌ها false است", () => {
+  it("برای هر سایتِ دیگر false است — extension_only یعنی سرور اجرا نمی‌کند", () => {
     for (const id of ["jobvision", "e-estekhdam", "irantalent", "karboom", "linkedin"]) {
       expect(isBoardLive(id), id).toBe(false);
     }

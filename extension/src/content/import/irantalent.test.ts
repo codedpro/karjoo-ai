@@ -1,14 +1,11 @@
 /**
  * IranTalent import-mapper tests against an HTML fixture (linkedom). Scaffold-
- * level selectors; proves field extraction, the DATA-only rule, and the
- * localStorage-key PROBE (names only, never values — §10).
+ * level selectors; proves field extraction and the DATA-only rule (§10). Login
+ * detection now lives in the background (lib/irantalent-session.ts).
  */
 import { describe, it, expect } from "vitest";
 import { parseHTML } from "linkedom";
-import {
-  scrapeIrantalentProfile,
-  probeIrantalentTokenKeys,
-} from "@ext/content/import/irantalent";
+import { scrapeIrantalentProfile } from "@ext/content/import/irantalent";
 import { buildImportPayload } from "@ext/lib/import-payload";
 
 function doc(html: string): Document {
@@ -49,25 +46,5 @@ describe("scrapeIrantalentProfile", () => {
   it("§10: scraped DATA carries no credential", () => {
     const p = scrapeIrantalentProfile(doc(FIXTURE));
     expect(() => buildImportPayload("irantalent", p)).not.toThrow();
-  });
-});
-
-describe("probeIrantalentTokenKeys (login detection — names only)", () => {
-  /** A tiny in-memory localStorage-like store. */
-  function makeStore(entries: Record<string, string>): Pick<Storage, "length" | "key"> {
-    const keys = Object.keys(entries);
-    return { length: keys.length, key: (i: number) => keys[i] ?? null };
-  }
-
-  it("reports only known auth-token KEY NAMES that are present", () => {
-    const store = makeStore({ access_token: "eyJ...SECRET", other: "x" });
-    const found = probeIrantalentTokenKeys(store);
-    expect(found).toContain("access_token");
-    // It returns the NAME, never the value — assert no token VALUE leaked.
-    expect(found.join("|")).not.toContain("SECRET");
-  });
-
-  it("returns [] when no known token key is present", () => {
-    expect(probeIrantalentTokenKeys(makeStore({ cart: "x" }))).toEqual([]);
   });
 });

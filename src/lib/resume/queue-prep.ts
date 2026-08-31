@@ -28,7 +28,7 @@ export async function prepareNextTailoredResumeForQueue(
   opts: { db?: Database; allowedBoards?: readonly ActiveApplyBoard[] } = {},
 ): Promise<NextQueueResumeResult> {
   const conn = opts.db ?? defaultDb;
-  const boards = (["jobinja", "e-estekhdam"] as const).filter(
+  const boards = (["jobinja", "e-estekhdam", "irantalent"] as const).filter(
     (board) => !opts.allowedBoards || opts.allowedBoards.includes(board),
   );
   if (boards.length === 0) return { status: "empty" };
@@ -120,7 +120,7 @@ export async function prepareTailoredResumesForQueue(
     Math.min(Math.floor(opts.limit ?? DEFAULT_QUEUE_RESUME_PREP_LIMIT), MAX_QUEUE_RESUME_PREP_LIMIT),
   );
   if (limit === 0) return { attempted: 0, prepared: 0, failed: 0 };
-  const boards = (["jobinja", "e-estekhdam"] as const).filter(
+  const boards = (["jobinja", "e-estekhdam", "irantalent"] as const).filter(
     (board) => !opts.allowedBoards || opts.allowedBoards.includes(board),
   );
   if (boards.length === 0) return { attempted: 0, prepared: 0, failed: 0 };

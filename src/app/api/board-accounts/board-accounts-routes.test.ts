@@ -90,12 +90,37 @@ describe("POST /api/board-accounts/connect — قاعده‌ی ایمنیِ ۱",
     expect(Object.keys(inserted)).not.toContain("token");
   });
 
-  it("سایتِ extension-only (jobvision) قابل اتصال است", async () => {
-    // jobvision/e-estekhdam/irantalent داربست‌اند؛ اتصالشان پیش از هر نوشتنی رد می‌شود.
+  it("هر چهار سایتِ فعال قابل اتصال‌اند (سرورشان داربست باشد یا نه)", async () => {
+    // کانکتورِ سرورِ jobvision/e-estekhdam/irantalent داربست است، اما آداپتورِ افزونه
+    // روی نشستِ خودِ کاربر کار می‌کند؛ پس اتصال باید بپذیرد وگرنه وضعیتِ ارائه‌دهنده
+    // هرگز به connected نمی‌رسد.
     authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
-    const res = await connectPOST(connectReq({ board: "jobvision" }));
+    for (const board of ["jobinja", "jobvision", "e-estekhdam", "irantalent"] as const) {
+      dbInsert.mockClear();
+      const res = await connectPOST(connectReq({ board }));
+      expect(res.status).toBe(200);
+      expect(dbInsert).toHaveBeenCalled();
+    }
+  });
+
+  it("ایران‌تلنت با شکلِ نشستِ cookie ثبت می‌شود (توکن در کوکیِ خودِ سایت است)", async () => {
+    authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
+    dbInsert.mockClear();
+    h.insertValues.mockClear();
+    const res = await connectPOST(connectReq({ board: "irantalent", accountLabel: "سارا" }));
     expect(res.status).toBe(200);
-    expect(dbInsert).toHaveBeenCalled();
+    const inserted = h.insertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(inserted.board).toBe("irantalent");
+    expect(inserted.sessionShape).toBe("cookie");
+    expect(inserted.status).toBe("connected");
+  });
+
+  it("سایتِ واقعاً پشتیبانی‌نشده هنوز ۴۰۹ می‌گیرد", async () => {
+    authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
+    dbInsert.mockClear();
+    const res = await connectPOST(connectReq({ board: "karboom" }));
+    expect(res.status).toBe(409);
+    expect(dbInsert).not.toHaveBeenCalled();
   });
 
   it("فیلدِ cookie در بدنه → ۴۰۰ و هیچ DB-write (مادهٔ سری رد می‌شود)", async () => {

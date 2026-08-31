@@ -9,9 +9,12 @@
  * actual cookie value / token. The secret stays in the browser, owned by the site.
  * ════════════════════════════════════════════════════════════════════════════
  *
- * Jobinja  → auth lives in a session COOKIE → read key NAMES via chrome.cookies.
+ * Jobinja/e-estekhdam → auth lives in a session COOKIE → read key NAMES via
+ *             chrome.cookies.
  * JobVision → SPA: auth is a JWT in localStorage → a content script reports which
  *             KEYS exist (never the value).
+ * IranTalent → SPA, but its OAuth envelope lives in a first-party COOKIE, so it
+ *             is cookie-shaped like Jobinja.
  */
 import type { BoardId } from "@ext/lib/config";
 
@@ -59,17 +62,12 @@ const JOBVISION_TOKEN_KEYS = [
 ];
 
 /**
- * IranTalent (SPA) localStorage key candidates that hold the auth token. As with
- * JobVision, a content script reports only WHICH KEYS exist — never the value.
+ * IranTalent session-cookie names. IranTalent is an SPA, but — unlike JobVision —
+ * it keeps its OAuth envelope in a first-party COOKIE (`auth_token_irantalent_new`),
+ * which its own http service reads to build the Authorization header. Verified
+ * live (2026-08-31) against the site's shipped bundle. Matched by NAME only.
  */
-const IRANTALENT_TOKEN_KEYS = [
-  "token",
-  "access_token",
-  "auth_token",
-  "id_token",
-  "userToken",
-  "it_token",
-];
+const IRANTALENT_SESSION_COOKIE_NAMES = ["auth_token_irantalent_new"];
 
 /** A cookie as seen by chrome.cookies — we only ever look at `.name`/length here. */
 export interface CookieLike {
@@ -112,27 +110,32 @@ export function eEstekhdamLoggedIn(cookies: CookieLike[]): boolean {
   );
 }
 
-/** IranTalent login = a known auth-token KEY NAME present in localStorage (value never read). */
-export function irantalentLoggedIn(localStorageKeys: string[]): boolean {
-  const lower = localStorageKeys.map((k) => k.toLowerCase());
-  return IRANTALENT_TOKEN_KEYS.some((k) => lower.includes(k.toLowerCase()));
+/** IranTalent login = its auth COOKIE present with a non-empty value (value never read out). */
+export function irantalentLoggedIn(cookies: CookieLike[]): boolean {
+  return cookies.some(
+    (c) =>
+      IRANTALENT_SESSION_COOKIE_NAMES.some((name) =>
+        c.name.toLowerCase().startsWith(name.toLowerCase()),
+      ) &&
+      (c.value === undefined || c.value.length > 0),
+  );
 }
 
 /** Cookie names the background worker should request from chrome.cookies for a board. */
 export function sessionCookieNames(board: BoardId): string[] {
   if (board === "jobinja") return [...JOBINJA_SESSION_COOKIE_NAMES];
   if (board === "e-estekhdam") return [...EESTEKHDAM_SESSION_COOKIE_NAMES];
+  if (board === "irantalent") return [...IRANTALENT_SESSION_COOKIE_NAMES];
   return [];
 }
 
 /** localStorage key candidates a content script should probe for (presence only). */
 export function sessionTokenKeys(board: BoardId): string[] {
   if (board === "jobvision") return [...JOBVISION_TOKEN_KEYS];
-  if (board === "irantalent") return [...IRANTALENT_TOKEN_KEYS];
   return [];
 }
 
 /** Whether a board's login lives in a cookie (server-rendered) or a localStorage token (SPA). */
 export function sessionShapeOf(board: BoardId): "cookie" | "token" {
-  return board === "jobinja" || board === "e-estekhdam" ? "cookie" : "token";
+  return board === "jobvision" ? "token" : "cookie";
 }

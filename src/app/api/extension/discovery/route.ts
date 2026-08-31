@@ -27,6 +27,7 @@ export async function GET(request: Request): Promise<Response> {
     );
     const jobvision = filters.boardFilters.jobvision;
     const eEstekhdam = filters.boardFilters["e-estekhdam"];
+    const irantalent = filters.boardFilters.irantalent;
     return json({
       paused: filters.paused,
       maxAgeDays: filters.maxAgeDays,
@@ -59,6 +60,17 @@ export async function GET(request: Request): Promise<Response> {
           cities: eEstekhdam.cities,
           employmentTypeKeys: eEstekhdam.employmentTypeKeys,
           remoteOnly: eEstekhdam.remoteOnly,
+        },
+        {
+          board: "irantalent",
+          enabled: irantalent.enabled,
+          hasTargeting:
+            irantalent.categoryKeys.length > 0 ||
+            irantalent.remoteOnly ||
+            irantalent.employmentTypeKeys.length > 0,
+          categoryKeys: irantalent.categoryKeys,
+          employmentTypeKeys: irantalent.employmentTypeKeys,
+          remoteOnly: irantalent.remoteOnly,
         },
       ],
     });

@@ -144,7 +144,7 @@ export interface SaveApplyFiltersMsg {
 export interface GetJobinjaCategoriesMsg { type: "GET_JOBINJA_CATEGORIES" }
 export interface GetBoardCatalogMsg {
   type: "GET_BOARD_CATALOG";
-  board: "jobinja" | "jobvision" | "e-estekhdam";
+  board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent";
 }
 export interface RetryApplicationMsg { type: "RETRY_APPLICATION"; applicationId: string }
 export interface GetApplicationResumeMsg {
@@ -256,7 +256,7 @@ export interface ProbeSessionResult {
   /** Whether the user appears logged into the board IN THEIR OWN BROWSER. */
   loggedIn: boolean;
   /** Non-secret diagnostic used only to render an accurate local status. */
-  reason?: "no_tab" | "session_not_found" | "probe_unavailable";
+  reason?: "no_tab" | "session_not_found" | "logged_out" | "security_challenge" | "probe_unavailable";
   /**
    * SAFETY: this NEVER includes the cookie value / token / password. It is a
    * boolean (+ optional non-secret label hint, e.g. a display name shown by the

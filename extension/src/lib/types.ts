@@ -63,7 +63,7 @@ export interface ApplyFilters {
   aiFilterEnabled: boolean;
   maxAgeDays: number;
   boardFiltersVersion: 1;
-  boardFilters: Record<"jobinja" | "jobvision" | "e-estekhdam", BoardFilter>;
+  boardFilters: Record<"jobinja" | "jobvision" | "e-estekhdam" | "irantalent", BoardFilter>;
 }
 
 export interface BoardFilter {
@@ -78,7 +78,7 @@ export interface BoardFilter {
 
 export interface BoardCatalogOption { key: string; label: string; englishLabel: string }
 export interface BoardCatalog {
-  board: "jobinja" | "jobvision" | "e-estekhdam";
+  board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent";
   categories: BoardCatalogOption[];
   employmentTypes: BoardCatalogOption[];
 }
@@ -97,7 +97,7 @@ export interface ProviderState {
   state: ProviderConnectionState;
   localSession: boolean;
   serverStatus: string | null;
-  reason?: "no_tab" | "session_not_found" | "probe_unavailable";
+  reason?: "no_tab" | "session_not_found" | "logged_out" | "security_challenge" | "probe_unavailable";
 }
 
 export interface JobinjaCategory {
@@ -233,6 +233,7 @@ export interface ExtensionDiscoveryConfig {
     | { board: "jobinja"; enabled: boolean; hasTargeting: boolean; searchUrl: string | null }
     | { board: "jobvision"; enabled: boolean; hasTargeting: boolean; categoryKeys: string[]; employmentTypeKeys: string[]; remoteOnly: boolean }
     | { board: "e-estekhdam"; enabled: boolean; hasTargeting: boolean; categoryKeys: string[]; cities: string[]; employmentTypeKeys: string[]; remoteOnly: boolean }
+    | { board: "irantalent"; enabled: boolean; hasTargeting: boolean; categoryKeys: string[]; employmentTypeKeys: string[]; remoteOnly: boolean }
   >;
 }
 

@@ -25,6 +25,8 @@ import { sendToTab, waitForTabComplete } from "@ext/background/tab-utils";
 import type { ContentApplyResult, ContentDiscoveryResult } from "@ext/lib/messages";
 import { discoverJobvisionListings } from "@ext/lib/jobvision-discovery";
 import { discoverEEstekhdamListings } from "@ext/lib/eestekhdam-discovery";
+import { discoverIranTalentListings } from "@ext/lib/irantalent-discovery";
+import { readIranTalentAuthorization } from "@ext/lib/irantalent-session";
 
 let activeCycle: Promise<AutoApplyStatus> | null = null;
 
@@ -186,6 +188,34 @@ async function discoverAndDrain(
         for (let index = 0; index < listings.length; index += 100) {
           const imported = await api.importDiscoveredListings(
             "e-estekhdam",
+            listings.slice(index, index + 100),
+          );
+          discovered += imported.ingested;
+        }
+      } else if (board.board === "irantalent") {
+        // The bearer token only makes IranTalent return this user's own
+        // `is_applied` flags; discovery still works signed out.
+        const authorization = await readIranTalentAuthorization();
+        const listings = await discoverIranTalentListings({
+          categoryKeys: board.categoryKeys,
+          employmentTypeKeys: board.employmentTypeKeys,
+          remoteOnly: board.remoteOnly,
+          maxAgeDays: discovery.maxAgeDays,
+          authorization,
+        }, fetch, async (count) => {
+          await api.mutateExecutionRun({
+            action: "progress",
+            executorId,
+            progress: {
+              stage: "discovering",
+              board: "irantalent",
+              discovered: discovered + count,
+            },
+          });
+        });
+        for (let index = 0; index < listings.length; index += 100) {
+          const imported = await api.importDiscoveredListings(
+            "irantalent",
             listings.slice(index, index + 100),
           );
           discovered += imported.ingested;
@@ -410,10 +440,16 @@ async function applyOne(
   }
 }
 
+/**
+ * Reasons that stop the WHOLE run because only the user can clear them (a login,
+ * a captcha, an unverified account). Per-task problems — a closed job, a failed
+ * upload, an unconfirmed submit — are recorded against that task and the run
+ * continues with the next one.
+ */
 function isBlockingReason(reason?: string): boolean {
   return Boolean(
     reason &&
-      /(jobinja_(security_check|login_required)|jobvision_(login_required|captcha_required|security_challenge|resume_setup_required)|eestekhdam_(login_required|captcha_required|security_challenge|form_unavailable|position_required|external_form_required|session_incomplete)|tailored_resume_|resume_(render|download|upload)_failed)/.test(
+      /(jobinja_(security_check|login_required)|jobvision_(login_required|captcha_required|security_challenge|resume_setup_required)|eestekhdam_(login_required|captcha_required|security_challenge|form_unavailable|position_required|external_form_required|session_incomplete)|irantalent_(login_required|security_challenge|account_unverified)|tailored_resume_|(?<![a-z_])resume_(render|download|upload)_failed)/.test(
         reason,
       ),
   );

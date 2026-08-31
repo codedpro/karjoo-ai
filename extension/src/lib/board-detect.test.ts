@@ -65,13 +65,13 @@ describe("eEstekhdamLoggedIn (cookie-shaped)", () => {
   });
 });
 
-describe("irantalentLoggedIn (token-shaped, key names only)", () => {
-  it("true when an auth-token key is present (case-insensitive)", () => {
-    expect(irantalentLoggedIn(["id_token"])).toBe(true);
-    expect(irantalentLoggedIn(["ACCESS_TOKEN"])).toBe(true);
+describe("irantalentLoggedIn (cookie-shaped, name only)", () => {
+  it("true when the site's own auth cookie is present with a value", () => {
+    expect(irantalentLoggedIn([{ name: "auth_token_irantalent_new", value: "{...}" }])).toBe(true);
   });
-  it("false when only non-auth keys present", () => {
-    expect(irantalentLoggedIn(["lang", "theme"])).toBe(false);
+  it("false with no auth cookie / an emptied one", () => {
+    expect(irantalentLoggedIn([{ name: "_ga", value: "x" }])).toBe(false);
+    expect(irantalentLoggedIn([{ name: "auth_token_irantalent_new", value: "" }])).toBe(false);
     expect(irantalentLoggedIn([])).toBe(false);
   });
 });
@@ -89,9 +89,9 @@ describe("which signals to probe per board", () => {
     expect(sessionCookieNames("e-estekhdam").length).toBeGreaterThan(0);
     expect(sessionTokenKeys("e-estekhdam")).toEqual([]);
   });
-  it("irantalent → localStorage keys (SPA)", () => {
-    expect(sessionTokenKeys("irantalent").length).toBeGreaterThan(0);
-    expect(sessionCookieNames("irantalent")).toEqual([]);
+  it("irantalent → cookie names (SPA with a first-party auth cookie)", () => {
+    expect(sessionCookieNames("irantalent")).toEqual(["auth_token_irantalent_new"]);
+    expect(sessionTokenKeys("irantalent")).toEqual([]);
   });
 });
 
@@ -100,6 +100,6 @@ describe("sessionShapeOf", () => {
     expect(sessionShapeOf("jobinja")).toBe("cookie");
     expect(sessionShapeOf("e-estekhdam")).toBe("cookie");
     expect(sessionShapeOf("jobvision")).toBe("token");
-    expect(sessionShapeOf("irantalent")).toBe("token");
+    expect(sessionShapeOf("irantalent")).toBe("cookie");
   });
 });

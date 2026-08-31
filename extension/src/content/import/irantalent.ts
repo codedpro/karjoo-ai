@@ -26,7 +26,6 @@ import {
   hasAnyValue,
   toScrapeResult,
 } from "@ext/content/import/dom-utils";
-import { sessionTokenKeys } from "@ext/lib/board-detect";
 import type { BackgroundToContent } from "@ext/lib/messages";
 import type {
   ScrapedProfile,
@@ -149,37 +148,16 @@ function scrapeApplications(root: ParentNode): ScrapedApplication[] | undefined 
   return out.length > 0 ? out : undefined;
 }
 
-/**
- * PURE: which auth-token localStorage KEY NAMES exist (never the VALUE). Presence
- * lets the background decide a "logged in?" boolean for this SPA board — the JWT
- * itself stays in the page, owned by IranTalent (RULE 1). Injectable for tests.
- */
-export function probeIrantalentTokenKeys(
-  store: Pick<Storage, "length" | "key"> = localStorage,
-): string[] {
-  const candidates = sessionTokenKeys("irantalent").map((k) => k.toLowerCase());
-  const present: string[] = [];
-  for (let i = 0; i < store.length; i++) {
-    const key = store.key(i);
-    if (key && candidates.includes(key.toLowerCase())) present.push(key); // NAME only
-  }
-  return present;
-}
-
 /* ── content-script wiring (browser only) ─────────────────────────────────── */
-// IranTalent has no other content script, so this one answers BOTH:
-//   • PROBE_SESSION — report localStorage KEY NAMES (never values) for login detection.
-//   • SCRAPE_PROFILE — read the user's OWN profile DOM and return DATA.
+// IranTalent's login state is decided in the BACKGROUND from the site's own
+// first-party auth cookie (see lib/irantalent-session.ts), so this script only
+// answers SCRAPE_PROFILE — read the user's OWN profile DOM and return DATA.
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
   registerIrantalentImportHandler();
 }
 
 export function registerIrantalentImportHandler(): void {
   chrome.runtime.onMessage.addListener((msg: BackgroundToContent, _sender, sendResponse) => {
-    if (msg.type === "PROBE_SESSION" && msg.board === "irantalent") {
-      sendResponse({ localStorageKeys: probeIrantalentTokenKeys() });
-      return true;
-    }
     if (msg.type === "SCRAPE_PROFILE" && msg.board === "irantalent") {
       sendResponse(toScrapeResult(scrapeIrantalentProfile(document)));
       return true;

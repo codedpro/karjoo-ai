@@ -4,6 +4,7 @@ import { json, withErrorHandling } from "@/lib/api/http";
 import { getJobinjaCategories } from "@/lib/apply/boards/jobinja-categories";
 import { getJobvisionCatalog } from "@/lib/apply/boards/jobvision-catalog";
 import { getEEstekhdamCatalog } from "@/lib/apply/boards/eestekhdam-catalog";
+import { getIranTalentCatalog } from "@/lib/apply/boards/irantalent-catalog";
 
 export const runtime = "nodejs";
 
@@ -15,6 +16,7 @@ export async function GET(
     const { board } = await context.params;
     if (board === "e-estekhdam") return json(await getEEstekhdamCatalog());
     if (board === "jobvision") return json(await getJobvisionCatalog());
+    if (board === "irantalent") return json(await getIranTalentCatalog());
     if (board === "jobinja") {
       const { categories } = await getJobinjaCategories();
       return json({

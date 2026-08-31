@@ -19,11 +19,26 @@ describe("APPLY_SPEC coverage + maturity", () => {
     }
   });
 
-  it("jobinja, jobvision, and e-estekhdam are best-effort; irantalent is scaffold", () => {
+  it("all four active providers are validated against their boards' own apply flows", () => {
     expect(isApplySpecReady("jobinja")).toBe(true);
     expect(isApplySpecReady("jobvision")).toBe(true);
     expect(isApplySpecReady("e-estekhdam")).toBe(true);
-    expect(isApplySpecReady("irantalent")).toBe(false);
+    expect(isApplySpecReady("irantalent")).toBe(true);
+  });
+
+  it("irantalent carries the tailored pdf as a required step — no base-resume fallback", () => {
+    const spec = getApplySpec("irantalent")!;
+    const upload = spec.steps.find((step) => step.kind === "upload");
+    expect(upload).toMatchObject({ valueKey: "resumeFile", requiresValueKey: "resumeFile" });
+    expect(upload?.optional).toBeUndefined();
+  });
+
+  it("only matches a canonical irantalent job URL", () => {
+    const spec = getApplySpec("irantalent")!;
+    expect(spec.urlPattern.test("https://www.irantalent.com/job/backend-developer/182341")).toBe(true);
+    expect(spec.urlPattern.test("https://www.irantalent.com/en/job/backend-developer/9")).toBe(true);
+    expect(spec.urlPattern.test("https://www.irantalent.com/jobs")).toBe(false);
+    expect(spec.urlPattern.test("https://www.irantalent.com/candidate/cv/edit")).toBe(false);
   });
 
   it("returns undefined for an unknown board", () => {

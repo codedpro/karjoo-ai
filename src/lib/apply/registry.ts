@@ -38,8 +38,10 @@ export function getConnector(id: JobBoardId): JobBoardConnector | undefined {
  * کار می‌کند؟». عمداً اینجا (نه داخلِ لیترالِ هر کانکتور در boards/*.ts) نگه داشته
  * می‌شود تا افزودنِ این پرچم به تداخلِ فایل با ترک‌های دیگر نینجامد.
  *
- *   • `live`        — search()/apply() واقعاً پیاده شده‌اند (فقط جابینجا).
- *   • `coming_soon` — کانکتور داربست است؛ search()/apply() هنوز throw می‌کنند.
+ *   • `live`           — search()/apply()ِ سمتِ سرور واقعاً پیاده شده‌اند (فقط جابینجا).
+ *   • `extension_only` — کانکتورِ سرور داربست است، اما آداپتورِ افزونه روی نشستِ
+ *                        خودِ کاربر کار می‌کند؛ پس اتصال معنا دارد.
+ *   • `coming_soon`    — نه سرور نه افزونه؛ اتصال رد می‌شود.
  *
  * `Record<JobBoardId, …>` عمداً روی کلِ یونیونِ JobBoardId جامع است؛ اگر شناسه‌ی
  * تازه‌ای به یونیون اضافه شود، TypeScript تا زمانِ افزودنِ وضعیتِ آن اینجا کامپایل
@@ -48,8 +50,8 @@ export function getConnector(id: JobBoardId): JobBoardConnector | undefined {
 export const BOARD_STATUS: Record<JobBoardId, "live" | "extension_only" | "coming_soon"> = {
   jobinja: "live",
   jobvision: "extension_only",
-  "e-estekhdam": "coming_soon",
-  irantalent: "coming_soon",
+  "e-estekhdam": "extension_only",
+  irantalent: "extension_only",
   karboom: "coming_soon",
   linkedin: "coming_soon",
 };

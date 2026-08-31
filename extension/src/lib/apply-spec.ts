@@ -18,7 +18,8 @@
  *
  * Maturity (mirrors Foundation):
  *   • jobinja                      → "best-effort" real selectors.
- *   • jobvision/e-estekhdam/irantalent → "scaffold" with TODO(real-account).
+ *   • jobvision/e-estekhdam/irantalent → native adapters validated against the
+ *     boards' own apply APIs.
  * ════════════════════════════════════════════════════════════════════════════
  */
 import type { BoardId } from "@ext/lib/config";
@@ -203,32 +204,40 @@ const E_ESTEKHDAM_SPEC: BoardApplySpec = {
 };
 
 /* ────────────────────────────  irantalent  ─────────────────────────────── */
-/** irantalent — scaffold (TODO(real-account)). Session/form shape TBD (§7). */
+/**
+ * irantalent — native apply, driven by its board-specific content adapter
+ * (content/apply/irantalent.ts) against IranTalent's own JSON API. The spec here
+ * exists to carry the tailored PDF and the optional cover letter to that adapter;
+ * the selectors describe the site's own easy-apply dialog for provenance, but the
+ * adapter never clicks them.
+ */
 const IRANTALENT_SPEC: BoardApplySpec = {
   board: "irantalent",
-  maturity: "scaffold",
-  urlPattern: /^https:\/\/(www\.)?irantalent\.com\/.+/,
-  // TODO(real-account): سلکتورهای واقعیِ فرمِ irantalent.
-  applyButtonSelector: "[data-qa='apply-button']",
-  coverLetterFieldSelector: "[data-qa='cover-letter']",
-  submitSelector: "[data-qa='apply-submit']",
-  confirmSelector: "[data-qa='apply-success']",
+  maturity: "best-effort",
+  urlPattern: /^https:\/\/(www\.)?irantalent\.com\/(en\/)?job\/[^/]+\/\d+/,
+  applyButtonSelector: "button.apply-button",
+  coverLetterFieldSelector: "textarea",
+  submitSelector: "button.apply-button",
   steps: [
-    { kind: "click", selector: "[data-qa='apply-button']", note: "TODO(real-account): شروعِ اپلای." },
-    { kind: "waitFor", selector: "[data-qa='apply-form']", note: "TODO(real-account): انتظار تا فرم." },
+    {
+      kind: "upload",
+      selector: "input[type='file']",
+      valueKey: "resumeFile",
+      requiresValueKey: "resumeFile",
+      note: "PDF اختصاصی همان آگهی؛ به‌عنوان پیوستِ همان درخواست ثبت می‌شود.",
+    },
     {
       kind: "fill",
-      selector: "[data-qa='cover-letter']",
+      selector: "textarea",
       valueKey: "coverLetter",
       optional: true,
-      note: "TODO(real-account): انگیزه‌نامه.",
+      note: "انگیزه‌نامه‌ی اختیاری همراهِ درخواست.",
     },
-    { kind: "click", selector: "[data-qa='apply-submit']", note: "TODO(real-account): ثبت." },
-    { kind: "waitFor", selector: "[data-qa='apply-success']", note: "TODO(real-account): تأیید." },
   ],
   notes: [
-    "شکلِ نشست/فرم TBD (§۷ سند معماری).",
-    "TODO(real-account): همه‌ی سلکتورها با حسابِ واقعی صحت‌سنجی شوند.",
+    "نشستِ کوکیِ خودِ کاربر استفاده می‌شود (sessionShape=cookie، auth_token_irantalent_new).",
+    "هر درخواست به file_idِ همان PDF گره می‌خورد؛ هیچ بازگشتی به رزومه‌ی پایه وجود ندارد.",
+    "بدون رزومه‌ی اختصاصی، آگهیِ بسته/اپلای‌شده یا سؤالاتِ غربالگری، اپلای انجام نمی‌شود.",
   ],
 };
 

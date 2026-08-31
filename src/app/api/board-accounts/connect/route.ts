@@ -29,8 +29,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * شکلِ نشستِ هر سایت — متادیتای ثابتِ دامنه (نه مادهٔ سری). برای ستونِ NOT NULLِ
- * session_shape لازم است. جابینجا کوکی‌محور، جاب‌ویژن توکن‌محور (SPA) است؛ بقیه
- * فعلاً کوکی فرض می‌شوند (بخش ۷ سند معماری).
+ * session_shape لازم است. جاب‌ویژن تنها سایتِ توکن‌محور است (JWT در localStorage)؛
+ * بقیه — از جمله ایران‌تلنتِ SPA — نشست را در کوکیِ first-party نگه می‌دارند.
  */
 const SESSION_SHAPE_BY_BOARD: Record<
   "jobvision" | "jobinja" | "e-estekhdam" | "irantalent" | "karboom" | "linkedin",
@@ -39,9 +39,9 @@ const SESSION_SHAPE_BY_BOARD: Record<
   jobvision: "token",
   jobinja: "cookie",
   "e-estekhdam": "cookie",
-  // irantalent یک SPA است (auth از مرورگرِ کاربر، شکلِ نشست token) — هم‌راستا با
-  // session-schemas/افزونه؛ این ستون NOT NULL است پس باید برای هر boardِ معتبر مقدار داشته باشد.
-  irantalent: "token",
+  // irantalent یک SPA است اما توکنِ OAuth را در کوکیِ first-party خودش
+  // (auth_token_irantalent_new) نگه می‌دارد — هم‌راستا با session-schemas و افزونه.
+  irantalent: "cookie",
   karboom: "cookie",
   linkedin: "cookie",
 };

@@ -86,6 +86,12 @@ beforeEach(() => {
 
 const VALID_ID = "11111111-1111-4111-8111-111111111111";
 
+/**
+ * The pre-executor claim paths never lease IranTalent: it is extension-only and
+ * every task must carry a tailored PDF, which only the executor path guarantees.
+ */
+const LEGACY_CLAIM_BOARDS = ["jobinja", "jobvision", "e-estekhdam"];
+
 describe("POST /api/apply-queue/claim", () => {
   function claimReq(body?: unknown) {
     const init: RequestInit = {
@@ -114,7 +120,10 @@ describe("POST /api/apply-queue/claim", () => {
     expect(body.count).toBe(1);
     expect(body.items[0].taskId).toBe("t1");
     // claim با (userId, limit, undefined-db, { minScore }) صدا می‌شود (چوک‌پوینتِ گیت).
-    expect(claimMock).toHaveBeenCalledWith("user-5", 5, undefined, { minScore: 0.7 });
+    expect(claimMock).toHaveBeenCalledWith("user-5", 5, undefined, {
+      minScore: 0.7,
+      allowedBoards: LEGACY_CLAIM_BOARDS,
+    });
     expect(authMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ requireKind: "extension" }),
@@ -152,6 +161,7 @@ describe("POST /api/apply-queue/claim", () => {
         jobinja: { ...EMPTY_APPLY_FILTERS.boardFilters.jobinja, enabled: false },
         jobvision: { ...EMPTY_APPLY_FILTERS.boardFilters.jobvision, enabled: false },
         "e-estekhdam": { ...EMPTY_APPLY_FILTERS.boardFilters["e-estekhdam"], enabled: false },
+        irantalent: { ...EMPTY_APPLY_FILTERS.boardFilters.irantalent, enabled: false },
       },
     });
 
@@ -167,14 +177,20 @@ describe("POST /api/apply-queue/claim", () => {
     claimMock.mockResolvedValue([] as never);
     const res = await claimPOST(claimReq());
     expect(res.status).toBe(200);
-    expect(claimMock).toHaveBeenCalledWith("u", 5, undefined, { minScore: 0.7 });
+    expect(claimMock).toHaveBeenCalledWith("u", 5, undefined, {
+      minScore: 0.7,
+      allowedBoards: LEGACY_CLAIM_BOARDS,
+    });
   });
 
   it("limit سفارشی رعایت می‌شود", async () => {
     authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
     claimMock.mockResolvedValue([] as never);
     await claimPOST(claimReq({ limit: 3 }));
-    expect(claimMock).toHaveBeenCalledWith("u", 3, undefined, { minScore: 0.7 });
+    expect(claimMock).toHaveBeenCalledWith("u", 3, undefined, {
+      minScore: 0.7,
+      allowedBoards: LEGACY_CLAIM_BOARDS,
+    });
   });
 
   it("تاگلِ AI خاموش ⇒ فقط آیتم‌های فیلترمود (بدونِ گیتِ آستانه، بدونِ reason)", async () => {
@@ -196,6 +212,7 @@ describe("POST /api/apply-queue/claim", () => {
     // آستانه‌ی دست‌نیافتنی ⇒ AIمود حذف، فیلترمود (OR در extension-queue) عبور می‌کند.
     expect(claimMock).toHaveBeenCalledWith("u-off", 5, undefined, {
       minScore: Number.MAX_SAFE_INTEGER,
+      allowedBoards: LEGACY_CLAIM_BOARDS,
     });
     // سقفِ روزانه هم برای فیلترمود بررسی شد (قاعده‌ی politeness).
     expect(quotaMock).toHaveBeenCalledWith("u-off");
@@ -235,7 +252,10 @@ describe("POST /api/apply-queue/claim", () => {
     });
     claimMock.mockResolvedValue([] as never);
     await claimPOST(claimReq({ limit: 4 }));
-    expect(claimMock).toHaveBeenCalledWith("u-th", 4, undefined, { minScore: 0.85 });
+    expect(claimMock).toHaveBeenCalledWith("u-th", 4, undefined, {
+      minScore: 0.85,
+      allowedBoards: LEGACY_CLAIM_BOARDS,
+    });
   });
 
   it("limit نامعتبر → ۴۰۰", async () => {
