@@ -254,3 +254,33 @@ describe("transient gateway errors (a control-plane deploy)", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("build identification", () => {
+  it("tells the server which build is calling, so a stale copy is visible", async () => {
+    const seen: Headers[] = [];
+    const fetchImpl = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers));
+      return new Response("{}", { status: 200 });
+    });
+    // Stand in for the extension runtime the client reads its version from.
+    vi.stubGlobal("chrome", { runtime: { getManifest: () => ({ version: "9.9.9" }) } });
+    try {
+      const api = new KarjooApi({ origin: "https://x.test", token: "t", fetchImpl });
+      await api.getExecutionRun();
+      expect(seen[0]!.get("x-karjoo-extension-version")).toBe("9.9.9");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("omits the header rather than failing when there is no extension runtime", async () => {
+    const seen: Headers[] = [];
+    const fetchImpl = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers));
+      return new Response("{}", { status: 200 });
+    });
+    const api = new KarjooApi({ origin: "https://x.test", token: "t", fetchImpl });
+    await api.getExecutionRun();
+    expect(seen[0]!.get("x-karjoo-extension-version")).toBeNull();
+  });
+});

@@ -9,9 +9,11 @@ import type {
 } from "@ext/lib/types";
 import type { PopupToBackground, Result } from "@ext/lib/messages";
 import type { ProbeSessionResult } from "@ext/lib/messages";
+import { checkForUpdate } from "@ext/lib/update-check";
 import {
   ACTIVE_PROVIDER_IDS,
   BOARDS,
+  DEFAULT_API_ORIGIN,
   PROVIDER_JOBS_URLS,
   type ActiveProviderId,
 } from "@ext/lib/config";
@@ -136,6 +138,7 @@ async function refresh(): Promise<void> {
       render(overview);
       if (activeView === "detail") renderDetail();
     }
+    void refreshUpdateBanner();
     const providerInterval = providerMenuIsOpen() ? 5_000 : 15_000;
     if (providerStates.size === 0 || Date.now() - lastProviderRefreshAt >= providerInterval) {
       await refreshProviders(true);
@@ -454,6 +457,31 @@ async function action(actionName: "start" | "takeover" | "pause" | "stop"): Prom
     await refresh();
   } catch (error) { showError(error); }
   finally { setBusy(false); }
+}
+
+/**
+ * Tell the user when the running build is older than the published one.
+ *
+ * This lives in the PANEL, not just the popup: the panel is where a stuck queue
+ * is watched, and an old unpacked copy behaves exactly like a current one — you
+ * cannot tell a fixed bug from an unfixed one without this line.
+ */
+async function refreshUpdateBanner(): Promise<void> {
+  const banner = $("updateBanner");
+  try {
+    const current = chrome.runtime.getManifest().version;
+    const result = await checkForUpdate(DEFAULT_API_ORIGIN, current);
+    if (!result.updateAvailable) {
+      banner.classList.add("hidden");
+      return;
+    }
+    $("updateBannerNotes").textContent = result.notes ?? "";
+    ($("updateBannerDownload") as HTMLAnchorElement).href = result.downloadUrl ?? "#";
+    banner.classList.remove("hidden");
+  } catch {
+    // A failed check must never hide working UI behind an error.
+    banner.classList.add("hidden");
+  }
 }
 
 async function loadFilters(force = false): Promise<void> {

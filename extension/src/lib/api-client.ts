@@ -175,6 +175,15 @@ export interface ApiClientOptions {
   retryBackoffMs?: number;
 }
 
+/** This build's version from the manifest; null outside a browser (tests). */
+function extensionVersion(): string | null {
+  try {
+    return chrome?.runtime?.getManifest?.().version ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Gateway statuses that mean "the server is restarting", not "this request is bad". */
 const TRANSIENT_STATUSES = new Set([502, 503, 504]);
 const TRANSIENT_RETRIES = 2;
@@ -226,6 +235,11 @@ export class KarjooApi {
     headers.set("accept", "application/json");
     if (init.body) headers.set("content-type", "application/json");
     if (this.token) headers.set("authorization", `Bearer ${this.token}`);
+    // Which build is talking to us? Without this, an old unpacked copy behaves
+    // exactly like a new one from the server's side, and "did the fix ship?" is
+    // unanswerable. Non-secret, and it never identifies the user.
+    const version = extensionVersion();
+    if (version) headers.set("x-karjoo-extension-version", version);
 
     // A control-plane restart (a deploy) makes the proxy answer 502/503/504 for a
     // few seconds. Retry ONLY reads: replaying a claim or a result POST could
