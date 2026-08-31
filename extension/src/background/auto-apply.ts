@@ -39,8 +39,13 @@ export function setupAutoApplyAlarms(): void {
 export function registerAutoApplyAlarmListener(): void {
   if (typeof chrome === "undefined" || !chrome.alarms?.onAlarm) return;
   chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === AUTO_APPLY_ALARM) void runAutoApplyTick();
-    else if (alarm.name === SESSION_REFRESH_ALARM) void runSessionRefreshTick();
+    // An alarm callback has nobody to catch for it: an unhandled rejection here
+    // surfaces as "Uncaught (in promise)" in the service worker and kills the
+    // tick. A transient 502 from a control-plane deploy must never do that.
+    if (alarm.name === AUTO_APPLY_ALARM) void runAutoApplyTick().catch(logTickFailure);
+    else if (alarm.name === SESSION_REFRESH_ALARM) {
+      void runSessionRefreshTick().catch(logTickFailure);
+    }
   });
 }
 
@@ -74,7 +79,7 @@ export async function mutateRun(
   });
   if (action === "start" || action === "takeover") {
     await closeInterventionTab();
-    void runAutoApplyTick(true);
+    void runAutoApplyTick(true).catch(logTickFailure);
   } else if (action === "pause" || action === "stop") {
     await closeInterventionTab();
   }
@@ -506,9 +511,21 @@ async function notify(title: string, message: string): Promise<void> {
 }
 
 export async function runSessionRefreshTick(): Promise<void> {
-  const api = await apiOrNull();
-  if (!api) return;
-  await refreshAllBoardSessions(api, { pushToVault: planUsesVault(await api.getPlan()) });
+  try {
+    const api = await apiOrNull();
+    if (!api) return;
+    await refreshAllBoardSessions(api, { pushToVault: planUsesVault(await api.getPlan()) });
+  } catch (error) {
+    // Session refresh is best-effort upkeep; a failed tick just waits for the
+    // next alarm rather than taking down the worker.
+    logTickFailure(error);
+  }
+}
+
+/** Record a background tick failure without letting it escape as unhandled. */
+function logTickFailure(error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn("[karjoo] background tick failed; will retry on the next alarm:", message);
 }
 
 async function ensureManagedTab(

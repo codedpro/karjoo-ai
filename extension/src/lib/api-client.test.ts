@@ -3,7 +3,7 @@
  * header carries KARJOO's token (never a board secret), correct paths/methods,
  * and that the connect call sends exactly the metadata payload.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { KarjooApi, ApiError, type FetchImpl } from "@ext/lib/api-client";
 import { buildConnectPayload } from "@ext/lib/connect-payload";
 import { buildImportPayload } from "@ext/lib/import-payload";
@@ -203,5 +203,54 @@ describe("KarjooApi authed calls", () => {
     const api = new KarjooApi({ origin: "http://localhost:3000", token: "t", fetchImpl });
     await expect(api.me()).rejects.toThrow(ApiError);
     await expect(api.me()).rejects.toThrow("unauthorized");
+  });
+});
+
+describe("transient gateway errors (a control-plane deploy)", () => {
+  function flaky(statuses: number[], body = '{"ok":true}') {
+    let call = 0;
+    return vi.fn(async () => {
+      const status = statuses[Math.min(call++, statuses.length - 1)]!;
+      return new Response(status === 200 ? body : "bad gateway", { status });
+    });
+  }
+
+  it("retries a READ through a 502 and returns the eventual success", async () => {
+    const fetchImpl = flaky([502, 502, 200], '{"version":"0.8.2"}');
+    const api = new KarjooApi({ origin: "https://x.test", token: "t", fetchImpl, retryBackoffMs: 0 });
+    await expect(api.getExecutionRun()).resolves.toBeTruthy();
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("gives up after the retry budget instead of hanging the tick", async () => {
+    const fetchImpl = flaky([502]);
+    const api = new KarjooApi({ origin: "https://x.test", token: "t", fetchImpl, retryBackoffMs: 0 });
+    await expect(api.getExecutionRun()).rejects.toThrow(/502/);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("never retries a WRITE — replaying a claim could apply to a job twice", async () => {
+    const fetchImpl = flaky([502]);
+    const api = new KarjooApi({ origin: "https://x.test", token: "t", fetchImpl, retryBackoffMs: 0 });
+    await expect(api.claimQueue(1, "11111111-1111-4111-8111-111111111111")).rejects.toThrow();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a real client error — a 401 must surface at once", async () => {
+    const fetchImpl = vi.fn(async () => new Response('{"error":"nope"}', { status: 401 }));
+    const api = new KarjooApi({ origin: "https://x.test", token: "t", fetchImpl, retryBackoffMs: 0 });
+    await expect(api.getExecutionRun()).rejects.toThrow(/nope/);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a dropped connection the same way", async () => {
+    let call = 0;
+    const fetchImpl = vi.fn(async () => {
+      if (call++ === 0) throw new TypeError("Failed to fetch");
+      return new Response('{"ok":true}', { status: 200 });
+    });
+    const api = new KarjooApi({ origin: "https://x.test", token: "t", fetchImpl, retryBackoffMs: 0 });
+    await expect(api.getExecutionRun()).resolves.toBeTruthy();
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });

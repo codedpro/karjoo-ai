@@ -171,6 +171,21 @@ export interface ApiClientOptions {
   /** Karjoo's own extension session token (Bearer). Optional for /link. */
   token?: string | null;
   fetchImpl?: FetchImpl;
+  /** Backoff between transient-error retries. Tests pass 0 to stay fast. */
+  retryBackoffMs?: number;
+}
+
+/** Gateway statuses that mean "the server is restarting", not "this request is bad". */
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
+const TRANSIENT_RETRIES = 2;
+const TRANSIENT_BACKOFF_MS = 800;
+
+export function isTransientStatus(status: number): boolean {
+  return TRANSIENT_STATUSES.has(status);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export class ApiError extends Error {
@@ -187,11 +202,14 @@ export class KarjooApi {
   private readonly origin: string;
   private readonly token: string | null;
   private readonly fetchImpl: FetchImpl;
+  /** Backoff between transient-error retries; tests inject 0 to stay fast. */
+  private readonly retryBackoffMs: number;
 
   constructor(opts: ApiClientOptions) {
     this.origin = opts.origin.replace(/\/+$/, "");
     this.token = opts.token ?? null;
     this.fetchImpl = opts.fetchImpl ?? fetch.bind(globalThis);
+    this.retryBackoffMs = opts.retryBackoffMs ?? TRANSIENT_BACKOFF_MS;
   }
 
   /**
@@ -209,17 +227,39 @@ export class KarjooApi {
     if (init.body) headers.set("content-type", "application/json");
     if (this.token) headers.set("authorization", `Bearer ${this.token}`);
 
-    const res = await this.fetchImpl(`${this.origin}${path}`, { ...init, headers });
-    const text = await res.text();
-    let body: unknown = undefined;
-    if (text) {
+    // A control-plane restart (a deploy) makes the proxy answer 502/503/504 for a
+    // few seconds. Retry ONLY reads: replaying a claim or a result POST could
+    // apply to the same job twice, which is far worse than one failed tick.
+    const method = (init.method ?? "GET").toUpperCase();
+    const retryable = method === "GET";
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt <= (retryable ? TRANSIENT_RETRIES : 0); attempt += 1) {
+      if (attempt > 0 && this.retryBackoffMs > 0) await delay(this.retryBackoffMs * attempt);
+      let res: Response;
       try {
-        body = JSON.parse(text);
-      } catch {
-        body = text;
+        res = await this.fetchImpl(`${this.origin}${path}`, { ...init, headers });
+      } catch (error) {
+        // The service worker can lose the network mid-flight; treat it like a 5xx.
+        lastError = error;
+        if (retryable && attempt < TRANSIENT_RETRIES) continue;
+        throw error;
       }
+      const text = await res.text();
+      let body: unknown = undefined;
+      if (text) {
+        try {
+          body = JSON.parse(text);
+        } catch {
+          body = text;
+        }
+      }
+      if (!res.ok && retryable && isTransientStatus(res.status) && attempt < TRANSIENT_RETRIES) {
+        continue;
+      }
+      return { ok: res.ok, status: res.status, body };
     }
-    return { ok: res.ok, status: res.status, body };
+    throw lastError ?? new ApiError(503, "request failed (503)");
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
