@@ -22,6 +22,7 @@ import {
   prepareTailoredResumesForQueue,
   type QueueResumePrepResult,
 } from "@/lib/resume/queue-prep";
+import { enabledApplyBoards, readApplyFilters } from "@/lib/apply/filters";
 import { canServerExecute } from "@/lib/apply/execution-run";
 
 /**
@@ -218,7 +219,10 @@ export async function runServerDiscovery(
   const runFilter = deps.runFilter ?? ((opts) => runFilterApply(opts));
   const prepareResumes =
     deps.prepareResumes ??
-    ((userId: string, db: Database) => prepareTailoredResumesForQueue(userId, { db }));
+    (async (userId: string, db: Database) => {
+      const allowedBoards = enabledApplyBoards(await readApplyFilters(userId, db));
+      return prepareTailoredResumesForQueue(userId, { db, allowedBoards });
+    });
   const markAttempted = deps.markAttempted ?? defaultMarkAttempted;
   const canExecute =
     deps.canExecute ??

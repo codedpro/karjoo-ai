@@ -105,3 +105,17 @@ export type BoardId = keyof typeof BOARDS;
 
 /** The board ids, as a runtime array (ordered) — handy for iteration in the popup/bg. */
 export const BOARD_IDS = Object.keys(BOARDS) as BoardId[];
+
+/** Providers that are production-ready in the unified extension manager. */
+export const ACTIVE_PROVIDER_IDS = ["jobinja", "jobvision", "e-estekhdam"] as const;
+export type ActiveProviderId = (typeof ACTIVE_PROVIDER_IDS)[number];
+
+export function isActiveProviderId(value: string): value is ActiveProviderId {
+  return (ACTIVE_PROVIDER_IDS as readonly string[]).includes(value);
+}
+
+export const PROVIDER_JOBS_URLS: Record<ActiveProviderId, string> = {
+  jobinja: "https://jobinja.ir/jobs",
+  jobvision: "https://jobvision.ir/jobs",
+  "e-estekhdam": "https://www.e-estekhdam.com/search",
+};

@@ -25,6 +25,7 @@ import {
   tasks,
   type ApplicationRow,
 } from "@/db/schema";
+import type { ActiveApplyBoard } from "@/lib/apply/filters";
 
 /** هندلِ DB که این لایه نیاز دارد — همان کلاینتِ Drizzle. */
 export type ExtensionQueueDb = typeof defaultDb;
@@ -76,6 +77,8 @@ export interface ClaimOptions {
    * رزومه نشود و task بدون رزومه در وضعیت leased گیر نکند.
    */
   requireTailoredResume?: boolean;
+  /** Only these providers may be leased. Omitted preserves legacy behavior. */
+  allowedBoards?: readonly ActiveApplyBoard[];
 }
 
 /** آیا payloadِ این task فیلترمود است؟ (اپلای بر اساسِ فیلترِ سایت، بدونِ AI). */
@@ -106,6 +109,7 @@ export async function claimUserApplyItems(
   opts: ClaimOptions = {},
 ): Promise<ClaimedApplyItem[]> {
   const safeLimit = Math.max(1, Math.min(Math.floor(limit), 25));
+  if (opts.allowedBoards && opts.allowedBoards.length === 0) return [];
 
   // شرطِ گیت (قاعده‌ی ۱): اگر minScore داده شده، task‌های AIمود فقط بالای آستانه.
   //
@@ -135,7 +139,10 @@ export async function claimUserApplyItems(
           ),
       );
   const tailoredResumeGate = opts.requireTailoredResume
-    ? or(sql`${jobListings.board} <> 'jobinja'`, tailoredResumeExists)
+    ? or(eq(jobListings.board, "jobvision"), tailoredResumeExists)
+    : undefined;
+  const providerGate = opts.allowedBoards
+    ? inArray(jobListings.board, [...opts.allowedBoards])
     : undefined;
 
   // ۱) task‌های آماده‌ی همین کاربر را با join به match پیدا کن.
@@ -153,6 +160,7 @@ export async function claimUserApplyItems(
         lte(tasks.runAfter, sql`now()`),
         ...(gate ? [gate] : []),
         ...(tailoredResumeGate ? [tailoredResumeGate] : []),
+        ...(providerGate ? [providerGate] : []),
       ),
     )
     // Queue execution is filter-authoritative, not score-authoritative. Apply the

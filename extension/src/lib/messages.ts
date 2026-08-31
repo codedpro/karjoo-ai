@@ -10,7 +10,7 @@
  * popup never reads the token directly; it asks the background to act. Content
  * scripts NEVER see the Karjoo token nor any third-party credential payload.
  */
-import type { BoardId } from "@ext/lib/config";
+import type { ActiveProviderId, BoardId } from "@ext/lib/config";
 import type {
   ApplyQueueItem,
   ApplyResultReport,
@@ -151,6 +151,12 @@ export interface GetApplicationResumeMsg {
   type: "GET_APPLICATION_RESUME";
   applicationId: string;
 }
+export interface GetProviderStatesMsg { type: "GET_PROVIDER_STATES" }
+export interface ManageProviderMsg {
+  type: "MANAGE_PROVIDER";
+  board: ActiveProviderId;
+  action: "pause" | "resume" | "login" | "reconnect" | "disconnect";
+}
 
 /* ── background → content ──────────────────────────────────────────────── */
 
@@ -229,7 +235,9 @@ export type PopupToBackground =
   | GetJobinjaCategoriesMsg
   | GetBoardCatalogMsg
   | RetryApplicationMsg
-  | GetApplicationResumeMsg;
+  | GetApplicationResumeMsg
+  | GetProviderStatesMsg
+  | ManageProviderMsg;
 
 export type BackgroundToContent =
   | ProbeSessionMsg

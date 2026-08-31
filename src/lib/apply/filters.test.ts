@@ -5,10 +5,25 @@ import { describe, expect, it } from "vitest";
 
 import {
   EMPTY_APPLY_FILTERS,
+  enabledApplyBoards,
   mergeApplyFilters,
   parseApplyFilters,
   toJobPreferences,
 } from "@/lib/apply/filters";
+
+describe("enabledApplyBoards", () => {
+  it("returns only providers enabled in the server-authoritative filters", () => {
+    expect(enabledApplyBoards({
+      ...EMPTY_APPLY_FILTERS,
+      boardFilters: {
+        ...EMPTY_APPLY_FILTERS.boardFilters,
+        jobinja: { ...EMPTY_APPLY_FILTERS.boardFilters.jobinja, enabled: false },
+        jobvision: { ...EMPTY_APPLY_FILTERS.boardFilters.jobvision, enabled: true },
+        "e-estekhdam": { ...EMPTY_APPLY_FILTERS.boardFilters["e-estekhdam"], enabled: true },
+      },
+    })).toEqual(["jobvision", "e-estekhdam"]);
+  });
+});
 
 describe("parseApplyFilters", () => {
   it("null/غیرشیء → فیلترِ خالی", () => {

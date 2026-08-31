@@ -40,4 +40,13 @@ describe("claimUserApplyItems — معافیتِ انتخابِ کاربر", () 
     // شرط باید هر دو مود را بپذیرد، نه فقط filter.
     expect(src).toMatch(/'mode'\s+in\s+\('filter',\s*'manual'\)/);
   });
+
+  it("گیتِ provider و رزومهٔ PDF برای ای‌استخدام در query حاضر است", async () => {
+    const src = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/lib/apply/extension-queue.ts", "utf8"),
+    );
+    expect(src).toMatch(/allowedBoards/);
+    expect(src).toMatch(/inArray\(jobListings\.board, \[\.\.\.opts\.allowedBoards\]\)/);
+    expect(src).toMatch(/eq\(jobListings\.board, "jobvision"\), tailoredResumeExists/);
+  });
 });

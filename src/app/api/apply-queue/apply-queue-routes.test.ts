@@ -26,6 +26,16 @@ vi.mock("@/lib/apply/auto-apply", async () => {
   );
   return { ...actual, assertAutoApplyAllowed: vi.fn() };
 });
+vi.mock("@/lib/apply/execution-run", () => ({
+  assertExtensionExecutionOwner: vi.fn(),
+  releaseStaleExtensionLeases: vi.fn(),
+  ExecutionOwnershipError: class ExecutionOwnershipError extends Error { code = "execution_owner_conflict"; },
+}));
+vi.mock("@/lib/resume/queue-prep", () => ({ prepareNextTailoredResumeForQueue: vi.fn() }));
+vi.mock("@/lib/apply/filters", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/apply/filters")>("@/lib/apply/filters");
+  return { ...actual, readApplyFilters: vi.fn() };
+});
 
 import { requireBearerSession } from "@/lib/api/bearer-auth";
 import { claimUserApplyItems, recordResult } from "@/lib/apply/extension-queue";
@@ -38,6 +48,9 @@ import {
   AutoApplyNotAllowedError,
 } from "@/lib/apply/auto-apply";
 import { ApplyQuotaError } from "@/lib/billing/errors";
+import { assertExtensionExecutionOwner, releaseStaleExtensionLeases } from "@/lib/apply/execution-run";
+import { prepareNextTailoredResumeForQueue } from "@/lib/resume/queue-prep";
+import { EMPTY_APPLY_FILTERS, readApplyFilters } from "@/lib/apply/filters";
 import { HttpError } from "@/lib/api/http";
 import { POST as claimPOST } from "@/app/api/apply-queue/claim/route";
 import { POST as resultPOST } from "@/app/api/apply-queue/[id]/result/route";
@@ -48,6 +61,10 @@ const recordMock = vi.mocked(recordResult);
 const quotaMock = vi.mocked(assertApplyQuotaForUser);
 const planMock = vi.mocked(readUserPlan);
 const autoApplyMock = vi.mocked(assertAutoApplyAllowed);
+const ownerMock = vi.mocked(assertExtensionExecutionOwner);
+const releaseLeasesMock = vi.mocked(releaseStaleExtensionLeases);
+const prepareResumeMock = vi.mocked(prepareNextTailoredResumeForQueue);
+const readFiltersMock = vi.mocked(readApplyFilters);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -61,6 +78,10 @@ beforeEach(() => {
   // implementation را پاک نمی‌کند)، این پیش‌فرض را در هر beforeEach دوباره برقرار می‌کنیم
   // تا mockRejectedValueِ یک تست به تستِ بعدی نشت نکند.
   quotaMock.mockResolvedValue({ limit: 100, usedToday: 0, remaining: 100 });
+  ownerMock.mockResolvedValue(undefined);
+  releaseLeasesMock.mockResolvedValue(undefined);
+  prepareResumeMock.mockResolvedValue({ status: "empty" });
+  readFiltersMock.mockResolvedValue(EMPTY_APPLY_FILTERS);
 });
 
 const VALID_ID = "11111111-1111-4111-8111-111111111111";
@@ -98,6 +119,47 @@ describe("POST /api/apply-queue/claim", () => {
       expect.anything(),
       expect.objectContaining({ requireKind: "extension" }),
     );
+  });
+
+  it("executor فقط providerهای فعال را برای آماده‌سازی و claim می‌فرستد", async () => {
+    authMock.mockResolvedValue({ userId: "u-executor", session: { kind: "extension" } } as never);
+    readFiltersMock.mockResolvedValue({
+      ...EMPTY_APPLY_FILTERS,
+      boardFilters: {
+        ...EMPTY_APPLY_FILTERS.boardFilters,
+        jobinja: { ...EMPTY_APPLY_FILTERS.boardFilters.jobinja, enabled: false },
+        jobvision: { ...EMPTY_APPLY_FILTERS.boardFilters.jobvision, enabled: true },
+      },
+    });
+    claimMock.mockResolvedValue([] as never);
+    const executorId = "22222222-2222-4222-8222-222222222222";
+
+    const res = await claimPOST(claimReq({ executorId, limit: 4 }));
+    expect(res.status).toBe(200);
+    expect(ownerMock).toHaveBeenCalledWith("u-executor", executorId);
+    expect(prepareResumeMock).toHaveBeenCalledWith("u-executor", { allowedBoards: ["jobvision"] });
+    expect(claimMock).toHaveBeenCalledWith("u-executor", 4, undefined, {
+      requireTailoredResume: true,
+      allowedBoards: ["jobvision"],
+    });
+  });
+
+  it("executor با همهٔ providerهای متوقف صف را دست‌نخورده نگه می‌دارد", async () => {
+    authMock.mockResolvedValue({ userId: "u-paused", session: { kind: "extension" } } as never);
+    readFiltersMock.mockResolvedValue({
+      ...EMPTY_APPLY_FILTERS,
+      boardFilters: {
+        jobinja: { ...EMPTY_APPLY_FILTERS.boardFilters.jobinja, enabled: false },
+        jobvision: { ...EMPTY_APPLY_FILTERS.boardFilters.jobvision, enabled: false },
+        "e-estekhdam": { ...EMPTY_APPLY_FILTERS.boardFilters["e-estekhdam"], enabled: false },
+      },
+    });
+
+    const res = await claimPOST(claimReq({ executorId: "33333333-3333-4333-8333-333333333333" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ count: 0, reason: "providers_paused" });
+    expect(prepareResumeMock).not.toHaveBeenCalled();
+    expect(claimMock).not.toHaveBeenCalled();
   });
 
   it("بدنه‌ی خالی هم مجاز است (پیش‌فرض)", async () => {

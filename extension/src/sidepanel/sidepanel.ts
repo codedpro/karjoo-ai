@@ -5,9 +5,15 @@ import type {
   LiveQueueJob,
   BoardCatalog,
   BoardFilter,
+  ProviderState,
 } from "@ext/lib/types";
 import type { PopupToBackground, Result } from "@ext/lib/messages";
 import type { ProbeSessionResult } from "@ext/lib/messages";
+import {
+  ACTIVE_PROVIDER_IDS,
+  BOARDS,
+  type ActiveProviderId,
+} from "@ext/lib/config";
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const stateLabels: Record<string, string> = {
@@ -31,6 +37,13 @@ const stageLabels: Record<string, string> = {
   completed: "صف تکمیل شد",
   waiting: "پایش آگهی‌های جدید",
 };
+const providerStateLabels: Record<ProviderState["state"], string> = {
+  checking: "در حال بررسی",
+  connected: "متصل و فعال",
+  login_required: "ورود به سایت لازم است",
+  paused: "متصل، در حالت مکث",
+  disconnected: "از کارجو قطع شده",
+};
 
 type ViewName = "live" | "filters" | "history" | "detail" | "resume";
 type DetailRef = { kind: "queue"; taskId: string } | { kind: "history"; applicationId: string };
@@ -51,6 +64,9 @@ const catalogs = new Map<string, BoardCatalog>();
 const connectedBoards = new Set<string>();
 let sessionProbeInFlight: Promise<void> | null = null;
 let lastSessionProbeAt = 0;
+const providerStates = new Map<ActiveProviderId, ProviderState>();
+let providerRefreshInFlight: Promise<void> | null = null;
+let lastProviderRefreshAt = 0;
 let queueVisible = 20;
 let historyVisible = 20;
 
@@ -74,6 +90,18 @@ function setBusy(value: boolean): void {
   });
 }
 
+function providerMenuIsOpen(): boolean {
+  return !$<HTMLElement>("providerMenu").classList.contains("hidden");
+}
+
+function setProviderMenuOpen(open: boolean): void {
+  $("providerMenu").classList.toggle("hidden", !open);
+  $("providerMenuButton").setAttribute("aria-expanded", String(open));
+  if (!open) {
+    document.querySelectorAll<HTMLElement>(".provider-context").forEach((menu) => menu.classList.add("hidden"));
+  }
+}
+
 function switchView(next: ViewName): void {
   if (next === "detail" || next === "resume") previousView = activeView === "detail" ? previousView : activeView;
   activeView = next;
@@ -95,13 +123,21 @@ async function refresh(): Promise<void> {
     paired = Boolean(identity);
     $("pairing").classList.toggle("hidden", paired);
     $("workspace").classList.toggle("hidden", !paired);
+    $("providerMenuButton").classList.toggle("hidden", !paired);
     $("account").textContent = identity?.email ?? identity?.displayName ?? "متصل نشده";
-    if (!paired) return;
+    if (!paired) {
+      setProviderMenuOpen(false);
+      return;
+    }
     const overview = await send<ExtensionRunOverview | null>({ type: "GET_RUN_OVERVIEW" });
     if (overview) {
       overviewState = overview;
       render(overview);
       if (activeView === "detail") renderDetail();
+    }
+    const providerInterval = providerMenuIsOpen() ? 5_000 : 15_000;
+    if (providerStates.size === 0 || Date.now() - lastProviderRefreshAt >= providerInterval) {
+      await refreshProviders(true);
     }
     clearError();
   } catch (error) {
@@ -163,6 +199,137 @@ function renderQueue(): void {
   $("queueMore").classList.toggle("hidden", overviewState.queue.length <= queueVisible);
 }
 
+function applyProviderStates(states: ProviderState[]): void {
+  providerStates.clear();
+  connectedBoards.clear();
+  for (const state of states) {
+    providerStates.set(state.board, state);
+    if (state.serverStatus === "connected") connectedBoards.add(state.board);
+  }
+  renderProviderManager();
+  renderQueue();
+}
+
+async function refreshProviders(force = false): Promise<void> {
+  const now = Date.now();
+  if (!force && (providerRefreshInFlight || now - lastProviderRefreshAt < 5_000)) return;
+  if (providerRefreshInFlight) return providerRefreshInFlight;
+  lastProviderRefreshAt = now;
+  const request = send<ProviderState[]>({ type: "GET_PROVIDER_STATES" })
+    .then(applyProviderStates)
+    .finally(() => { providerRefreshInFlight = null; });
+  providerRefreshInFlight = request;
+  await request;
+}
+
+function renderProviderManager(): void {
+  const attached = ACTIVE_PROVIDER_IDS.filter((board) => {
+    const state = providerStates.get(board)?.state;
+    return state === "connected" || state === "paused";
+  }).length;
+  $("providerConnectedCount").textContent = `${attached.toLocaleString("fa-IR")}/${ACTIVE_PROVIDER_IDS.length.toLocaleString("fa-IR")}`;
+  $("providerList").replaceChildren(...ACTIVE_PROVIDER_IDS.map(providerRow));
+}
+
+function providerRow(board: ActiveProviderId): HTMLDivElement {
+  const state = providerStates.get(board) ?? {
+    board,
+    enabled: false,
+    state: "checking",
+    localSession: false,
+    serverStatus: null,
+  } satisfies ProviderState;
+  const row = document.createElement("div");
+  row.className = "provider-row";
+
+  const identity = document.createElement("div");
+  identity.className = "provider-identity";
+  const dot = document.createElement("span");
+  dot.className = `provider-dot ${state.state}`;
+  const name = document.createElement("strong");
+  name.textContent = BOARDS[board].displayName;
+  const status = document.createElement("small");
+  status.textContent = providerStateLabels[state.state];
+  identity.append(dot, name, status);
+
+  const actions = document.createElement("div");
+  actions.className = "provider-actions";
+  const primary = document.createElement("button");
+  primary.type = "button";
+  primary.className = "provider-primary";
+  primary.dataset.provider = board;
+  primary.dataset.providerAction = state.state === "connected"
+    ? "pause"
+    : state.state === "paused" ? "resume" : "reconnect";
+  primary.textContent = state.state === "connected"
+    ? "مکث"
+    : state.state === "paused" ? "ادامه" : "اتصال";
+
+  const more = document.createElement("button");
+  more.type = "button";
+  more.textContent = "مدیریت";
+  more.setAttribute("aria-expanded", "false");
+  const context = providerContext(board, state);
+  more.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const willOpen = context.classList.contains("hidden");
+    document.querySelectorAll<HTMLElement>(".provider-context").forEach((menu) => menu.classList.add("hidden"));
+    context.classList.toggle("hidden", !willOpen);
+    more.setAttribute("aria-expanded", String(willOpen));
+  });
+  actions.append(primary, more);
+  row.append(identity, actions, context);
+  return row;
+}
+
+function providerContext(board: ActiveProviderId, state: ProviderState): HTMLDivElement {
+  const menu = document.createElement("div");
+  menu.className = "provider-context hidden";
+  const actions: Array<{ action: "login" | "reconnect" | "disconnect"; label: string; className?: string }> = [
+    { action: "login", label: "باز کردن صفحه ورود" },
+    { action: "reconnect", label: "بررسی و اتصال مجدد" },
+  ];
+  if (state.state !== "disconnected") {
+    actions.push({ action: "disconnect", label: "قطع فقط از کارجو", className: "disconnect" });
+  }
+  for (const item of actions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item.label;
+    button.dataset.provider = board;
+    button.dataset.providerAction = item.action;
+    if (item.className) button.className = item.className;
+    menu.append(button);
+  }
+  return menu;
+}
+
+function syncFilterProviderFlags(states: ProviderState[]): void {
+  if (!filtersState) return;
+  const nextBoards = { ...filtersState.boardFilters };
+  for (const state of states) {
+    nextBoards[state.board] = { ...nextBoards[state.board], enabled: state.enabled };
+  }
+  filtersState = { ...filtersState, boardFilters: nextBoards };
+  ($<HTMLInputElement>("boardEnabledInput")).checked = nextBoards[filterBoard].enabled;
+}
+
+async function manageProvider(board: ActiveProviderId, providerAction: "pause" | "resume" | "login" | "reconnect" | "disconnect"): Promise<void> {
+  if (busy) return;
+  setBusy(true);
+  clearError();
+  try {
+    const states = await send<ProviderState[]>({ type: "MANAGE_PROVIDER", board, action: providerAction });
+    applyProviderStates(states);
+    syncFilterProviderFlags(states);
+    setProviderMenuOpen(true);
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(false);
+  }
+}
+
 function filteredHistory(): ExtensionRunOverview["recent"] {
   if (!overviewState) return [];
   const board = ($<HTMLSelectElement>("historyBoard")).value;
@@ -188,10 +355,19 @@ function queueRow(job: LiveQueueJob): HTMLLIElement {
   const state = document.createElement("small");
   title.textContent = job.listing.title;
   subtitle.textContent = [job.listing.company, job.listing.city].filter(Boolean).join(" · ");
-  state.textContent = job.resumeStrategy === "native_profile_resume"
-    ? "رزومه پروفایل جاب‌ویژن"
-    : job.hasTailoredResume ? "PDF اختصاصی آماده" : "در انتظار PDF اختصاصی";
-  state.className = job.resumeStrategy === "native_profile_resume" || job.hasTailoredResume ? "result-ok" : "result-wait";
+  const provider = providerStates.get(job.listing.board as ActiveProviderId);
+  if (provider?.state === "paused") {
+    state.textContent = "سایت مکث شده؛ مورد در صف حفظ شده";
+    state.className = "result-wait";
+  } else if (provider?.state === "disconnected" || provider?.state === "login_required") {
+    state.textContent = provider.state === "disconnected" ? "اتصال کارجو قطع است؛ مورد در صف حفظ شده" : "ورود به سایت لازم است";
+    state.className = "result-wait";
+  } else {
+    state.textContent = job.resumeStrategy === "native_profile_resume"
+      ? "رزومه پروفایل جاب‌ویژن"
+      : job.hasTailoredResume ? "PDF اختصاصی آماده" : "در انتظار PDF اختصاصی";
+    state.className = job.resumeStrategy === "native_profile_resume" || job.hasTailoredResume ? "result-ok" : "result-wait";
+  }
   button.append(title, subtitle, state);
   button.addEventListener("click", () => openDetail({ kind: "queue", taskId: job.taskId }));
   li.append(button);
@@ -460,6 +636,33 @@ function collectFilters(): Omit<ApplyFilters, "aiFilterEnabled"> {
 document.querySelectorAll<HTMLButtonElement>(".tab").forEach((tab) => {
   tab.addEventListener("click", () => switchView(tab.dataset.tab as ViewName));
 });
+$("providerMenuButton").addEventListener("click", (event) => {
+  event.stopPropagation();
+  const open = !providerMenuIsOpen();
+  setProviderMenuOpen(open);
+  if (open) void refreshProviders(true).catch(showError);
+});
+$("providerList").addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button[data-provider-action]");
+  if (!button) return;
+  const board = button.dataset.provider as ActiveProviderId;
+  const providerAction = button.dataset.providerAction as "pause" | "resume" | "login" | "reconnect" | "disconnect";
+  void manageProvider(board, providerAction);
+});
+document.addEventListener("click", (event) => {
+  const target = event.target as Node;
+  if (providerMenuIsOpen() && !$("providerMenu").contains(target) && !$("providerMenuButton").contains(target)) {
+    setProviderMenuOpen(false);
+  }
+  document.querySelectorAll<HTMLElement>(".provider-context").forEach((menu) => {
+    if (!menu.contains(target) && !(target instanceof HTMLElement && target.closest("button[aria-expanded]"))) {
+      menu.classList.add("hidden");
+    }
+  });
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setProviderMenuOpen(false);
+});
 document.querySelectorAll<HTMLButtonElement>(".board-tab").forEach((button) => {
   button.addEventListener("click", () => {
     if (!filtersState) return;
@@ -534,6 +737,7 @@ $("filtersForm").addEventListener("submit", async (event) => {
     fillFilters(response.filters);
     filtersDirty = false;
     renderCategories();
+    await refreshProviders(true);
     $("filterSaved").textContent = "ذخیره شد";
     setTimeout(() => { $("filterSaved").textContent = ""; }, 2500);
   } catch (error) { showError(error); } finally { setBusy(false); }
@@ -545,6 +749,7 @@ setInterval(() => {
     void refresh();
     if (activeView === "filters" && !filtersDirty) void loadFilters();
     if (activeView === "filters") void refreshBoardSessionStatus();
+    if (providerMenuIsOpen()) void refreshProviders();
   }
 }, 2_000);
 window.addEventListener("pagehide", () => {

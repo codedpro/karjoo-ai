@@ -6,6 +6,7 @@ import { db as defaultDb, type Database } from "@/db";
 import { jobListings, matches, resumes, tasks } from "@/db/schema";
 import { generateTailoredResume } from "@/lib/resume/custom-resume-service";
 import { logger } from "@/lib/observability/logger";
+import type { ActiveApplyBoard } from "@/lib/apply/filters";
 
 export interface QueueResumePrepResult {
   attempted: number;
@@ -24,9 +25,13 @@ export type NextQueueResumeResult =
 
 export async function prepareNextTailoredResumeForQueue(
   userId: string,
-  opts: { db?: Database } = {},
+  opts: { db?: Database; allowedBoards?: readonly ActiveApplyBoard[] } = {},
 ): Promise<NextQueueResumeResult> {
   const conn = opts.db ?? defaultDb;
+  const boards = (["jobinja", "e-estekhdam"] as const).filter(
+    (board) => !opts.allowedBoards || opts.allowedBoards.includes(board),
+  );
+  if (boards.length === 0) return { status: "empty" };
   const hasTailoredResume = exists(
     conn
       .select({ one: sql`1` })
@@ -55,7 +60,7 @@ export async function prepareNextTailoredResumeForQueue(
     .where(
       and(
         eq(matches.userId, userId),
-        inArray(jobListings.board, ["jobinja", "e-estekhdam"]),
+        inArray(jobListings.board, boards),
         eq(tasks.status, "pending"),
         sql`${tasks.runAfter} <= now()`,
       ),
@@ -107,7 +112,7 @@ export async function prepareNextTailoredResumeForQueue(
 
 export async function prepareTailoredResumesForQueue(
   userId: string,
-  opts: { limit?: number; db?: Database } = {},
+  opts: { limit?: number; db?: Database; allowedBoards?: readonly ActiveApplyBoard[] } = {},
 ): Promise<QueueResumePrepResult> {
   const conn = opts.db ?? defaultDb;
   const limit = Math.max(
@@ -115,6 +120,10 @@ export async function prepareTailoredResumesForQueue(
     Math.min(Math.floor(opts.limit ?? DEFAULT_QUEUE_RESUME_PREP_LIMIT), MAX_QUEUE_RESUME_PREP_LIMIT),
   );
   if (limit === 0) return { attempted: 0, prepared: 0, failed: 0 };
+  const boards = (["jobinja", "e-estekhdam"] as const).filter(
+    (board) => !opts.allowedBoards || opts.allowedBoards.includes(board),
+  );
+  if (boards.length === 0) return { attempted: 0, prepared: 0, failed: 0 };
 
   const hasTailoredResume = exists(
     conn
@@ -143,7 +152,7 @@ export async function prepareTailoredResumesForQueue(
     .where(
       and(
         eq(matches.userId, userId),
-        inArray(jobListings.board, ["jobinja", "e-estekhdam"]),
+        inArray(jobListings.board, boards),
         eq(tasks.status, "pending"),
         sql`${tasks.runAfter} <= now()`,
         not(hasTailoredResume),

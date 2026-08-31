@@ -3,7 +3,7 @@
  * contracts (src/lib/apply/types.ts and the apply-queue API). Kept intentionally
  * narrow — only what the UI needs to render and report.
  */
-import type { BoardId } from "@ext/lib/config";
+import type { ActiveProviderId, BoardId } from "@ext/lib/config";
 
 /** Signed-in identity returned by GET /api/extension/me. */
 export interface Identity {
@@ -81,6 +81,23 @@ export interface BoardCatalog {
   board: "jobinja" | "jobvision" | "e-estekhdam";
   categories: BoardCatalogOption[];
   employmentTypes: BoardCatalogOption[];
+}
+
+export type ProviderConnectionState =
+  | "checking"
+  | "connected"
+  | "login_required"
+  | "paused"
+  | "disconnected";
+
+/** Non-secret provider status shown by the side-panel account manager. */
+export interface ProviderState {
+  board: ActiveProviderId;
+  enabled: boolean;
+  state: ProviderConnectionState;
+  localSession: boolean;
+  serverStatus: string | null;
+  reason?: "no_tab" | "session_not_found" | "probe_unavailable";
 }
 
 export interface JobinjaCategory {

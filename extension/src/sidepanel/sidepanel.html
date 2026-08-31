@@ -8,8 +8,15 @@
   </head>
   <body>
     <header class="topbar">
-      <div><strong>کارجو</strong><span id="account">در حال بررسی…</span></div>
-      <span id="statusPill" class="status-pill">متوقف</span>
+      <div class="brand"><strong>کارجو</strong><span id="account">در حال بررسی…</span></div>
+      <div class="topbar-actions">
+        <button id="providerMenuButton" class="provider-trigger hidden" type="button" aria-expanded="false" aria-controls="providerMenu">سایت‌ها <span id="providerConnectedCount">۰/۳</span></button>
+        <span id="statusPill" class="status-pill">متوقف</span>
+      </div>
+      <div id="providerMenu" class="provider-menu hidden" role="dialog" aria-label="مدیریت سایت‌های کاریابی">
+        <div class="provider-menu-head"><strong>سایت‌های کاریابی</strong><span>همگام با کارجو</span></div>
+        <div id="providerList" class="provider-list"></div>
+      </div>
     </header>
 
     <main>

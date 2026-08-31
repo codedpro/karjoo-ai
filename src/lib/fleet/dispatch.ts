@@ -45,6 +45,7 @@ import {
   canServerExecute,
   markServerExecutionRunning,
 } from "@/lib/apply/execution-run";
+import { enabledApplyBoards, readApplyFilters } from "@/lib/apply/filters";
 
 /** هندلِ DB که این لایه نیاز دارد — کلاینتِ کاملِ Drizzle. */
 export type FleetDispatchDb = typeof defaultDb;
@@ -223,8 +224,14 @@ export async function claimFleetJobs(
       assertServerAutoApplyAllowed(userId, plan, { db }));
   const claimItems =
     deps.claimItems ??
-    ((userId: string, lim: number, minScore: number) =>
-      claimUserApplyItems(userId, lim, db, { minScore, requireTailoredResume: true }));
+    (async (userId: string, lim: number, minScore: number) => {
+      const allowedBoards = enabledApplyBoards(await readApplyFilters(userId, db));
+      return claimUserApplyItems(userId, lim, db, {
+        minScore,
+        requireTailoredResume: true,
+        allowedBoards,
+      });
+    });
   const loadSession =
     deps.loadSession ??
     ((userId: string, board: Board) => defaultLoadSession(userId, board, db));

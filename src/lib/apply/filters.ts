@@ -77,6 +77,15 @@ export interface BoardApplyFilters {
   "e-estekhdam": BoardFilter;
 }
 
+export type ActiveApplyBoard = keyof BoardApplyFilters;
+
+/** Active provider ids used by discovery, resume preparation, and queue claims. */
+export function enabledApplyBoards(filters: ApplyFilters): ActiveApplyBoard[] {
+  return (Object.keys(filters.boardFilters) as ActiveApplyBoard[]).filter(
+    (board) => filters.boardFilters[board].enabled,
+  );
+}
+
 function emptyBoardFilter(enabled = false): BoardFilter {
   return { enabled, categoryKeys: [], cities: [], employmentTypeKeys: [], remoteOnly: false };
 }

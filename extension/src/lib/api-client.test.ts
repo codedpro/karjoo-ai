@@ -92,6 +92,17 @@ describe("KarjooApi authed calls", () => {
     }
   });
 
+  it("disconnectBoard removes only Karjoo's board connection metadata", async () => {
+    const { fetchImpl, calls } = fakeFetch(() => ({ status: 200, body: { ok: true } }));
+    const api = new KarjooApi({ origin: "http://localhost:3000", token: "t", fetchImpl });
+    await api.disconnectBoard("jobvision");
+
+    expect(calls[0]!.url).toBe("http://localhost:3000/api/board-accounts/disconnect");
+    expect(calls[0]!.method).toBe("DELETE");
+    expect(calls[0]!.body).toEqual({ board: "jobvision" });
+    expect(calls[0]!.headers.get("authorization")).toBe("Bearer t");
+  });
+
   it("claimQueue maps the server ClaimedApplyItem shape onto ApplyQueueItem", async () => {
     const { fetchImpl, calls } = fakeFetch(() => ({
       status: 200,

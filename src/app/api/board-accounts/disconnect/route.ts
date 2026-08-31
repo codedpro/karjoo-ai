@@ -3,8 +3,8 @@ import "server-only";
 /**
  * DELETE /api/board-accounts/disconnect — «قطعِ اتصالِ» یک حسابِ سایتِ کاریابی (نشستِ وب).
  *
- * از کوکیِ نشستِ وب احراز می‌شود (getCurrentUser، مثلِ DELETE /api/resume/file) — نه Bearer —
- * چون این اکشن از داشبوردِ کاربر (fetch هم‌مبدأ) صدا زده می‌شود.
+ * با نشست وب یا Bearer افزونه احراز می‌شود. این فقط اتصال کارجو را قطع می‌کند و هیچ
+ * کوکی یا نشست محلیِ مرورگر در سایت کاریابی را تغییر نمی‌دهد.
  *
  * قاعده‌ی ۴ (CONTEXT) + امنیت: کاربر همیشه از نشست گرفته می‌شود، نه از بدنه؛ هر عملیات به
  * همان userId مقید است. قطعِ اتصال دو کار را در یک تراکنش انجام می‌دهد:
@@ -25,7 +25,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { auditEvents, boardAccounts, sessionBlobs } from "@/db/schema";
 import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
-import { getCurrentUser } from "@/lib/auth/http";
+import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { jobBoardSchema } from "@/lib/api/extension-schemas";
 
 // به DB دست می‌زند (+ کوکیِ نشست) → اجرای Node و رندرِ پویا لازم است.
@@ -37,8 +37,8 @@ const disconnectBodySchema = z.object({ board: jobBoardSchema }).strict();
 
 export async function DELETE(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
-    // ۱) احراز هویتِ وب — کاربر از کوکیِ نشست (نه از بدنه).
-    const user = await getCurrentUser();
+    // ۱) کاربر از نشست وب یا Bearer افزونه گرفته می‌شود، نه از بدنه.
+    const user = await getCurrentUserOrBearer(request);
     if (!user) return errorJson("احراز هویت لازم است", 401);
 
     // ۲) اعتبارسنجیِ بدنه.
@@ -76,7 +76,7 @@ export async function DELETE(request: Request): Promise<Response> {
         userId: user.id,
         boardAccountId,
         eventType: "session_expired",
-        metadata: { action: "board_disconnected", board, channel: "web" },
+        metadata: { action: "board_disconnected", board, channel: "karjoo" },
       });
     } catch (auditErr) {
       console.error("[board-disconnect] audit write failed:", auditErr);

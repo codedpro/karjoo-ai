@@ -294,6 +294,20 @@ export class KarjooApi {
     return { ok: true };
   }
 
+  /** Disconnect Karjoo's metadata/vault only; the provider's browser session is untouched. */
+  async disconnectBoard(board: ConnectPayload["board"]): Promise<{ ok: boolean }> {
+    try {
+      await this.request("/api/board-accounts/disconnect", {
+        method: "DELETE",
+        body: JSON.stringify({ board }),
+      });
+    } catch (error) {
+      // No metadata row is already the desired disconnected state.
+      if (!(error instanceof ApiError) || error.status !== 404) throw error;
+    }
+    return { ok: true };
+  }
+
   /**
    * Claim the user's approved apply queue (their own jobs only, server-enforced).
    * Server returns `{ count, items: ClaimedApplyItem[] }`; we map each item onto

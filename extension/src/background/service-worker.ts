@@ -11,10 +11,18 @@
  *
  * It is a thin message router; all decision logic lives in the tested pure libs.
  */
-import { BOARDS, BOARD_IDS, type BoardId } from "@ext/lib/config";
+import {
+  ACTIVE_PROVIDER_IDS,
+  BOARDS,
+  BOARD_IDS,
+  PROVIDER_JOBS_URLS,
+  type ActiveProviderId,
+  type BoardId,
+} from "@ext/lib/config";
 import { ApiError, KarjooApi } from "@ext/lib/api-client";
 import { buildConnectPayload } from "@ext/lib/connect-payload";
 import { buildImportPayload } from "@ext/lib/import-payload";
+import { deriveProviderState, withProviderEnabled } from "@ext/lib/provider-manager";
 import {
   jobinjaLoggedIn,
   jobvisionLoggedIn,
@@ -57,6 +65,7 @@ import type {
   ApplyFilters,
   JobinjaCategory,
   BoardCatalog,
+  ProviderState,
 } from "@ext/lib/types";
 import type { ScrapeProfileResult, BoardImportOutcome } from "@ext/lib/import-types";
 
@@ -236,6 +245,65 @@ async function handleConnectBoard(board: BoardId, accountLabel?: string): Promis
   const payload = buildConnectPayload({ board, accountLabel });
   const api = await apiFromStorage();
   return api.connectBoard(payload);
+}
+
+async function handleGetProviderStates(): Promise<ProviderState[]> {
+  const api = await apiFromStorage();
+  const [{ boards }, { filters }, probes] = await Promise.all([
+    api.meRaw(),
+    api.getApplyFilters(),
+    Promise.all(ACTIVE_PROVIDER_IDS.map((board) =>
+      probeBoardSession(board).catch((): ProbeSessionResult => ({
+        loggedIn: false,
+        reason: "probe_unavailable",
+      })),
+    )),
+  ]);
+  const statusByBoard = new Map(boards.map((account) => [account.board, account.status ?? null]));
+
+  return ACTIVE_PROVIDER_IDS.map((board, index) => deriveProviderState({
+    board,
+    enabled: filters.boardFilters[board].enabled,
+    serverStatus: statusByBoard.get(board),
+    probe: probes[index]!,
+  }));
+}
+
+async function setProviderEnabled(board: ActiveProviderId, enabled: boolean): Promise<void> {
+  const api = await apiFromStorage();
+  const { filters } = await api.getApplyFilters();
+  await api.saveApplyFilters(withProviderEnabled(filters, board, enabled));
+}
+
+async function handleManageProvider(
+  board: ActiveProviderId,
+  action: "pause" | "resume" | "login" | "reconnect" | "disconnect",
+): Promise<ProviderState[]> {
+  if (action === "login") {
+    await chrome.tabs.create({ url: PROVIDER_JOBS_URLS[board], active: true });
+    return handleGetProviderStates();
+  }
+
+  if (action === "pause" || action === "resume") {
+    await setProviderEnabled(board, action === "resume");
+    return handleGetProviderStates();
+  }
+
+  if (action === "disconnect") {
+    // Stop new discovery/claims first. This deliberately does not clear provider cookies.
+    await setProviderEnabled(board, false);
+    await (await apiFromStorage()).disconnectBoard(board);
+    return handleGetProviderStates();
+  }
+
+  const probe = await probeBoardSession(board);
+  if (!probe.loggedIn) {
+    await chrome.tabs.create({ url: PROVIDER_JOBS_URLS[board], active: true });
+    return handleGetProviderStates();
+  }
+  await handleConnectBoard(board, probe.accountLabelHint);
+  await setProviderEnabled(board, true);
+  return handleGetProviderStates();
 }
 
 /* ── apply queue ───────────────────────────────────────────────────────── */
@@ -467,6 +535,10 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
       return { ok: true, data: await probeBoardSession(msg.board) };
     case "CONNECT_BOARD":
       return { ok: true, data: await handleConnectBoard(msg.board, msg.accountLabel) };
+    case "GET_PROVIDER_STATES":
+      return { ok: true, data: await handleGetProviderStates() };
+    case "MANAGE_PROVIDER":
+      return { ok: true, data: await handleManageProvider(msg.board, msg.action) };
     case "CLAIM_QUEUE":
       return { ok: true, data: await handleClaimQueue() };
     case "FIND_JOBS":

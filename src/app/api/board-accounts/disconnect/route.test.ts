@@ -23,7 +23,7 @@ const h = vi.hoisted(() => ({
   insertValues: [] as Record<string, unknown>[],
 }));
 
-vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
+vi.mock("@/lib/auth/http", () => ({ getCurrentUserOrBearer: vi.fn() }));
 vi.mock("@/db", () => {
   const makeTx = () => ({
     select: vi.fn(() => {
@@ -64,10 +64,10 @@ vi.mock("@/db", () => {
 });
 
 import { db } from "@/db";
-import { getCurrentUser } from "@/lib/auth/http";
+import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { DELETE as disconnectDELETE } from "@/app/api/board-accounts/disconnect/route";
 
-const userMock = vi.mocked(getCurrentUser);
+const userMock = vi.mocked(getCurrentUserOrBearer);
 const txMock = vi.mocked(db.transaction);
 
 function disconnectReq(body: unknown) {

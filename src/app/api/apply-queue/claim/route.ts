@@ -43,6 +43,7 @@ import {
   releaseStaleExtensionLeases,
 } from "@/lib/apply/execution-run";
 import { prepareNextTailoredResumeForQueue } from "@/lib/resume/queue-prep";
+import { enabledApplyBoards, readApplyFilters } from "@/lib/apply/filters";
 
 // به DB دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -89,9 +90,14 @@ export async function POST(request: Request): Promise<Response> {
         throw error;
       }
       await releaseStaleExtensionLeases(userId);
-      const prepared = await prepareNextTailoredResumeForQueue(userId);
+      const allowedBoards = enabledApplyBoards(await readApplyFilters(userId));
+      if (allowedBoards.length === 0) {
+        return json({ count: 0, items: [], reason: "providers_paused" });
+      }
+      const prepared = await prepareNextTailoredResumeForQueue(userId, { allowedBoards });
       const items = await claimUserApplyItems(userId, body.limit, undefined, {
         requireTailoredResume: true,
+        allowedBoards,
       });
       if (prepared.status === "failed" && items.length === 0) {
         return json({
