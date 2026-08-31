@@ -86,3 +86,76 @@ describe("e-estekhdam discovery", () => {
     });
   });
 });
+
+describe("pagination budget — the bug that starved the apply loop", () => {
+  /** A board that always returns a full, in-window page: without a bound this never ends. */
+  function endlessBoard() {
+    let served = 0;
+    return (async (url: string | URL) => {
+      const href = String(url);
+      if (href.includes("/search-api/jobs/")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: {
+              ats: true,
+              uuid: `u${served}`,
+              id: served++,
+              shortTitle: "Job",
+              date: new Date().toISOString().slice(0, 10),
+            },
+          }),
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: Array.from({ length: 20 }, (_, i) => ({ ats: true, uuid: `u${served + i}` })),
+        }),
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+  }
+
+  const base = {
+    categoryKeys: [], cities: [], employmentTypeKeys: [], remoteOnly: false, maxAgeDays: 45,
+  };
+
+  it("stops at the listing ceiling instead of ingesting the whole board", async () => {
+    const listings = await discoverEEstekhdamListings(
+      { ...base, maxListings: 40 },
+      endlessBoard(),
+    );
+    expect(listings.length).toBeGreaterThan(0);
+    expect(listings.length).toBeLessThan(200);
+  });
+
+  it("stops once the tick's wall-clock budget is spent", async () => {
+    const listings = await discoverEEstekhdamListings(
+      { ...base, deadlineAt: Date.now() - 1 },
+      endlessBoard(),
+    );
+    // The deadline is already past, so exactly one page is fetched and kept.
+    expect(listings.length).toBeLessThanOrEqual(20);
+  });
+
+  it("is unbounded only when the caller asks for that", async () => {
+    // Guard against the ceiling silently applying when no budget was given: the
+    // page-size break still ends it, so this must terminate on a short page.
+    const shortPage = (async (url: string | URL) => {
+      const href = String(url);
+      if (href.includes("/search-api/jobs/")) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ data: { ats: true, uuid: "u1", id: 1, shortTitle: "J", date: "2026-08-30" } }),
+        } as unknown as Response;
+      }
+      return {
+        ok: true, status: 200,
+        json: async () => ({ data: [{ ats: true, uuid: "u1" }] }),
+      } as unknown as Response;
+    }) as unknown as typeof fetch;
+    await expect(discoverEEstekhdamListings(base, shortPage)).resolves.toHaveLength(1);
+  });
+});

@@ -9,6 +9,10 @@ interface DiscoveryOptions {
   employmentTypeKeys: string[];
   remoteOnly: boolean;
   maxAgeDays: number;
+  /** Unix ms after which pagination stops, even mid-board. */
+  deadlineAt?: number;
+  /** Hard ceiling on listings collected in one pass. */
+  maxListings?: number;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -148,7 +152,13 @@ export async function discoverEEstekhdamListings(
       if (time >= cutoff) found.set(listing.externalId, listing);
     }
     await onPage?.(found.size);
+    // Stop on the age boundary, an exhausted result set, the caller's listing
+    // ceiling, or the tick's wall-clock budget. Without the last two, a board
+    // with thousands of live ads (e-estekhdam has that many inside 45 days) ate
+    // every tick in pagination and the apply loop never ran.
     if (rows.length < 20 || oldest < cutoff) break;
+    if (options.maxListings !== undefined && found.size >= options.maxListings) break;
+    if (options.deadlineAt !== undefined && Date.now() >= options.deadlineAt) break;
   }
   return [...found.values()].sort((a, b) => Date.parse(b.postedAt) - Date.parse(a.postedAt));
 }

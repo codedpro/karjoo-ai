@@ -96,6 +96,19 @@ export async function runAutoApplyTick(force = false): Promise<AutoApplyStatus> 
   return activeCycle;
 }
 
+/**
+ * Above this many pending tasks, a tick skips discovery entirely and spends its
+ * whole life applying. Queueing more work when thousands are already waiting is
+ * pure waste, and it is what made the panel sit on "discovering" forever.
+ */
+const DISCOVERY_QUEUE_CEILING = 300;
+
+/** Wall-clock slice one tick may spend discovering, across ALL boards. */
+const DISCOVERY_BUDGET_MS = 45_000;
+
+/** Listings one board may collect in a single pass. */
+const DISCOVERY_LISTING_CEILING = 300;
+
 async function runCycle(force: boolean): Promise<AutoApplyStatus> {
   const ranAt = Date.now();
   try {
@@ -113,9 +126,15 @@ async function runCycle(force: boolean): Promise<AutoApplyStatus> {
       return record({ ranAt, outcome: "disabled", submitted: 0, failed: 0 });
     }
     const lastDiscoveryAt = Number(overview.run.progress.lastDiscoveryAt ?? 0);
+    // A deep queue means discovery is not what this user needs — applying is.
+    // Discovering anyway is what starved the apply loop: a board with thousands
+    // of live ads kept every tick busy paginating while 6k tasks sat pending.
+    const queueIsDeep = Number(overview.counts.queued ?? 0) >= DISCOVERY_QUEUE_CEILING;
     return discoverAndDrain(api, executorId, {
       backgroundEnabled: overview.run.backgroundEnabled,
-      discoverDue: force || !lastDiscoveryAt || Date.now() - lastDiscoveryAt >= 10 * 60_000,
+      discoverDue:
+        !queueIsDeep &&
+        (force || !lastDiscoveryAt || Date.now() - lastDiscoveryAt >= 10 * 60_000),
       lastDiscoveryAt,
     });
   } catch (error) {
@@ -140,9 +159,14 @@ async function discoverAndDrain(
   let failed = 0;
 
   let lastDiscoveryAt = options.lastDiscoveryAt;
+  // Discovery gets a wall-clock slice of the tick, shared across boards. Whatever
+  // it has found when the budget runs out is imported and the run moves on to
+  // applying; the next tick picks discovery up again.
+  const discoveryDeadline = Date.now() + DISCOVERY_BUDGET_MS;
   const discovery = options.discoverDue ? await api.getDiscoveryConfig() : null;
   if (discovery && !discovery.paused) {
     for (const board of discovery.boards) {
+      if (Date.now() >= discoveryDeadline) break;
       if (!board.enabled || !board.hasTargeting) continue;
       if (board.board === "jobinja" && board.searchUrl) {
         const result = await discoverJobinja(api, executorId, board.searchUrl, discovery.maxAgeDays);
@@ -156,6 +180,8 @@ async function discoverAndDrain(
           employmentTypeKeys: board.employmentTypeKeys,
           remoteOnly: board.remoteOnly,
           maxAgeDays: discovery.maxAgeDays,
+          deadlineAt: discoveryDeadline,
+          maxListings: DISCOVERY_LISTING_CEILING,
         }, fetch, async (count) => {
           await api.mutateExecutionRun({
             action: "progress",
@@ -174,6 +200,8 @@ async function discoverAndDrain(
           employmentTypeKeys: board.employmentTypeKeys,
           remoteOnly: board.remoteOnly,
           maxAgeDays: discovery.maxAgeDays,
+          deadlineAt: discoveryDeadline,
+          maxListings: DISCOVERY_LISTING_CEILING,
         }, fetch, async (count) => {
           await api.mutateExecutionRun({
             action: "progress",
@@ -202,6 +230,8 @@ async function discoverAndDrain(
           remoteOnly: board.remoteOnly,
           maxAgeDays: discovery.maxAgeDays,
           authorization,
+          deadlineAt: discoveryDeadline,
+          maxListings: DISCOVERY_LISTING_CEILING,
         }, fetch, async (count) => {
           await api.mutateExecutionRun({
             action: "progress",

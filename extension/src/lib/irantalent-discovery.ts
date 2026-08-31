@@ -35,6 +35,10 @@ export interface IranTalentDiscoveryOptions {
   maxAgeDays: number;
   /** `"<token_type> <access_token>"`, when a local IranTalent session exists. */
   authorization?: string | null;
+  /** Unix ms after which pagination stops, even mid-board. */
+  deadlineAt?: number;
+  /** Hard ceiling on listings collected in one pass. */
+  maxListings?: number;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -270,11 +274,14 @@ export async function discoverIranTalentListings(
     const lastPage = Number(payload.last_page ?? 0);
     if (!payload.next_page_url || (Number.isFinite(lastPage) && page >= lastPage)) break;
     if (oldest < cutoff) break;
+    if (options.maxListings !== undefined && rows.length >= options.maxListings) break;
+    if (options.deadlineAt !== undefined && Date.now() >= options.deadlineAt) break;
   }
 
   // The gender restriction only exists on the detail endpoint; fetch it for the
   // rows that survived, then drop anything the detail reveals as unusable.
-  const detailRows = rows.slice(0, MAX_DETAIL_FETCHES);
+  const detailBudget = Math.min(MAX_DETAIL_FETCHES, options.maxListings ?? MAX_DETAIL_FETCHES);
+  const detailRows = rows.slice(0, detailBudget);
   const details = await mapPooled(detailRows, DETAIL_CONCURRENCY, (row) =>
     fetchDetail(String(row.id), options.authorization, fetchImpl),
   );

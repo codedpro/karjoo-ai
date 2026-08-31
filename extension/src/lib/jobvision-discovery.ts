@@ -7,6 +7,10 @@ interface DiscoveryOptions {
   employmentTypeKeys: string[];
   remoteOnly: boolean;
   maxAgeDays: number;
+  /** Unix ms after which pagination stops, even mid-board. */
+  deadlineAt?: number;
+  /** Hard ceiling on listings collected in one pass. */
+  maxListings?: number;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -110,6 +114,8 @@ export async function discoverJobvisionListings(
       }
       await onPage?.(found.size);
       if (rows.length === 0 || (!pageHasFresh && page > 1)) break;
+      if (options.maxListings !== undefined && found.size >= options.maxListings) break;
+      if (options.deadlineAt !== undefined && Date.now() >= options.deadlineAt) break;
       page += 1;
     }
   }
