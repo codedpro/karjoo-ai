@@ -326,6 +326,17 @@ async function discoverAndDrain(
       // The server already backs that task off for 30 minutes, so the next tick
       // picks a different one. Only a run of failures means something systemic
       // (no credit, AI down) that the user actually has to act on.
+      // The platform's monthly AI budget is spent. No listing will tailor until
+      // that is raised, so waiting quietly would leave the panel saying "nothing
+      // in progress" forever with no way to learn why.
+      if (claim.code === "ai_maintenance") {
+        await api.mutateExecutionRun({ action: "block", executorId, reason: "ai_maintenance" });
+        await notify(
+          "ساخت رزومه ممکن نیست",
+          "سقف ماهانهٔ سرویس هوش مصنوعی پر شده است. صف حفظ شده؛ پس از افزایش سقف دوباره شروع کنید.",
+        );
+        return record({ ranAt, outcome: "error", submitted, failed, message: "ai_maintenance" });
+      }
       resumeFailureStreak += 1;
       if (resumeFailureStreak < RESUME_FAILURE_STREAK_LIMIT) {
         await api.mutateExecutionRun({

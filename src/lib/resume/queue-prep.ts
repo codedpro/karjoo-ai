@@ -21,7 +21,7 @@ const QUEUE_RESUME_PREP_CONCURRENCY = 5;
 export type NextQueueResumeResult =
   | { status: "empty" }
   | { status: "ready"; taskId: string; listingId: string; generated: boolean }
-  | { status: "failed"; taskId: string; listingId: string };
+  | { status: "failed"; taskId: string; listingId: string; code?: string };
 
 export async function prepareNextTailoredResumeForQueue(
   userId: string,
@@ -106,7 +106,16 @@ export async function prepareNextTailoredResumeForQueue(
         updatedAt: sql`now()`,
       })
       .where(eq(tasks.id, row.taskId));
-    return { status: "failed", taskId: row.taskId, listingId: row.listingId };
+    // Carry the cause out. "generation failed" alone cannot distinguish one odd
+    // listing from the whole platform's AI budget being spent — and those need
+    // opposite responses: skip the listing, or tell the user to act.
+    const code = (err as { code?: unknown })?.code;
+    return {
+      status: "failed",
+      taskId: row.taskId,
+      listingId: row.listingId,
+      ...(typeof code === "string" ? { code } : {}),
+    };
   }
 }
 

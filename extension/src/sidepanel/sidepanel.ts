@@ -224,7 +224,9 @@ function render(overview: ExtensionRunOverview): void {
   alert.classList.toggle("hidden", !showAlert);
   alert.textContent = stalled
     ? "اجرای صف در این مرورگر متوقف شده است. «توقف» و سپس «شروع» را بزنید تا دوباره راه بیفتد."
-    : run.state === "blocked"
+    : run.blockedReason === "ai_maintenance"
+      ? "سقف ماهانهٔ سرویس هوش مصنوعی پر شده است؛ تا افزایش آن، رزومهٔ اختصاصی ساخته نمی‌شود. صف دست‌نخورده باقی می‌ماند."
+      : run.state === "blocked"
     ? (run.blockedReason?.startsWith("resume_") || run.blockedReason?.startsWith("tailored_resume_")
       ? "رزومهٔ اختصاصی آماده یا آپلود نشد. هیچ رزومه‌ای ارسال نشده است؛ پس از رفع خطا دوباره شروع کنید."
       : "اجرای قبلی متوقف شده است. با شروع دوباره، موارد نیازمند ورود، فرم دستی یا بررسی امنیتی رد می‌شوند و صف ادامه پیدا می‌کند.")

@@ -154,6 +154,9 @@ export async function POST(request: Request): Promise<Response> {
           items: [],
           reason: "tailored_resume_generation_failed",
           taskId: prepared.taskId,
+          // `ai_maintenance` means the platform's monthly AI budget is spent —
+          // systemic, and no amount of retrying or skipping listings will help.
+          ...(prepared.code ? { code: prepared.code } : {}),
         });
       }
       if (prepared.status === "ready" && items.length === 0) {

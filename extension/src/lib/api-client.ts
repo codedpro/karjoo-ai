@@ -82,6 +82,12 @@ interface ServerClaimResponse {
     | "quota_exceeded"
     | "tailored_resume_generation_failed"
     | "tailored_resume_missing";
+  /**
+   * Why the preparation failed, when the server knows. `ai_maintenance` means the
+   * platform's monthly AI budget is spent — systemic, so retrying or skipping to
+   * another listing cannot help and the user has to be told.
+   */
+  code?: string;
 }
 
 /** Server shape for GET/PUT /api/auto-apply (control-plane contract). */
@@ -373,6 +379,7 @@ export class KarjooApi {
   ): Promise<{
     items: ApplyQueueItem[];
     reason?: ServerClaimResponse["reason"];
+    code?: string;
   }> {
     const body = {
       ...(typeof limit === "number" ? { limit } : {}),
@@ -385,6 +392,7 @@ export class KarjooApi {
     return {
       items: (res.items ?? []).map(toApplyQueueItem),
       ...(res.reason ? { reason: res.reason } : {}),
+      ...(res.code ? { code: res.code } : {}),
     };
   }
 
