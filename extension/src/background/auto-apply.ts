@@ -434,7 +434,11 @@ async function discoverAndDrain(
       id: item.id,
       status: skipped ? "skipped" : result.ok ? "submitted" : "failed",
       ...(result.alreadyApplied ? { reason: "already_applied_on_board" } : {}),
-      ...(!result.ok && result.reason ? { reason: result.reason } : {}),
+      // A SUCCESS can carry a reason too: e-estekhdam may accept the application
+      // with the account's own CV when its file limit blocks the tailored PDF.
+      // Recording that is the difference between an honest history and one that
+      // claims a tailored résumé was sent when it was not.
+      ...(result.reason && !result.alreadyApplied ? { reason: result.reason } : {}),
     });
     await api.reportResult(report, executorId);
     if (result.ok && !result.alreadyApplied) submitted += 1;

@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { executeEEstekhdamApply, failureDetail } from "@ext/content/apply/eestekhdam";
+import {
+  executeEEstekhdamApply,
+  failureDetail,
+  isFileLimitRefusal,
+} from "@ext/content/apply/eestekhdam";
 import type { ApplyPlan } from "@ext/lib/apply-runner";
 
 const plan: ApplyPlan = {
@@ -107,20 +111,33 @@ describe("failureDetail — why a submission was refused", () => {
   });
 });
 
-describe("a file-saving refusal records how many CVs the account holds", () => {
-  it("asks the board only when the message points at file saving", () => {
-    const src = readFileSync("src/content/apply/eestekhdam.ts", "utf8");
-    expect(src).toContain("storedCvCount");
-    // Guard the trigger: counting on every failure would add a request per
-    // rejected application, and only the save error is worth explaining.
-    expect(src).toMatch(/ذخیره فایل\|save\.\*file\|file\.\*save/);
-    expect(src).toContain("cvs=");
+
+describe("the account file limit", () => {
+  it("recognises the board's own wording for it", () => {
+    expect(isFileLimitRefusal("400 خطا در زمان ذخیره فایل")).toBe(true);
+    expect(isFileLimitRefusal("شما به محدودیت تعداد فایل های ارسالی رسیده اید")).toBe(true);
+    expect(isFileLimitRefusal("too many files")).toBe(true);
   });
 
-  it("degrades to the plain reason when the count cannot be read", () => {
+  it("does not treat an unrelated refusal as a file limit", () => {
+    expect(isFileLimitRefusal("422 workId الزامی است")).toBe(false);
+    expect(isFileLimitRefusal("500 Internal Server Error")).toBe(false);
+  });
+
+  it("reports the profile résumé when the tailored PDF could not be attached", () => {
     const src = readFileSync("src/content/apply/eestekhdam.ts", "utf8");
-    // storedCvCount returns null on any failure, and null must not print.
-    expect(src).toContain("cvs === null ? \"\"");
-    expect(src).toContain("return null;");
+    // The retry must NOT carry a file, and must say so in the result.
+    expect(src).toContain("eestekhdam_profile_resume_used");
+    const fallback = src.slice(src.indexOf("const fallback = new FormData()"), src.indexOf("const retried"));
+    expect(fallback).not.toContain('append("file"');
+    expect(fallback).toContain('append("uuid", "")');
+  });
+
+  it("counts the collection that actually fills up", () => {
+    const src = readFileSync("src/content/apply/eestekhdam.ts", "utf8");
+    // Counting `cvs` reported 1 and made the theory look dead; `files` is the
+    // list an application adds to.
+    expect(src).toContain("data.files");
+    expect(src).toContain("files=");
   });
 });

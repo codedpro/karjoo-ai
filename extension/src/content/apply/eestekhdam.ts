@@ -162,20 +162,28 @@ function choosePosition(
  * limit on stored CVs, since every application uploads another one. The board
  * lists them, so ask instead of guessing, and put the number in the reason.
  */
-async function storedCvCount(): Promise<number | null> {
+async function storedFileCounts(): Promise<string> {
   try {
     const { response, body } = await jsonRequest(`${API_ROOT}/ats/cvs`);
-    if (!response.ok) return null;
-    const data = record(body).data ?? body;
-    if (Array.isArray(data)) return data.length;
-    const wrapped = record(data);
-    for (const key of ["items", "rows", "cvs"]) {
-      if (Array.isArray(wrapped[key])) return (wrapped[key] as unknown[]).length;
-    }
-    return null;
+    if (!response.ok) return "";
+    const data = record(record(body).data ?? body);
+    const len = (v: unknown) => (Array.isArray(v) ? v.length : null);
+    const cvs = len(data.cvs);
+    // `files` is the collection an application actually adds to — the first
+    // instrumentation counted `cvs` and reported 1, which looked like the theory
+    // was dead when it was simply the wrong list.
+    const files = len(data.files);
+    const parts = [cvs === null ? "" : `cvs=${cvs}`, files === null ? "" : `files=${files}`];
+    const text = parts.filter(Boolean).join(" ");
+    return text ? ` [${text}]` : "";
   } catch {
-    return null;
+    return "";
   }
+}
+
+/** PURE: does this refusal mean the account cannot store another file? */
+export function isFileLimitRefusal(detail: string): boolean {
+  return /محدودیت تعداد فایل|ذخیره فایل|too many files|file limit/i.test(detail);
 }
 
 export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentApplyResult> {
@@ -249,12 +257,38 @@ export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentAp
   }
   if (!applied.response.ok || record(applied.body).ok === false) {
     const detail = failureDetail(applied.response.status, applied.body);
-    // A file-saving refusal is the one worth counting stored CVs for.
-    const cvs = /ذخیره فایل|save.*file|file.*save/i.test(detail) ? await storedCvCount() : null;
+    if (!isFileLimitRefusal(detail)) {
+      return { ok: false, ranSteps: ["session", "upload"], reason: `eestekhdam_apply_failed: ${detail}` };
+    }
+
+    // The account cannot store another uploaded file. e-estekhdam caps them per
+    // account and exposes no way to delete one, so every future application
+    // would fail the same way — a tailored PDF simply cannot be attached again.
+    // Re-send using the CV already on the account (uuid "" = the main one),
+    // which is what a person hitting this limit would do. It is reported as the
+    // profile résumé, never as the tailored PDF we could not attach.
+    const fallback = new FormData();
+    fallback.append("jobId", String(jobId));
+    fallback.append("workId", String(workId));
+    fallback.append("uuid", "");
+    fallback.append("email", email);
+    if (coverLetter) fallback.append("description", coverLetter);
+    const retried = await jsonRequest(
+      `${API_ROOT}/ats/applicants/apply/${encodeURIComponent(String(jobId))}`,
+      { method: "POST", body: fallback },
+    );
+    if (retried.response.ok && record(retried.body).ok !== false) {
+      return {
+        ok: true,
+        ranSteps: ["session", "position", "profile-resume", "confirmed"],
+        reason: "eestekhdam_profile_resume_used",
+      };
+    }
+    const counts = await storedFileCounts();
     return {
       ok: false,
       ranSteps: ["session", "upload"],
-      reason: `eestekhdam_apply_failed: ${detail}${cvs === null ? "" : ` [cvs=${cvs}]`}`,
+      reason: `eestekhdam_file_limit_reached: ${detail}${counts}`,
     };
   }
   return { ok: true, ranSteps: ["session", "position", "upload", "confirmed"] };
