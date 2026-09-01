@@ -412,7 +412,12 @@ export function buildSearchUrl(
   if (typeof prefs.minSalary === "number" && prefs.minSalary > 0) {
     params.set("filters[sal_min]", String(prefs.minSalary));
   }
-  params.set("sort", prefs.sort?.trim() || "published_at_desc");
+  // Jobinja's parameter is `sort_by`. `sort` is accepted and silently ignored —
+  // the response is byte-identical to sending no sort at all. That mattered far
+  // more than ordering: discovery stops paginating once a page contains anything
+  // older than the age cutoff, so an UNSORTED first page ended discovery after
+  // one page and the newest jobs were never seen.
+  params.set("sort_by", prefs.sort?.trim() || "published_at_desc");
   if (page > 1) {
     params.set("page", String(page));
   }

@@ -161,10 +161,12 @@ export function buildJobinjaPreviewUrl(filters: PreviewFilters): string {
   if (typeof filters.minSalary === "number" && filters.minSalary > 0) {
     params.set("filters[sal_min]", String(filters.minSalary));
   }
+  // `sort_by`, not `sort` — Jobinja ignores the latter. Kept in step with
+  // buildSearchUrl; a test asserts these two stay identical.
   if (filters.sort && filters.sort.trim().length > 0) {
-    params.set("sort", filters.sort.trim());
+    params.set("sort_by", filters.sort.trim());
   } else {
-    params.set("sort", DEFAULT_SORT);
+    params.set("sort_by", DEFAULT_SORT);
   }
 
   url.search = params.toString();

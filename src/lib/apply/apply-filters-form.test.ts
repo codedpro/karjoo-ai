@@ -68,7 +68,9 @@ describe("buildJobinjaPreviewUrl آینه‌ی buildSearchUrl است", () => {
     expect(url.searchParams.getAll("filters[job_types][]")).toEqual(["is_fulltime"]);
     expect(url.searchParams.get("filters[remote]")).toBe("1");
     expect(url.searchParams.get("filters[sal_min]")).toBe("20000000");
-    expect(url.searchParams.get("sort")).toBe("salary_from_desc");
+    // `sort_by` is the name Jobinja honours; `sort` is silently ignored.
+    expect(url.searchParams.get("sort_by")).toBe("salary_from_desc");
+    expect(url.searchParams.has("sort")).toBe(false);
   });
 });
 
