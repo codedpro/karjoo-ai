@@ -112,9 +112,15 @@ export async function POST(request: Request): Promise<Response> {
         throw error;
       }
       await releaseStaleExtensionLeases(userId);
-      const allowedBoards = enabledApplyBoards(await readApplyFilters(userId));
-      if (allowedBoards.length === 0) {
+      const enabled = enabledApplyBoards(await readApplyFilters(userId));
+      // Boards the runner parked after repeated refusals: skip them, keep the rest.
+      const parked = new Set(body.excludeBoards ?? []);
+      const allowedBoards = enabled.filter((board) => !parked.has(board));
+      if (enabled.length === 0) {
         return json({ count: 0, items: [], reason: "providers_paused" });
+      }
+      if (allowedBoards.length === 0) {
+        return json({ count: 0, items: [], reason: "all_boards_parked" });
       }
       // Claim FIRST. Generating a tailored resume before every claim made the
       // extension wait on an AI call for each application even when resumes were

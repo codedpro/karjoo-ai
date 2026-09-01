@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -117,5 +118,28 @@ describe("a listing that will not tailor must not halt the queue", () => {
 
   it("still stops eventually, so a systemic failure is visible", () => {
     expect(Number.isFinite(RESUME_FAILURE_STREAK_LIMIT)).toBe(true);
+  });
+});
+
+describe("a failing board is parked, not the whole run", () => {
+  const runner = readFileSync("src/background/auto-apply.ts", "utf8");
+
+  it("parks the board and keeps claiming for the others", () => {
+    // One board refusing everything used to block the run, so e-estekhdam's
+    // outage also stopped Jobinja and IranTalent, which were working.
+    expect(runner).toContain("parkedBoards.add(item.board)");
+    expect(runner).toContain("api.claimQueue(1, executorId, [...parkedBoards])");
+  });
+
+  it("no longer blocks the run on a single board's refusals", () => {
+    const streakBlock = runner.slice(
+      runner.indexOf("BOARD_FAILURE_STREAK_LIMIT) {"),
+      runner.indexOf("BOARD_FAILURE_STREAK_LIMIT) {") + 400,
+    );
+    expect(streakBlock).not.toContain('action: "block"');
+  });
+
+  it("stops cleanly only when every board is parked", () => {
+    expect(runner).toContain('claim.reason === "all_boards_parked"');
   });
 });

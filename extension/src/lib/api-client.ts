@@ -81,7 +81,8 @@ interface ServerClaimResponse {
     | "disabled"
     | "quota_exceeded"
     | "tailored_resume_generation_failed"
-    | "tailored_resume_missing";
+    | "tailored_resume_missing"
+    | "all_boards_parked";
   /**
    * Why the preparation failed, when the server knows. `ai_maintenance` means the
    * platform's monthly AI budget is spent — systemic, so retrying or skipping to
@@ -376,6 +377,7 @@ export class KarjooApi {
   async claimQueue(
     limit?: number,
     executorId?: string,
+    excludeBoards?: string[],
   ): Promise<{
     items: ApplyQueueItem[];
     reason?: ServerClaimResponse["reason"];
@@ -384,6 +386,7 @@ export class KarjooApi {
     const body = {
       ...(typeof limit === "number" ? { limit } : {}),
       ...(executorId ? { executorId } : {}),
+      ...(excludeBoards?.length ? { excludeBoards } : {}),
     };
     const res = await this.request<ServerClaimResponse>("/api/apply-queue/claim", {
       method: "POST",

@@ -72,6 +72,17 @@ export const applyQueueClaimBodySchema = z
     limit: z.coerce.number().int().min(1).max(25).default(5),
     /** Browser instance that owns a background run. Omitted only by legacy/manual clients. */
     executorId: z.string().uuid().optional(),
+    /**
+     * Boards the runner has parked for the rest of this run.
+     *
+     * A board that has refused several submissions in a row is telling us to
+     * stop; the others are usually fine. Without this the runner could only stop
+     * everything, so one board's outage halted the whole queue.
+     */
+    excludeBoards: z
+      .array(z.enum(["jobinja", "jobvision", "e-estekhdam", "irantalent"]))
+      .max(4)
+      .optional(),
   })
   .strict()
   .default({ limit: 5 });

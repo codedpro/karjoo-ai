@@ -304,6 +304,8 @@ async function discoverAndDrain(
   let sessionFailureStreak = 0;
   let resumeFailureStreak = 0;
   const boardFailureStreak = new Map<string, number>();
+  /** Boards parked for the rest of this run after repeated refusals. */
+  const parkedBoards = new Set<string>();
   for (;;) {
     if (options.aborted()) {
       return record({ ranAt, outcome: "disabled", submitted, failed });
@@ -317,7 +319,21 @@ async function discoverAndDrain(
       executorId,
       progress: { stage: "claiming", discovered, submitted, failed, lastDiscoveryAt },
     });
-    const claim = await api.claimQueue(1, executorId);
+    const claim = await api.claimQueue(1, executorId, [...parkedBoards]);
+    if (claim.reason === "all_boards_parked") {
+      await api.mutateExecutionRun({
+        action: "progress",
+        executorId,
+        progress: { stage: "waiting", discovered, submitted, failed, lastDiscoveryAt },
+      });
+      return record({
+        ranAt,
+        outcome: submitted > 0 ? "applied" : "empty",
+        submitted,
+        failed,
+        message: "all_boards_parked",
+      });
+    }
     if (
       claim.reason === "tailored_resume_generation_failed" ||
       claim.reason === "tailored_resume_missing"
@@ -424,16 +440,15 @@ async function discoverAndDrain(
     if (result.ok && !result.alreadyApplied) submitted += 1;
     else if (!result.ok) failed += 1;
 
-    // The board is refusing everything we send it. Keep going and we are just
-    // hammering it with submissions it has already rejected.
+    // The board is refusing everything we send it. Park THAT board for the rest
+    // of this run and carry on with the others — stopping the whole run meant one
+    // board's outage also halted the boards that were working fine.
     if ((boardFailureStreak.get(item.board) ?? 0) >= BOARD_FAILURE_STREAK_LIMIT) {
-      const reason = result.reason ?? `${item.board}_repeated_failures`;
-      await api.mutateExecutionRun({ action: "block", executorId, reason });
+      parkedBoards.add(item.board);
       await notify(
         "ارسال به این سایت متوقف شد",
-        "چند درخواست پشت‌سرهم رد شد. ممکن است به سقف روزانهٔ همان سایت رسیده باشید. صف حفظ شده است.",
+        `چند درخواست پشت‌سرهم در ${item.board} رد شد. بقیهٔ سایت‌ها ادامه می‌دهند و صف حفظ شده است.`,
       );
-      return record({ ranAt, outcome: "error", submitted, failed, message: reason });
     }
 
     // The session, not the ad, is the problem — stop before the queue is spent.
