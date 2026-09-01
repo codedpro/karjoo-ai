@@ -48,6 +48,7 @@ import {
   registerAutoApplyAlarmListener,
   getRunOverview,
   mutateRun,
+  restartAfterFiltersChanged,
   runAutoApplyTick,
   setRunBackground,
 } from "@ext/background/auto-apply";
@@ -436,8 +437,14 @@ async function handleGetApplyFilters(): Promise<{ filters: ApplyFilters; preview
 
 async function handleSaveApplyFilters(
   filters: Omit<ApplyFilters, "aiFilterEnabled">,
-): Promise<{ filters: ApplyFilters; previewUrl: string }> {
-  return (await apiFromStorage()).saveApplyFilters(filters);
+): Promise<{
+  filters: ApplyFilters;
+  previewUrl: string;
+  queueReset?: { removed: number; boards: string[] };
+}> {
+  const saved = await (await apiFromStorage()).saveApplyFilters(filters);
+  if (saved.queueReset?.boards.length) restartAfterFiltersChanged();
+  return saved;
 }
 
 async function handleGetJobinjaCategories(): Promise<JobinjaCategory[]> {

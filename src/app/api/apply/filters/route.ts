@@ -20,12 +20,14 @@ import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/htt
 import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { applyFiltersInputSchema } from "@/lib/apply/apply-filters-form";
 import {
+  changedApplyFilterBoards,
   readApplyFilters,
   toJobPreferences,
   writeApplyFilters,
   type ApplyFilters,
 } from "@/lib/apply/filters";
 import { buildSearchUrl } from "@/lib/apply/boards/jobinja";
+import { invalidatePendingQueueForFilters } from "@/lib/apply/queue-refilter";
 
 // به DB و node API (cookies) دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -48,8 +50,11 @@ function previewUrlFor(filters: ApplyFilters): string {
 }
 
 /** بدنه‌ی پاسخ (GET/PUT) — فیلترهای مؤثر + URLِ جست‌وجوی هدف. */
-function filtersResponse(filters: ApplyFilters) {
-  return json({ filters, previewUrl: previewUrlFor(filters) });
+function filtersResponse(
+  filters: ApplyFilters,
+  queueReset?: { removed: number; boards: string[] },
+) {
+  return json({ filters, previewUrl: previewUrlFor(filters), ...(queueReset ? { queueReset } : {}) });
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -101,10 +106,14 @@ export async function PUT(request: Request): Promise<Response> {
       },
     };
 
+    const changedBoards = changedApplyFilterBoards(current, next);
+    // Clear old automatic tasks before persisting. If the profile write ever
+    // fails, the safe outcome is an empty queue, never jobs from stale filters.
+    const queueReset = await invalidatePendingQueueForFilters(user.id, changedBoards);
     const { filters } = await writeApplyFilters(user.id, next, {
       fallbackFullName: user.fullName ?? user.name ?? undefined,
     });
 
-    return filtersResponse(filters);
+    return filtersResponse(filters, queueReset);
   });
 }

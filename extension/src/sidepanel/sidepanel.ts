@@ -818,7 +818,11 @@ $("filtersForm").addEventListener("change", () => { filtersDirty = true; });
 $("filtersForm").addEventListener("submit", async (event) => {
   event.preventDefault(); setBusy(true);
   try {
-    const response = await send<{ filters: ApplyFilters; previewUrl: string }>({
+    const response = await send<{
+      filters: ApplyFilters;
+      previewUrl: string;
+      queueReset?: { removed: number; boards: string[] };
+    }>({
       type: "SAVE_APPLY_FILTERS", filters: collectFilters(),
     });
     filtersState = response.filters;
@@ -826,7 +830,9 @@ $("filtersForm").addEventListener("submit", async (event) => {
     filtersDirty = false;
     renderCategories();
     await refreshProviders(true);
-    $("filterSaved").textContent = "ذخیره شد";
+    $("filterSaved").textContent = (response.queueReset?.removed ?? 0) > 0
+      ? `ذخیره شد · ${response.queueReset!.removed.toLocaleString("fa-IR")} مورد قدیمی حذف شد`
+      : "ذخیره شد";
     setTimeout(() => { $("filterSaved").textContent = ""; }, 2500);
   } catch (error) { showError(error); } finally { setBusy(false); }
 });

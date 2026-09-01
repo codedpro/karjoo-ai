@@ -5,11 +5,65 @@ import { describe, expect, it } from "vitest";
 
 import {
   EMPTY_APPLY_FILTERS,
+  changedApplyFilterBoards,
   enabledApplyBoards,
   mergeApplyFilters,
   parseApplyFilters,
   toJobPreferences,
 } from "@/lib/apply/filters";
+
+describe("changedApplyFilterBoards", () => {
+  it("returns only the provider whose targeting changed", () => {
+    const next = {
+      ...EMPTY_APPLY_FILTERS,
+      boardFilters: {
+        ...EMPTY_APPLY_FILTERS.boardFilters,
+        jobvision: {
+          ...EMPTY_APPLY_FILTERS.boardFilters.jobvision,
+          enabled: true,
+          categoryKeys: ["software"],
+        },
+      },
+    };
+    expect(changedApplyFilterBoards(EMPTY_APPLY_FILTERS, next)).toEqual(["jobvision"]);
+  });
+
+  it("ignores selection order and non-target queue limits", () => {
+    const current = {
+      ...EMPTY_APPLY_FILTERS,
+      dailyLimit: 10,
+      boardFilters: {
+        ...EMPTY_APPLY_FILTERS.boardFilters,
+        irantalent: {
+          ...EMPTY_APPLY_FILTERS.boardFilters.irantalent,
+          categoryKeys: ["web", "marketing"],
+        },
+      },
+    };
+    const next = {
+      ...current,
+      dailyLimit: 100,
+      boardFilters: {
+        ...current.boardFilters,
+        irantalent: {
+          ...current.boardFilters.irantalent,
+          categoryKeys: ["marketing", "web"],
+        },
+      },
+    };
+    expect(changedApplyFilterBoards(current, next)).toEqual([]);
+  });
+
+  it("invalidates every provider when maximum posting age changes", () => {
+    const next = { ...EMPTY_APPLY_FILTERS, maxAgeDays: 14 };
+    expect(changedApplyFilterBoards(EMPTY_APPLY_FILTERS, next)).toEqual([
+      "jobinja",
+      "jobvision",
+      "e-estekhdam",
+      "irantalent",
+    ]);
+  });
+});
 
 describe("enabledApplyBoards", () => {
   it("returns only providers enabled in the server-authoritative filters", () => {

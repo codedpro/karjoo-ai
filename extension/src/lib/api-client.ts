@@ -407,8 +407,13 @@ export class KarjooApi {
   async saveApplyFilters(filters: Omit<ApplyFilters, "aiFilterEnabled">): Promise<{
     filters: ApplyFilters;
     previewUrl: string;
+    queueReset?: { removed: number; boards: string[] };
   }> {
-    return this.request<{ filters: ApplyFilters; previewUrl: string }>("/api/apply/filters", {
+    return this.request<{
+      filters: ApplyFilters;
+      previewUrl: string;
+      queueReset?: { removed: number; boards: string[] };
+    }>("/api/apply/filters", {
       method: "PUT",
       body: JSON.stringify(filters),
     });

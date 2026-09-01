@@ -87,6 +87,36 @@ export function enabledApplyBoards(filters: ApplyFilters): ActiveApplyBoard[] {
   );
 }
 
+function sorted(values: readonly string[]): string[] {
+  return [...values].sort((a, b) => a.localeCompare(b));
+}
+
+function boardTargetSignature(filter: BoardFilter): string {
+  return JSON.stringify({
+    enabled: filter.enabled,
+    categoryKeys: sorted(filter.categoryKeys),
+    cities: sorted(filter.cities),
+    employmentTypeKeys: sorted(filter.employmentTypeKeys),
+    remoteOnly: filter.remoteOnly,
+    minSalary: filter.minSalary ?? null,
+    sort: filter.sort ?? null,
+  });
+}
+
+/** Boards whose saved targeting changed enough to make their pending queue stale. */
+export function changedApplyFilterBoards(
+  current: ApplyFilters,
+  next: ApplyFilters,
+): ActiveApplyBoard[] {
+  const boards = Object.keys(next.boardFilters) as ActiveApplyBoard[];
+  if (current.maxAgeDays !== next.maxAgeDays) return boards;
+  return boards.filter(
+    (board) =>
+      boardTargetSignature(current.boardFilters[board]) !==
+      boardTargetSignature(next.boardFilters[board]),
+  );
+}
+
 function emptyBoardFilter(enabled = false): BoardFilter {
   return { enabled, categoryKeys: [], cities: [], employmentTypeKeys: [], remoteOnly: false };
 }

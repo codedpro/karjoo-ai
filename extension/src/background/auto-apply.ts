@@ -106,6 +106,16 @@ export function abortActiveCycle(): void {
   cycleGeneration += 1;
 }
 
+/** Stop work based on old filters, then force a fresh discovery/drain pass. */
+export function restartAfterFiltersChanged(): void {
+  abortActiveCycle();
+  const previous = activeCycle;
+  void (async () => {
+    if (previous) await previous.catch(logTickFailure);
+    await runAutoApplyTick(true);
+  })().catch(logTickFailure);
+}
+
 export async function runAutoApplyTick(force = false): Promise<AutoApplyStatus> {
   if (activeCycle) return activeCycle;
   activeCycle = runCycle(force).finally(() => { activeCycle = null; });
@@ -124,6 +134,18 @@ const DISCOVERY_BUDGET_MS = 45_000;
 
 /** Listings one board may collect in a single pass. */
 const DISCOVERY_LISTING_CEILING = 300;
+
+export function discoveryIsDue(input: {
+  force: boolean;
+  queueCount: number;
+  lastDiscoveryAt: number;
+  now?: number;
+}): boolean {
+  if (input.force) return true;
+  if (input.queueCount >= DISCOVERY_QUEUE_CEILING) return false;
+  return !input.lastDiscoveryAt ||
+    (input.now ?? Date.now()) - input.lastDiscoveryAt >= 10 * 60_000;
+}
 
 async function runCycle(force: boolean): Promise<AutoApplyStatus> {
   const ranAt = Date.now();
@@ -146,13 +168,14 @@ async function runCycle(force: boolean): Promise<AutoApplyStatus> {
     // A deep queue means discovery is not what this user needs — applying is.
     // Discovering anyway is what starved the apply loop: a board with thousands
     // of live ads kept every tick busy paginating while 6k tasks sat pending.
-    const queueIsDeep = Number(overview.counts.queued ?? 0) >= DISCOVERY_QUEUE_CEILING;
     return discoverAndDrain(api, executorId, {
       aborted: () => cycleGeneration !== generation,
       backgroundEnabled: overview.run.backgroundEnabled,
-      discoverDue:
-        !queueIsDeep &&
-        (force || !lastDiscoveryAt || Date.now() - lastDiscoveryAt >= 10 * 60_000),
+      discoverDue: discoveryIsDue({
+        force,
+        queueCount: Number(overview.counts.queued ?? 0),
+        lastDiscoveryAt,
+      }),
       lastDiscoveryAt,
     });
   } catch (error) {
@@ -278,6 +301,7 @@ async function discoverAndDrain(
     lastDiscoveryAt = Date.now();
   }
 
+  let sessionFailureStreak = 0;
   for (;;) {
     if (options.aborted()) {
       return record({ ranAt, outcome: "disabled", submitted, failed });
@@ -349,6 +373,8 @@ async function discoverAndDrain(
       lastDiscoveryAt,
     });
     const skipped = result.alreadyApplied || (!result.ok && isSkippableReason(result.reason));
+    sessionFailureStreak =
+      !result.ok && isSessionLevelReason(result.reason) ? sessionFailureStreak + 1 : 0;
     const report = buildApplyResultReport({
       id: item.id,
       status: skipped ? "skipped" : result.ok ? "submitted" : "failed",
@@ -358,6 +384,17 @@ async function discoverAndDrain(
     await api.reportResult(report, executorId);
     if (result.ok && !result.alreadyApplied) submitted += 1;
     else if (!result.ok) failed += 1;
+
+    // The session, not the ad, is the problem — stop before the queue is spent.
+    if (sessionFailureStreak >= SESSION_FAILURE_STREAK_LIMIT) {
+      const reason = result.reason ?? "login_required";
+      await api.mutateExecutionRun({ action: "block", executorId, reason });
+      await notify(
+        "اپلای متوقف شد",
+        "ورود به سایت کاریابی لازم است. وارد شوید و دوباره «شروع» را بزنید؛ صف حفظ شده است.",
+      );
+      return record({ ranAt, outcome: "error", submitted, failed, message: reason });
+    }
     await new Promise((resolve) => setTimeout(resolve, politenessDelayMs()));
   }
 }
@@ -476,13 +513,38 @@ async function applyOne(
 }
 
 /**
+ * A skippable reason that is about the SESSION rather than the ad.
+ *
+ * Skipping these is right for one job — the next ad may be on a board we are
+ * still signed into. But if they keep coming back, the session itself is gone,
+ * and skipping onward would march through thousands of queued tasks marking each
+ * one skipped and pinging the board for nothing. `SESSION_FAILURE_STREAK_LIMIT`
+ * is the safety valve: a few in a row ends the run instead of burning the queue.
+ */
+export function isSessionLevelReason(reason?: string): boolean {
+  return Boolean(
+    reason &&
+      /(login_required|captcha_required|security_(check|challenge)|session_incomplete|resume_setup_required|account_unverified)/.test(
+        reason,
+      ),
+  );
+}
+
+/** Consecutive session-level skips that mean "stop", not "keep skipping". */
+export const SESSION_FAILURE_STREAK_LIMIT = 3;
+
+/**
  * Conditions that cannot be completed automatically are terminal for this job,
  * not for the queue. Record them as skipped and immediately claim the next task.
+ *
+ * A skip must not consume a retry, which is why a closed or already-applied ad
+ * belongs here: retrying it can never succeed, and leaving it as "failed" sent
+ * the same dead listing round the queue again and again.
  */
 export function isSkippableReason(reason?: string): boolean {
   return Boolean(
     reason &&
-      /(login_required|captcha_required|security_(check|challenge)|form_unavailable|position_required|external_form_required|session_incomplete|resume_setup_required|account_unverified|screening_questions_required|relocation_confirmation_required|manual_action_required)/.test(
+      /(login_required|captcha_required|security_(check|challenge)|form_unavailable|position_required|external_form_required|session_incomplete|resume_setup_required|account_unverified|screening_questions_required|relocation_confirmation_required|manual_action_required|job_unavailable|already_applied|gender_mismatch)/.test(
         reason,
       ),
   );
