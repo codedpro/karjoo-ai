@@ -36,8 +36,6 @@ import {
   AiFilterToggleCard,
 } from "@/components/dashboard/ai-filter-card";
 import {
-  ApplyFiltersEditor,
-  type InitialApplyFilters,
 } from "@/components/dashboard/apply-filters-editor";
 import {
   ApplyUsagePanel,
@@ -57,14 +55,20 @@ import {
   SkeletonList,
 } from "@/components/dashboard/ui";
 import { IconServer, IconPuzzle, IconArrowEnd } from "@/components/dashboard/icons";
-import { buildSearchUrl } from "@/lib/apply/boards/jobinja";
 import { getJobinjaCategories } from "@/lib/apply/boards/jobinja-categories";
-import { readApplyFilters, toJobPreferences } from "@/lib/apply/filters";
-import type { CategoryOption } from "@/lib/apply/apply-filters-form";
-import {
-  InterestsPickerSection,
-  InterestsPickerSkeleton,
-} from "@/components/dashboard/interests-section";
+import { readApplyFilters } from "@/lib/apply/filters";
+import { BoardTargetingEditor } from "@/components/dashboard/board-targeting-editor";
+import { BOARD_LABELS } from "@/components/dashboard/labels";
+import { getJobvisionCatalog } from "@/lib/apply/boards/jobvision-catalog";
+import { getEEstekhdamCatalog } from "@/lib/apply/boards/eestekhdam-catalog";
+import { getIranTalentCatalog } from "@/lib/apply/boards/irantalent-catalog";
+import { listConnectedBoards } from "@/components/dashboard/board-credentials-data";
+
+/** یک ردیفِ کاتالوگ، مشترک بینِ هر چهار سایت. */
+interface CatalogRow { key: string; label: string; englishLabel?: string }
+
+/** ترتیبِ نمایشِ سایت‌ها در ویرایشگر. */
+const ACTIVE_APPLY_BOARDS = ["jobinja", "jobvision", "e-estekhdam", "irantalent"] as const;
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (بدونِ force-dynamic؛ استریم با Suspense).
 export const runtime = "nodejs";
@@ -87,41 +91,23 @@ export default async function AutoApplyPage() {
         subtitle="این‌جا تعیین می‌کنی کارجو دنبالِ چه شغلی بگردد و با چه سرعتی به‌جای تو درخواست بفرستد."
       />
 
-      {/* ══════════ ۱ — زمینه‌های شغلی ══════════ */}
-      {/* پیش‌تر صفحه‌ی جدایی بود. هر دو بخش یک کلید را می‌نویسند (categorySlugs)، پس
-          کنارِ هم بودنشان تنها راهی است که کاربر ببیند دارد چه چیزی را جایگزین می‌کند. */}
+      {/* ══════════ ۱ — کجا و دنبالِ چه بگردیم؟ ══════════ */}
+      {/* یک ویرایشگر به‌جای دو تا. پیش‌تر «زمینه‌های شغلی» و «فیلترها» هر دو
+          categorySlugsِ جابینجا را می‌نوشتند و همدیگر را پاک می‌کردند، و سه سایتِ
+          دیگر اصلاً از داشبورد تنظیم‌شدنی نبودند. */}
       <section className="space-y-4">
         <LevelHeading
           icon="puzzle"
-          eyebrow="گامِ اول"
-          title="دنبالِ چه نوع کاری هستی؟"
-          subtitle="زمینه‌هایی که انتخاب می‌کنی، همان‌هایی است که کارجو در سایت‌ها دنبالشان می‌گردد."
+          eyebrow="هدف‌گیری"
+          title="کجا و دنبالِ چه شغلی بگردیم؟"
+          subtitle="برای هر سایت جداگانه انتخاب کن — دسته‌بندی هر سایت با بقیه فرق دارد."
         />
-        <Suspense fallback={<InterestsPickerSkeleton />}>
-          <InterestsPickerSection userId={userId} />
+        <Suspense fallback={<EditorSkeleton />}>
+          <TargetingSection userId={userId} />
         </Suspense>
-      </section>
-
-      {/* ══════════ ۲ — شرط‌های ارسال ══════════ */}
-      <section className="space-y-4">
-        <LevelHeading
-          icon="puzzle"
-          eyebrow="گامِ دوم"
-          title="کجا، با چه شرایطی، و با چه سرعتی؟"
-          subtitle="شهر، دورکاری، نوعِ همکاری و سقفِ ارسالِ روزانه."
-        />
-        <div className="grid gap-6 xl:grid-cols-3">
-          <div className="min-w-0 xl:col-span-2">
-            <Suspense fallback={<EditorSkeleton />}>
-              <FiltersSection userId={userId} />
-            </Suspense>
-          </div>
-          <div className="min-w-0">
-            <Suspense fallback={<AiFilterCardSkeleton />}>
-              <AiFilterToggleCard userId={userId} />
-            </Suspense>
-          </div>
-        </div>
+        <Suspense fallback={<AiFilterCardSkeleton />}>
+          <AiFilterToggleCard userId={userId} />
+        </Suspense>
       </section>
 
       {/* ══════════ ۳ — ارسال بدونِ مرورگرِ باز ══════════ */}
@@ -228,7 +214,9 @@ async function FleetSection({ userId }: { userId: string }) {
  * (پیش‌تر سه بخشِ جدا بودند که هرکدام همان تابع را صدا می‌زدند).
  */
 async function StatusRow({ userId }: { userId: string }) {
-  const data = await getAutoApplyDashboardData(userId);
+  // پنج ردیفِ آخر کافی است. با بیستتا، انتهای صفحه دیواری از کارت‌های تقریباً یکسان
+  // می‌شد و بلندیِ صفحه را بیش از دو برابر می‌کرد — همان چیزی که خواندنش را سخت کرده بود.
+  const data = await getAutoApplyDashboardData(userId, 5);
   return (
     <div className="grid gap-6 xl:grid-cols-3">
       <div className="min-w-0">
@@ -244,61 +232,59 @@ async function StatusRow({ userId }: { userId: string }) {
   );
 }
 
-async function FiltersSection({ userId }: { userId: string }) {
-  const [{ categories, source }, filters] = await Promise.all([
-    getJobinjaCategories(),
+/**
+ * هر چهار کاتالوگ + فیلترهای فعلی را موازی می‌خواند.
+ *
+ * کاتالوگِ هر سایت از خودِ همان سایت می‌آید و کلیدهایش با بقیه فرق دارد (slug،
+ * urlTitle، نامِ فارسی، شناسه‌ی عددی) — به همین دلیل انتخاب‌ها نمی‌توانند مشترک باشند.
+ * اگر کاتالوگِ سایتی نیامد، خالی می‌ماند و ویرایشگر همان را صادقانه می‌گوید؛ صفحه
+ * به‌خاطرِ یک سایتِ در دسترس‌نبودن خطا نمی‌دهد.
+ */
+async function TargetingSection({ userId }: { userId: string }) {
+  const empty = { categories: [], employmentTypes: [] };
+  const [filters, accounts, jobinja, jobvision, eestekhdam, irantalent] = await Promise.all([
     readApplyFilters(userId),
+    listConnectedBoards(userId),
+    getJobinjaCategories()
+      .then((r) => ({
+        categories: r.categories.map((c) => ({ key: c.slug, label: c.name, englishLabel: c.englishName })),
+        employmentTypes: JOBINJA_EMPLOYMENT_TYPES,
+      }))
+      .catch(() => empty),
+    getJobvisionCatalog().then(toCatalog).catch(() => empty),
+    getEEstekhdamCatalog().then(toCatalog).catch(() => empty),
+    getIranTalentCatalog().then(toCatalog).catch(() => empty),
   ]);
 
-  const categoryOptions: CategoryOption[] = categories.map((c) => ({
-    slug: c.slug,
-    name: c.name,
-    englishName: c.englishName,
-  }));
-
-  const initialFilters: InitialApplyFilters = {
-    categorySlugs: filters.categorySlugs,
-    cities: filters.cities,
-    jobTypes: filters.jobTypes,
-    remoteOnly: filters.remoteOnly,
-    ...(filters.minSalary === undefined ? {} : { minSalary: filters.minSalary }),
-    ...(filters.sort === undefined ? {} : { sort: filters.sort }),
-    paused: filters.paused,
-    ...(filters.dailyLimit === undefined ? {} : { dailyLimit: filters.dailyLimit }),
-    ...(filters.weeklyLimit === undefined ? {} : { weeklyLimit: filters.weeklyLimit }),
-  };
-
-  const initialPreviewUrl = buildSearchUrl(
-    toJobPreferences({
-      categorySlugs: initialFilters.categorySlugs,
-      cities: initialFilters.cities,
-      jobTypes: initialFilters.jobTypes,
-      remoteOnly: initialFilters.remoteOnly,
-      ...(initialFilters.minSalary === undefined ? {} : { minSalary: initialFilters.minSalary }),
-      ...(initialFilters.sort === undefined ? {} : { sort: initialFilters.sort }),
-      paused: initialFilters.paused === true,
-      ...(initialFilters.dailyLimit === undefined ? {} : { dailyLimit: initialFilters.dailyLimit }),
-      ...(initialFilters.weeklyLimit === undefined ? {} : { weeklyLimit: initialFilters.weeklyLimit }),
-    }),
-    1,
-  );
-
   return (
-    <ApplyFiltersEditor
-      categories={categoryOptions}
-      categoriesPartial={source === "fallback"}
-      initialFilters={initialFilters}
-      initialPreviewUrl={initialPreviewUrl}
+    <BoardTargetingEditor
+      boards={[...ACTIVE_APPLY_BOARDS]}
+      labels={BOARD_LABELS}
+      connected={accounts}
+      catalogs={{ jobinja, jobvision, "e-estekhdam": eestekhdam, irantalent }}
+      initial={filters.boardFilters as never}
+      globals={{
+        paused: filters.paused,
+        ...(filters.dailyLimit === undefined ? {} : { dailyLimit: filters.dailyLimit }),
+        maxAgeDays: filters.maxAgeDays,
+      }}
     />
   );
 }
 
-/* ─────────────────────────  سرسطرِ سطح (با ابرو)  ───────────────────────── */
+/** کاتالوگِ سرور → شکلی که ویرایشگر می‌خواهد. */
+function toCatalog(c: { categories: CatalogRow[]; employmentTypes: CatalogRow[] }) {
+  const map = (rows: CatalogRow[]) =>
+    rows.map((r) => ({ key: r.key, label: r.label, englishLabel: r.englishLabel }));
+  return { categories: map(c.categories), employmentTypes: map(c.employmentTypes) };
+}
 
-/**
- * سرسطرِ هر بخش — ابروی کوچکِ رنگی (آیکن + برچسب) روی عنوان و *یک* جمله‌ی توضیح.
- * زیرعنوان اختیاری است تا بخش‌هایی که خودشان گویا هستند مجبور به توضیح نشوند.
- */
+/** جابینجا نوعِ همکاری را از کاتالوگ نمی‌دهد؛ همان کلیدهای خودش ثابت است. */
+const JOBINJA_EMPLOYMENT_TYPES = [
+  { key: "is_fulltime", label: "تمام‌وقت" },
+  { key: "is_parttime", label: "پاره‌وقت" },
+];
+
 function LevelHeading({
   icon,
   eyebrow,

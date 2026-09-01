@@ -93,15 +93,45 @@ describe("no orphan pages", () => {
   });
 });
 
-describe("the merged targeting page", () => {
-  it("keeps job fields and filters together, because they write the same key", () => {
-    const source = readFileSync(join(DASHBOARD_DIR, "auto-apply/page.tsx"), "utf8");
-    expect(source).toContain("InterestsPickerSection");
-    expect(source).toContain("FiltersSection");
+describe("the targeting page", () => {
+  const page = readFileSync(join(DASHBOARD_DIR, "auto-apply/page.tsx"), "utf8");
+
+  it("configures every active board, not just Jobinja", () => {
+    // The old page exposed one shared set of filters, but each board keys its
+    // categories differently (slug / urlTitle / Persian name / numeric id), so a
+    // shared picker could only ever have driven one of them.
+    expect(page).toContain("BoardTargetingEditor");
+    for (const catalog of [
+      "getJobinjaCategories",
+      "getJobvisionCatalog",
+      "getEEstekhdamCatalog",
+      "getIranTalentCatalog",
+    ]) {
+      expect(page, catalog).toContain(catalog);
+    }
+  });
+
+  it("has exactly one thing that writes job categories", () => {
+    // Two writers is what made the old page lose a user's selection silently.
+    expect(page).not.toContain("InterestsPickerSection");
+    expect(page).not.toContain("ApplyFiltersEditor");
   });
 
   it("leaves the old interests URL working", () => {
     const source = readFileSync(join(DASHBOARD_DIR, "interests/page.tsx"), "utf8");
     expect(source).toContain('redirect("/dashboard/auto-apply")');
+  });
+});
+
+describe("per-board field support", () => {
+  it("only offers a field on the boards that actually apply it", async () => {
+    // Guards against re-adding a control that silently does nothing: discovery
+    // reads cities for jobinja/e-estekhdam only, and salary/sort for jobinja only.
+    const editor = readFileSync("src/components/dashboard/board-targeting-editor.tsx", "utf8");
+    const table = editor.slice(editor.indexOf("const SUPPORTS"), editor.indexOf("const SORT_OPTIONS"));
+    expect(table).toMatch(/jobinja:\s*\{\s*cities:\s*true,\s*salary:\s*true,\s*sort:\s*true/);
+    expect(table).toMatch(/"e-estekhdam":\s*\{\s*cities:\s*true,\s*salary:\s*false,\s*sort:\s*false/);
+    expect(table).toMatch(/jobvision:\s*\{\s*cities:\s*false/);
+    expect(table).toMatch(/irantalent:\s*\{\s*cities:\s*false/);
   });
 });

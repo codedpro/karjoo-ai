@@ -30,3 +30,12 @@ export async function readCredentialPanelData(userId: string) {
     credentials,
   };
 }
+
+/** سایت‌هایی که کاربر واقعاً وصل کرده — برای نمایشِ صادقانه‌ی وضعیت در هدف‌گیری. */
+export async function listConnectedBoards(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ board: boardAccounts.board, status: boardAccounts.status })
+    .from(boardAccounts)
+    .where(eq(boardAccounts.userId, userId));
+  return rows.filter((r) => r.status === "connected").map((r) => r.board as string);
+}
