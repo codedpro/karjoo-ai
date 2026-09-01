@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Karjoo — assisted apply (کارجو)",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Karjoo multi-board queue executor with synced filters, live progress, tailored PDFs, and browser-session apply for Jobinja, JobVision, e-estekhdam, and IranTalent.",
   "default_locale": "en",
   "icons": {

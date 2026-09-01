@@ -7,6 +7,7 @@ import {
   shouldCloseManagedTab,
   SESSION_FAILURE_STREAK_LIMIT,
   BOARD_FAILURE_STREAK_LIMIT,
+  RESUME_FAILURE_STREAK_LIMIT,
 } from "@ext/background/auto-apply";
 
 describe("discovery after filter changes", () => {
@@ -102,5 +103,19 @@ describe("board circuit breaker", () => {
     // anyone noticed — the fastest way to get an account restricted.
     expect(BOARD_FAILURE_STREAK_LIMIT).toBeGreaterThan(1);
     expect(BOARD_FAILURE_STREAK_LIMIT).toBeLessThanOrEqual(10);
+  });
+});
+
+describe("a listing that will not tailor must not halt the queue", () => {
+  it("tolerates a few failures before stopping, not the first one", () => {
+    // Observed live: 530 applications had gone out, then TWO listings whose
+    // resume generation failed blocked a queue of five thousand. The server
+    // already delays a failed task by 30 minutes, so the next tick moves on.
+    expect(RESUME_FAILURE_STREAK_LIMIT).toBeGreaterThan(1);
+    expect(RESUME_FAILURE_STREAK_LIMIT).toBeLessThanOrEqual(10);
+  });
+
+  it("still stops eventually, so a systemic failure is visible", () => {
+    expect(Number.isFinite(RESUME_FAILURE_STREAK_LIMIT)).toBe(true);
   });
 });

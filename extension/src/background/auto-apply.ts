@@ -302,6 +302,7 @@ async function discoverAndDrain(
   }
 
   let sessionFailureStreak = 0;
+  let resumeFailureStreak = 0;
   const boardFailureStreak = new Map<string, number>();
   for (;;) {
     if (options.aborted()) {
@@ -321,6 +322,25 @@ async function discoverAndDrain(
       claim.reason === "tailored_resume_generation_failed" ||
       claim.reason === "tailored_resume_missing"
     ) {
+      // One listing's resume failing is not a reason to stop thousands of others.
+      // The server already backs that task off for 30 minutes, so the next tick
+      // picks a different one. Only a run of failures means something systemic
+      // (no credit, AI down) that the user actually has to act on.
+      resumeFailureStreak += 1;
+      if (resumeFailureStreak < RESUME_FAILURE_STREAK_LIMIT) {
+        await api.mutateExecutionRun({
+          action: "progress",
+          executorId,
+          progress: { stage: "waiting", discovered, submitted, failed, lastDiscoveryAt },
+        });
+        return record({
+          ranAt,
+          outcome: submitted > 0 ? "applied" : "empty",
+          submitted,
+          failed,
+          message: claim.reason,
+        });
+      }
       await api.mutateExecutionRun({
         action: "block",
         executorId,
@@ -328,10 +348,11 @@ async function discoverAndDrain(
       });
       await notify(
         "ساخت رزومه متوقف شد",
-        "رزومهٔ اختصاصی آماده نشد. هیچ رزومه‌ای برای جابینجا ارسال نشد.",
+        "چند بار پشت‌سرهم رزومهٔ اختصاصی ساخته نشد. صف حفظ شده است.",
       );
       return record({ ranAt, outcome: "error", submitted, failed, message: claim.reason });
     }
+    resumeFailureStreak = 0;
     const item = claim.items[0];
     if (!item) {
       if (options.backgroundEnabled) {
@@ -559,6 +580,16 @@ export function isSessionLevelReason(reason?: string): boolean {
  * noticed. Stop, surface the board's own message, and let the user decide.
  */
 export const BOARD_FAILURE_STREAK_LIMIT = 5;
+
+/**
+ * Consecutive claims that could not produce a tailored resume before we stop.
+ *
+ * A single listing whose resume generation fails is normal — an odd job title,
+ * an AI hiccup — and the server already delays that task by 30 minutes so the
+ * next tick moves on to another. Blocking the whole run on the first one meant
+ * two bad listings could halt a queue of five thousand.
+ */
+export const RESUME_FAILURE_STREAK_LIMIT = 4;
 
 /** Consecutive session-level skips that mean "stop", not "keep skipping". */
 export const SESSION_FAILURE_STREAK_LIMIT = 3;
