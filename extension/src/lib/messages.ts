@@ -141,6 +141,7 @@ export interface SaveApplyFiltersMsg {
   type: "SAVE_APPLY_FILTERS";
   filters: Omit<ApplyFilters, "aiFilterEnabled">;
 }
+export interface GetExecutorIdMsg { type: "GET_EXECUTOR_ID" }
 export interface GetJobinjaCategoriesMsg { type: "GET_JOBINJA_CATEGORIES" }
 export interface GetBoardCatalogMsg {
   type: "GET_BOARD_CATALOG";
@@ -232,6 +233,7 @@ export type PopupToBackground =
   | SetRunBackgroundMsg
   | GetApplyFiltersMsg
   | SaveApplyFiltersMsg
+  | GetExecutorIdMsg
   | GetJobinjaCategoriesMsg
   | GetBoardCatalogMsg
   | RetryApplicationMsg

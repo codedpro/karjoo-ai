@@ -164,6 +164,7 @@ async function refresh(): Promise<void> {
       render(overview);
       if (activeView === "detail") renderDetail();
     }
+    if (!myExecutorId) void loadExecutorId();
     void refreshUpdateBanner();
     const providerInterval = providerMenuIsOpen() ? 5_000 : 15_000;
     if (providerStates.size === 0 || Date.now() - lastProviderRefreshAt >= providerInterval) {
@@ -206,18 +207,32 @@ function render(overview: ExtensionRunOverview): void {
   pill.textContent = stateLabels[run.state] ?? run.state;
   pill.className = `status-pill ${run.state}`;
   ($("backgroundToggle") as HTMLInputElement).checked = run.backgroundEnabled;
+  // "extension" alone does not mean THIS browser. Comparing the executor ids is
+  // the difference between an honest line and one that told a locked-out user
+  // they owned a run they could not touch.
+  const ownedHere = run.owner === "extension" && run.executorId === myExecutorId;
+  const ownedByOtherBrowser = run.owner === "extension" && !ownedHere;
   $("ownerLine").textContent = run.owner === "server"
     ? "صف اکنون روی سرور اجرا می‌شود. برای اجرا در مرورگر، مالکیت را منتقل کنید."
-    : run.owner === "extension"
+    : ownedHere
       ? "این مرورگر مالک اجرای صف است."
-      : "صف در حال حاضر مالک فعال ندارد.";
+      : ownedByOtherBrowser
+        ? "یک مرورگر دیگر مالک اجرای صف است. برای ادامه در همین مرورگر، «ادامه با افزونه» را بزنید."
+        : "صف در حال حاضر مالک فعال ندارد.";
   $("startBtn").classList.toggle(
     "hidden",
-    run.owner === "server" || (run.state === "running" && run.owner === "extension" && !stalled),
+    run.owner === "server" || ownedByOtherBrowser || (run.state === "running" && ownedHere && !stalled),
   );
-  $("pauseBtn").classList.toggle("hidden", run.state !== "running" || run.owner !== "extension");
-  $("stopBtn").classList.toggle("hidden", run.owner !== "extension");
-  $("takeoverBtn").classList.toggle("hidden", run.owner !== "server" || run.state === "completed");
+  // Pause and stop act on OUR run; offering them for someone else's was a lie.
+  $("pauseBtn").classList.toggle("hidden", run.state !== "running" || !ownedHere);
+  $("stopBtn").classList.toggle("hidden", !ownedHere && !stalled);
+  // Takeover is the way back in — from the server OR from another browser that
+  // has the run. Previously it appeared only for the server, so a run held by a
+  // second browser left the user with no control at all.
+  $("takeoverBtn").classList.toggle(
+    "hidden",
+    run.state === "completed" || !(run.owner === "server" || ownedByOtherBrowser),
+  );
 
   const alert = $("alert");
   const showAlert = run.state === "blocked" || run.owner === "server" || stalled;
@@ -518,6 +533,17 @@ async function action(actionName: "start" | "takeover" | "pause" | "stop"): Prom
  * is watched, and an old unpacked copy behaves exactly like a current one — you
  * cannot tell a fixed bug from an unfixed one without this line.
  */
+/** This browser's executor id — the only way to tell our run from another's. */
+let myExecutorId: string | null = null;
+
+async function loadExecutorId(): Promise<void> {
+  try {
+    myExecutorId = await send<string>({ type: "GET_EXECUTOR_ID" });
+  } catch {
+    myExecutorId = null;
+  }
+}
+
 async function refreshUpdateBanner(): Promise<void> {
   const banner = $("updateBanner");
   try {

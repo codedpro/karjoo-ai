@@ -111,8 +111,17 @@ export function reclaimableRunCondition(executorId: string, takeover: boolean) {
     eq(applyExecutionRuns.owner, "extension"),
     eq(applyExecutionRuns.executorId, executorId),
   );
+  // Takeover is an explicit "run it here instead" from the user, on their OWN
+  // run (the query is already scoped to userId). It must therefore also lift a
+  // run held by another BROWSER — otherwise a second browser holding the run
+  // left the user with no control at all and no way back in.
   return takeover
-    ? or(eq(applyExecutionRuns.owner, "server"), mine, eq(applyExecutionRuns.state, "blocked"))
+    ? or(
+        eq(applyExecutionRuns.owner, "server"),
+        eq(applyExecutionRuns.owner, "extension"),
+        mine,
+        eq(applyExecutionRuns.state, "blocked"),
+      )
     : or(
         isNull(applyExecutionRuns.owner),
         mine,

@@ -124,13 +124,25 @@ describe("the account file limit", () => {
     expect(isFileLimitRefusal("500 Internal Server Error")).toBe(false);
   });
 
-  it("reports the profile résumé when the tailored PDF could not be attached", () => {
+  it("never sends a different résumé in place of the tailored one", () => {
     const src = readFileSync("src/content/apply/eestekhdam.ts", "utf8");
-    // The retry must NOT carry a file, and must say so in the result.
-    expect(src).toContain("eestekhdam_profile_resume_used");
-    const fallback = src.slice(src.indexOf("const fallback = new FormData()"), src.indexOf("const retried"));
-    expect(fallback).not.toContain('append("file"');
-    expect(fallback).toContain('append("uuid", "")');
+    // Applying with the account's own CV would mean the employer received a
+    // résumé that was not written for their ad, recorded as an application.
+    expect(src).not.toContain("eestekhdam_profile_resume_used");
+    expect(src).toContain("eestekhdam_file_limit_reached");
+  });
+
+  it("fails rather than skips, so the ad is retried once space is freed", () => {
+    const src = readFileSync("src/content/apply/eestekhdam.ts", "utf8");
+    const block = src.slice(src.indexOf("eestekhdam_file_limit_reached") - 700);
+    expect(block).toContain("ok: false");
+    // A skip is terminal; this ad can succeed later, so it must stay queued.
+    expect(src).not.toMatch(/file_limit[^\n]*alreadyApplied/);
+  });
+
+  it("tells the user the one action that fixes it", () => {
+    const src = readFileSync("src/content/apply/eestekhdam.ts", "utf8");
+    expect(src).toContain("حذف کنید");
   });
 
   it("counts the collection that actually fills up", () => {

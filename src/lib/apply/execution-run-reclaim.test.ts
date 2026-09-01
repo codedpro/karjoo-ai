@@ -48,6 +48,21 @@ describe("reclaimableRunCondition", () => {
     expect(sqlFor(EXECUTOR, false)).not.toContain("'server'");
   });
 
+  it("takeover also lifts a run held by another browser", () => {
+    // Without this the panel could show a takeover button that always failed:
+    // a second browser holding the run locked the user out entirely.
+    const sql = sqlFor(EXECUTOR, true);
+    expect(sql).toContain("'extension'");
+    expect(sql.match(/'extension'/g)!.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a plain start still refuses a run another browser is actively running", () => {
+    const sql = sqlFor(EXECUTOR, false);
+    // `mine` still names 'extension', but only paired with this executor id.
+    expect(sql).toContain(EXECUTOR);
+    expect(sql).not.toContain("'running'");
+  });
+
   it("does not let a plain start seize a run another browser is actively running", () => {
     // A `running` run owned by a different executorId matches no branch: not null,
     // not mine, and not one of the parked states.

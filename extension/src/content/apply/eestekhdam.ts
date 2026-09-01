@@ -262,33 +262,24 @@ export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentAp
     }
 
     // The account cannot store another uploaded file. e-estekhdam caps them per
-    // account and exposes no way to delete one, so every future application
-    // would fail the same way — a tailored PDF simply cannot be attached again.
-    // Re-send using the CV already on the account (uuid "" = the main one),
-    // which is what a person hitting this limit would do. It is reported as the
-    // profile résumé, never as the tailored PDF we could not attach.
-    const fallback = new FormData();
-    fallback.append("jobId", String(jobId));
-    fallback.append("workId", String(workId));
-    fallback.append("uuid", "");
-    fallback.append("email", email);
-    if (coverLetter) fallback.append("description", coverLetter);
-    const retried = await jsonRequest(
-      `${API_ROOT}/ats/applicants/apply/${encodeURIComponent(String(jobId))}`,
-      { method: "POST", body: fallback },
-    );
-    if (retried.response.ok && record(retried.body).ok !== false) {
-      return {
-        ok: true,
-        ranSteps: ["session", "position", "profile-resume", "confirmed"],
-        reason: "eestekhdam_profile_resume_used",
-      };
-    }
+    // account and its client exposes no way to delete one — checked across the
+    // main bundle and all ten lazy chunks — so nothing here can free a slot.
+    //
+    // We do NOT fall back to the CV already on the account. Every application is
+    // supposed to carry the résumé written for that specific ad; sending a
+    // different one and calling it an application would misrepresent what the
+    // employer received. Fail instead, with the remedy in the reason.
+    //
+    // This is a hard failure, not a skip, deliberately: the task stays queued and
+    // succeeds later once space is freed, and the board circuit breaker parks
+    // e-estekhdam after a few so the other boards keep running.
     const counts = await storedFileCounts();
     return {
       ok: false,
       ranSteps: ["session", "upload"],
-      reason: `eestekhdam_file_limit_reached: ${detail}${counts}`,
+      reason:
+        `eestekhdam_file_limit_reached: سقف تعداد فایل‌های حساب شما در ای‌استخدام پر است — ` +
+        `از حساب خودتان در ای‌استخدام چند فایل قدیمی را حذف کنید تا رزومهٔ اختصاصی دوباره ارسال شود.${counts}`,
     };
   }
   return { ok: true, ranSteps: ["session", "position", "upload", "confirmed"] };

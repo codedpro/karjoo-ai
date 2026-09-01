@@ -33,6 +33,7 @@ import {
   sessionTokenKeys,
 } from "@ext/lib/board-detect";
 import { boardTabPatterns } from "@ext/lib/board-session";
+import { getOrCreateExecutorId } from "@ext/lib/storage";
 import { probeIranTalentIdentity } from "@ext/lib/irantalent-session";
 import {
   getApiOrigin,
@@ -724,6 +725,8 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
       return { ok: true, data: await handleGetApplyFilters() };
     case "SAVE_APPLY_FILTERS":
       return { ok: true, data: await handleSaveApplyFilters(msg.filters) };
+    case "GET_EXECUTOR_ID":
+      return { ok: true, data: await getOrCreateExecutorId() };
     case "GET_JOBINJA_CATEGORIES":
       return { ok: true, data: await handleGetJobinjaCategories() };
     case "GET_BOARD_CATALOG":
