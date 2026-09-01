@@ -22,14 +22,19 @@ export async function GET(
     if (!resume) return errorJson("رزومهٔ اختصاصی این آگهی آماده نیست.", 404);
 
     const bytes = await renderResumePdf(resume.html);
-    const fileName = resumeFileName(resume.fullName, resume.company);
-    const asciiName = fileName.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
+    // نامِ فایل حالا خودش ASCII و یکتاست، پس هر دو هدر یکی‌اند و افزونه هرچه بردارد
+    // همان نامِ امن است. پیش‌تر نسخه‌ی ASCII هر حرفِ فارسی را `_` می‌کرد و نتیجه‌اش
+    // ۲۸ خط‌تیره پشتِ‌هم بود — برای دو نامِ هم‌طول یکسان.
+    const fileName = resumeFileName(resume.fullName, resume.company, {
+      latinName: resume.latinName,
+      unique: resume.externalId,
+    });
 
     return new Response(new Uint8Array(bytes), {
       headers: {
         "content-type": "application/pdf",
         "content-length": String(bytes.byteLength),
-        "content-disposition": `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        "content-disposition": `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
         "cache-control": "private, no-store",
         "x-content-type-options": "nosniff",
       },

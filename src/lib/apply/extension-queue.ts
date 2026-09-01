@@ -262,6 +262,10 @@ export interface TaskTailoredResume {
   title: string | null;
   company: string | null;
   fullName: string;
+  /** نامِ لاتینِ اعلام‌شده‌ی کاربر، برای نامِ فایلِ ASCII. */
+  latinName: string | null;
+  /** شناسه‌ی آگهی — یکتاکننده‌ی نامِ فایل. */
+  externalId: string;
 }
 
 export async function getTaskTailoredResume(
@@ -276,6 +280,10 @@ export async function getTaskTailoredResume(
       title: resumes.title,
       company: jobListings.company,
       fullName: candidateProfiles.fullName,
+      // نامِ لاتینِ کاربر (اگر داده باشد) و شناسه‌ی آگهی: نامِ فایلِ آپلود باید ASCII و
+      // یکتا باشد، وگرنه دو آگهی از یک شرکت نامِ یکسان می‌گیرند.
+      latinName: sql<string | null>`${candidateProfiles.preferences} ->> 'fullNameLatin'`,
+      externalId: jobListings.externalId,
     })
     .from(tasks)
     .innerJoin(matches, eq(tasks.matchId, matches.id))

@@ -457,6 +457,7 @@ export async function buildResumeFileName(
       columns: { fullName: true },
     });
     if (!prof?.fullName) return null;
+    // همان قاعده‌ی مسیرِ افزونه: ASCII و یکتا، تا آپلود روی هیچ بک‌اندی نماند.
     return resumeFileName(prof.fullName, company ?? null);
   } catch {
     return null;

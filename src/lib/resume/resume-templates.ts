@@ -164,24 +164,63 @@ export function pickTemplate(pref: string | null | undefined, seed = ""): Resume
   return RESUME_TEMPLATE_IDS[h % RESUME_TEMPLATE_IDS.length]!;
 }
 
-/** نامِ فایلِ رزومه: «نام کامل _ نامِ شرکت» — بدونِ هیچ نشانه‌ای از تولیدِ خودکار. */
-export function resumeFileName(fullName: string, company?: string | null): string {
-  // بوردها اغلب نامِ شرکت را دوزبانه می‌دهند («وت‌پرو | VetPro»). برای نامِ فایل یک نسخه
-  // کافی است — لاتین را ترجیح می‌دهیم چون در همه‌ی سیستم‌عامل‌ها و ایمیل‌ها امن‌تر است.
+/**
+ * حروفِ فارسی/عربی → لاتین، فقط برای نامِ فایل.
+ *
+ * چرا لازم است: نامِ فایلی که به سایت آپلود می‌شود باید در هر سیستم‌فایل و هر بک‌اندی
+ * قابلِ ذخیره باشد. مسیرِ قبلی هر حرفِ غیرِASCII را با `_` جایگزین می‌کرد، پس
+ * «امیرحسین_نوری_نور_بیست_مهوین.pdf» می‌شد ۲۸ خط‌تیره پشتِ‌هم — نه خوانا، و برای دو
+ * نامِ هم‌طول **یکسان**. یعنی نامِ فایل هم بی‌معنا بود و هم می‌توانست تصادم کند.
+ */
+const FA_TO_LATIN: Record<string, string> = {
+  ا: "a", آ: "a", أ: "a", إ: "e", ب: "b", پ: "p", ت: "t", ث: "s", ج: "j", چ: "ch",
+  ح: "h", خ: "kh", د: "d", ذ: "z", ر: "r", ز: "z", ژ: "zh", س: "s", ش: "sh", ص: "s",
+  ض: "z", ط: "t", ظ: "z", ع: "a", غ: "gh", ف: "f", ق: "gh", ک: "k", ك: "k", گ: "g",
+  ل: "l", م: "m", ن: "n", و: "v", ه: "h", ة: "h", ی: "i", ي: "i", ئ: "i", ء: "",
+  "\u200c": " ",
+};
+
+/** PURE: هر رشته → یک ریشه‌ی ASCIIِ امن برای نامِ فایل (یا رشته‌ی خالی). */
+export function asciiFileStem(value: string): string {
+  const mapped = [...(value ?? "")]
+    .map((ch) => (FA_TO_LATIN[ch] !== undefined ? FA_TO_LATIN[ch] : ch))
+    .join("");
+  return mapped
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, " ")
+    .replace(/[\\/:*?"<>|]+/g, " ")
+    .replace(/[^A-Za-z0-9 ._-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/ /g, "_")
+    .replace(/_{2,}/g, "_")
+    .replace(/^[._-]+|[._-]+$/g, "");
+}
+
+/**
+ * نامِ فایلِ رزومه: «نام _ شرکت _ شناسه» — همیشه ASCII، همیشه یکتا، بدونِ هیچ نشانه‌ای
+ * از تولیدِ خودکار.
+ *
+ * `unique` عمداً بخشی از نام است: ای‌استخدام برای هر اپلای یک فایلِ تازه ذخیره می‌کند و
+ * API حذف ندارد، پس نامِ تکراری (مثلاً دو آگهی از یک شرکت) می‌تواند به تصادمِ ذخیره‌سازی
+ * بخورد. یک شناسه‌ی کوتاهِ همان آگهی این را برای همیشه می‌بندد و همچنان خوانا می‌ماند.
+ */
+export function resumeFileName(
+  fullName: string,
+  company?: string | null,
+  opts: { latinName?: string | null; unique?: string | null } = {},
+): string {
+  // بوردها اغلب نامِ شرکت را دوزبانه می‌دهند («وت‌پرو | VetPro»). یک نسخه کافی است.
   const pickOne = (v: string) => {
     const parts = v.split(/[|/–—]/).map((x) => x.trim()).filter(Boolean);
     if (parts.length < 2) return v;
     return parts.find((x) => /^[\x00-\x7F\s.&'-]+$/.test(x)) ?? parts[0]!;
   };
-  const clean = (v: string) =>
-    v
-      .replace(/[\\/:*?"<>|]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .replace(/ /g, "_");
-  const name = clean(fullName || "Resume");
-  const co = company ? clean(pickOne(company)) : "";
-  return co ? `${name}_${co}.pdf` : `${name}.pdf`;
+  const name = asciiFileStem(opts.latinName?.trim() || "") || asciiFileStem(fullName) || "Resume";
+  const co = company ? asciiFileStem(pickOne(company)) : "";
+  const tag = opts.unique ? asciiFileStem(opts.unique).slice(0, 8) : "";
+  return [name, co, tag].filter(Boolean).join("_") + ".pdf";
 }
 
 /* ──────────────────────────────  رندرها  ────────────────────────────────── */
