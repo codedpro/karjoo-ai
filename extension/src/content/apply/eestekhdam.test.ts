@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { executeEEstekhdamApply, failureDetail } from "@ext/content/apply/eestekhdam";
@@ -103,5 +104,23 @@ describe("failureDetail — why a submission was refused", () => {
 
   it("stays short enough to store on a task row", () => {
     expect(failureDetail(422, { message: "x".repeat(500) }).length).toBeLessThan(220);
+  });
+});
+
+describe("a file-saving refusal records how many CVs the account holds", () => {
+  it("asks the board only when the message points at file saving", () => {
+    const src = readFileSync("src/content/apply/eestekhdam.ts", "utf8");
+    expect(src).toContain("storedCvCount");
+    // Guard the trigger: counting on every failure would add a request per
+    // rejected application, and only the save error is worth explaining.
+    expect(src).toMatch(/ذخیره فایل\|save\.\*file\|file\.\*save/);
+    expect(src).toContain("cvs=");
+  });
+
+  it("degrades to the plain reason when the count cannot be read", () => {
+    const src = readFileSync("src/content/apply/eestekhdam.ts", "utf8");
+    // storedCvCount returns null on any failure, and null must not print.
+    expect(src).toContain("cvs === null ? \"\"");
+    expect(src).toContain("return null;");
   });
 });

@@ -152,6 +152,32 @@ function choosePosition(
   return { position: selected };
 }
 
+/**
+ * How many CVs the account already has stored, when the board will say.
+ *
+ * "خطا در زمان ذخیره فایل" arrives on a 400 with no further detail. Filename,
+ * file size and extension are all ruled out — the PDFs are ~50KB against a 10MB
+ * limit, and the uploads that DID succeed used the same Persian filenames. What
+ * fits the shape (four accepted, then every one refused) is an account-level
+ * limit on stored CVs, since every application uploads another one. The board
+ * lists them, so ask instead of guessing, and put the number in the reason.
+ */
+async function storedCvCount(): Promise<number | null> {
+  try {
+    const { response, body } = await jsonRequest(`${API_ROOT}/ats/cvs`);
+    if (!response.ok) return null;
+    const data = record(body).data ?? body;
+    if (Array.isArray(data)) return data.length;
+    const wrapped = record(data);
+    for (const key of ["items", "rows", "cvs"]) {
+      if (Array.isArray(wrapped[key])) return (wrapped[key] as unknown[]).length;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentApplyResult> {
   if (looksLikeChallenge(document.body?.innerText ?? "")) {
     return { ok: false, ranSteps: [], reason: "eestekhdam_captcha_required" };
@@ -222,10 +248,13 @@ export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentAp
     return { ok: false, ranSteps: ["session", "upload"], reason: "eestekhdam_captcha_required" };
   }
   if (!applied.response.ok || record(applied.body).ok === false) {
+    const detail = failureDetail(applied.response.status, applied.body);
+    // A file-saving refusal is the one worth counting stored CVs for.
+    const cvs = /ذخیره فایل|save.*file|file.*save/i.test(detail) ? await storedCvCount() : null;
     return {
       ok: false,
       ranSteps: ["session", "upload"],
-      reason: `eestekhdam_apply_failed: ${failureDetail(applied.response.status, applied.body)}`,
+      reason: `eestekhdam_apply_failed: ${detail}${cvs === null ? "" : ` [cvs=${cvs}]`}`,
     };
   }
   return { ok: true, ranSteps: ["session", "position", "upload", "confirmed"] };
