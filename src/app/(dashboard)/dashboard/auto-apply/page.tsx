@@ -53,6 +53,8 @@ import {
   SkeletonList,
 } from "@/components/dashboard/ui";
 import { IconServer, IconArrowEnd, IconTarget } from "@/components/dashboard/icons";
+import { QueueCleanupCard } from "@/components/dashboard/queue-cleanup-card";
+import { countPendingByBoard } from "@/lib/apply/queue-purge";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (بدونِ force-dynamic؛ استریم با Suspense).
 export const runtime = "nodejs";
@@ -85,6 +87,11 @@ export default async function AutoApplyPage() {
         <AiFilterToggleCard userId={userId} />
       </Suspense>
 
+      {/* تغییرِ فیلتر فقط کشفِ بعدی را عوض می‌کند؛ نوبتِ فعلی با فیلترِ قبلی پر شده. */}
+      <Suspense fallback={<SkeletonCard className="h-40" />}>
+        <QueueCleanupSection userId={userId} />
+      </Suspense>
+
       {/* ══════════ ۳ — ارسال بدونِ مرورگرِ باز ══════════ */}
       <section className="space-y-4">
         <LevelHeading
@@ -114,6 +121,11 @@ export default async function AutoApplyPage() {
  * رندر می‌شود و پنلِ سرورها اصلاً ساخته نمی‌شود — پیش‌تر کاربرِ Free دو کارتِ ارتقای
  * پشتِ‌سرِ‌هم می‌دید.
  */
+/** آگهی‌های در نوبت + راهِ خالی‌کردنشان (صف با فیلترِ همان لحظه پر شده است). */
+async function QueueCleanupSection({ userId }: { userId: string }) {
+  return <QueueCleanupCard initial={await countPendingByBoard(userId)} />;
+}
+
 async function ServerSection({ userId }: { userId: string }) {
   const data = await getServerAutoApplyCardData(userId);
 
