@@ -16,6 +16,7 @@ import {
   periodMonthOf,
 } from "@/lib/billing/ai-budget";
 import { AiMaintenanceError } from "@/lib/billing/errors";
+import { DEFAULT_AI_MONTHLY_BUDGET_USD } from "@/lib/env";
 import { appAiBudget, appSettings } from "@/db/schema";
 
 /** زمانِ ثابت برای تعیین‌پذیریِ ماه (UTC): ژوئنِ ۲۰۲۶. */
@@ -161,5 +162,32 @@ describe("assertAiAvailable", () => {
     const err = await assertAiAvailable(db, NOW, CAP).catch((e) => e);
     expect(err).toBeInstanceOf(AiMaintenanceError);
     expect((err as AiMaintenanceError).code).toBe("ai_maintenance");
+  });
+});
+
+describe("the internal monthly cap is off by default", () => {
+  it("does not halt AI on an estimated spend figure", () => {
+    // The cap compared the month's total against Karjoo's own price estimates,
+    // not real spend. On 2026-09-01 the internal meter read 2,105,279 toman while
+    // the actual 1xai wallet movement was 786,792 — and the product stopped
+    // itself on the fabricated number. 1xai computes and debits the real cost, so
+    // an empty wallet is the accurate guard; this soft cap is opt-in now.
+    expect(DEFAULT_AI_MONTHLY_BUDGET_USD).toBe(0);
+  });
+
+  it("still honours a cap the owner sets deliberately", async () => {
+    const { db } = makeFakeDb();
+    await incrementMonthUpstream(2_000_000, db, NOW);
+    const status = await maintenanceStatus(db, NOW, 1_000_000);
+    expect(status.capReached).toBe(true);
+    expect(status.inMaintenance).toBe(true);
+  });
+
+  it("treats a zero cap as unlimited, never as 'already exceeded'", async () => {
+    const { db } = makeFakeDb();
+    await incrementMonthUpstream(9_999_999, db, NOW);
+    const status = await maintenanceStatus(db, NOW, 0);
+    expect(status.capReached).toBe(false);
+    expect(status.inMaintenance).toBe(false);
   });
 });
