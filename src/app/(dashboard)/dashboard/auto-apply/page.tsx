@@ -36,8 +36,6 @@ import {
   AiFilterToggleCard,
 } from "@/components/dashboard/ai-filter-card";
 import {
-} from "@/components/dashboard/apply-filters-editor";
-import {
   ApplyUsagePanel,
   AutoApplyAuditPanel,
   ExtensionApplyPanel,
@@ -54,21 +52,7 @@ import {
   SkeletonCard,
   SkeletonList,
 } from "@/components/dashboard/ui";
-import { IconServer, IconPuzzle, IconArrowEnd } from "@/components/dashboard/icons";
-import { getJobinjaCategories } from "@/lib/apply/boards/jobinja-categories";
-import { readApplyFilters } from "@/lib/apply/filters";
-import { BoardTargetingEditor } from "@/components/dashboard/board-targeting-editor";
-import { BOARD_LABELS } from "@/components/dashboard/labels";
-import { getJobvisionCatalog } from "@/lib/apply/boards/jobvision-catalog";
-import { getEEstekhdamCatalog } from "@/lib/apply/boards/eestekhdam-catalog";
-import { getIranTalentCatalog } from "@/lib/apply/boards/irantalent-catalog";
-import { listConnectedBoards } from "@/components/dashboard/board-credentials-data";
-
-/** یک ردیفِ کاتالوگ، مشترک بینِ هر چهار سایت. */
-interface CatalogRow { key: string; label: string; englishLabel?: string }
-
-/** ترتیبِ نمایشِ سایت‌ها در ویرایشگر. */
-const ACTIVE_APPLY_BOARDS = ["jobinja", "jobvision", "e-estekhdam", "irantalent"] as const;
+import { IconServer, IconArrowEnd, IconTarget } from "@/components/dashboard/icons";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (بدونِ force-dynamic؛ استریم با Suspense).
 export const runtime = "nodejs";
@@ -88,32 +72,22 @@ export default async function AutoApplyPage() {
     <div className="space-y-10">
       <PageHeader
         title="اپلای خودکار"
-        subtitle="این‌جا تعیین می‌کنی کارجو دنبالِ چه شغلی بگردد و با چه سرعتی به‌جای تو درخواست بفرستد."
+        subtitle="اجرای خودکار، ظرفیت ارسال و وضعیت زنده‌ی درخواست‌ها از این‌جا کنترل می‌شود."
+        actions={
+          <ButtonLink href="/dashboard/profiles#targeting" variant="secondary">
+            <IconTarget className="h-4 w-4" />
+            تنظیم شغل‌های هدف
+          </ButtonLink>
+        }
       />
 
-      {/* ══════════ ۱ — کجا و دنبالِ چه بگردیم؟ ══════════ */}
-      {/* یک ویرایشگر به‌جای دو تا. پیش‌تر «زمینه‌های شغلی» و «فیلترها» هر دو
-          categorySlugsِ جابینجا را می‌نوشتند و همدیگر را پاک می‌کردند، و سه سایتِ
-          دیگر اصلاً از داشبورد تنظیم‌شدنی نبودند. */}
-      <section className="space-y-4">
-        <LevelHeading
-          icon="puzzle"
-          eyebrow="هدف‌گیری"
-          title="کجا و دنبالِ چه شغلی بگردیم؟"
-          subtitle="برای هر سایت جداگانه انتخاب کن — دسته‌بندی هر سایت با بقیه فرق دارد."
-        />
-        <Suspense fallback={<EditorSkeleton />}>
-          <TargetingSection userId={userId} />
-        </Suspense>
-        <Suspense fallback={<AiFilterCardSkeleton />}>
-          <AiFilterToggleCard userId={userId} />
-        </Suspense>
-      </section>
+      <Suspense fallback={<AiFilterCardSkeleton />}>
+        <AiFilterToggleCard userId={userId} />
+      </Suspense>
 
       {/* ══════════ ۳ — ارسال بدونِ مرورگرِ باز ══════════ */}
       <section className="space-y-4">
         <LevelHeading
-          icon="server"
           eyebrow="ارسالِ شبانه‌روزی"
           title="حتی وقتی مرورگرت بسته است"
           subtitle="کارجو روی سرورهای خودش و با حسابِ خودت درخواست می‌فرستد."
@@ -232,75 +206,19 @@ async function StatusRow({ userId }: { userId: string }) {
   );
 }
 
-/**
- * هر چهار کاتالوگ + فیلترهای فعلی را موازی می‌خواند.
- *
- * کاتالوگِ هر سایت از خودِ همان سایت می‌آید و کلیدهایش با بقیه فرق دارد (slug،
- * urlTitle، نامِ فارسی، شناسه‌ی عددی) — به همین دلیل انتخاب‌ها نمی‌توانند مشترک باشند.
- * اگر کاتالوگِ سایتی نیامد، خالی می‌ماند و ویرایشگر همان را صادقانه می‌گوید؛ صفحه
- * به‌خاطرِ یک سایتِ در دسترس‌نبودن خطا نمی‌دهد.
- */
-async function TargetingSection({ userId }: { userId: string }) {
-  const empty = { categories: [], employmentTypes: [] };
-  const [filters, accounts, jobinja, jobvision, eestekhdam, irantalent] = await Promise.all([
-    readApplyFilters(userId),
-    listConnectedBoards(userId),
-    getJobinjaCategories()
-      .then((r) => ({
-        categories: r.categories.map((c) => ({ key: c.slug, label: c.name, englishLabel: c.englishName })),
-        employmentTypes: JOBINJA_EMPLOYMENT_TYPES,
-      }))
-      .catch(() => empty),
-    getJobvisionCatalog().then(toCatalog).catch(() => empty),
-    getEEstekhdamCatalog().then(toCatalog).catch(() => empty),
-    getIranTalentCatalog().then(toCatalog).catch(() => empty),
-  ]);
-
-  return (
-    <BoardTargetingEditor
-      boards={[...ACTIVE_APPLY_BOARDS]}
-      labels={BOARD_LABELS}
-      connected={accounts}
-      catalogs={{ jobinja, jobvision, "e-estekhdam": eestekhdam, irantalent }}
-      initial={filters.boardFilters as never}
-      globals={{
-        paused: filters.paused,
-        ...(filters.dailyLimit === undefined ? {} : { dailyLimit: filters.dailyLimit }),
-        maxAgeDays: filters.maxAgeDays,
-      }}
-    />
-  );
-}
-
-/** کاتالوگِ سرور → شکلی که ویرایشگر می‌خواهد. */
-function toCatalog(c: { categories: CatalogRow[]; employmentTypes: CatalogRow[] }) {
-  const map = (rows: CatalogRow[]) =>
-    rows.map((r) => ({ key: r.key, label: r.label, englishLabel: r.englishLabel }));
-  return { categories: map(c.categories), employmentTypes: map(c.employmentTypes) };
-}
-
-/** جابینجا نوعِ همکاری را از کاتالوگ نمی‌دهد؛ همان کلیدهای خودش ثابت است. */
-const JOBINJA_EMPLOYMENT_TYPES = [
-  { key: "is_fulltime", label: "تمام‌وقت" },
-  { key: "is_parttime", label: "پاره‌وقت" },
-];
-
 function LevelHeading({
-  icon,
   eyebrow,
   title,
   subtitle,
 }: {
-  icon: "server" | "puzzle";
   eyebrow: string;
   title: string;
   subtitle?: string;
 }) {
-  const Icon = icon === "server" ? IconServer : IconPuzzle;
   return (
     <div className="max-w-2xl">
       <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
-        <Icon className="h-3.5 w-3.5" />
+        <IconServer className="h-3.5 w-3.5" />
         {eyebrow}
       </span>
       <h2 className="mt-2.5 text-balance text-xl font-extrabold tracking-tight sm:text-2xl">
@@ -351,30 +269,6 @@ function StatusRowSkeleton() {
         <Skeleton className="h-5 w-44" />
         <Skeleton className="mt-2 h-3.5 w-3/4" />
         <SkeletonList rows={2} className="mt-5" />
-      </div>
-    </div>
-  );
-}
-
-/** اسکلتِ ویرایشگرِ شرط‌ها — نوارِ اکشن + کارتِ پیش‌نمایش + کارتِ فرم. */
-function EditorSkeleton() {
-  return (
-    <div className="space-y-6" aria-hidden>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-xs">
-        <Skeleton className="h-4 w-40" />
-        <Skeleton className="h-9 w-32 rounded-full" />
-      </div>
-      <div className="rounded-2xl border border-brand/30 bg-brand/[0.06] p-6">
-        <Skeleton className="h-20 w-full rounded-xl" />
-      </div>
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
-        <Skeleton className="mb-4 h-4 w-40" />
-        <Skeleton className="h-10 w-full rounded-xl" />
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <Skeleton className="h-16 rounded-xl" />
-          <Skeleton className="h-16 rounded-xl" />
-          <Skeleton className="h-16 rounded-xl" />
-        </div>
       </div>
     </div>
   );

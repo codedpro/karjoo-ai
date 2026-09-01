@@ -73,7 +73,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
 
   const board = boards[active]!;
   const catalog = props.catalogs[active] ?? { categories: [], employmentTypes: [] };
@@ -89,7 +89,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
 
   function patch(next: Partial<BoardFilterState>) {
     setBoards((prev) => ({ ...prev, [active]: { ...prev[active]!, ...next } }));
-    setDone(false);
+    setDone(null);
   }
 
   function toggleKey(field: "categoryKeys" | "employmentTypeKeys", key: string) {
@@ -104,7 +104,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
   async function save() {
     setPending(true);
     setError(null);
-    setDone(false);
+    setDone(null);
     try {
       const res = await fetch("/api/apply/filters", {
         method: "PUT",
@@ -124,12 +124,20 @@ export function BoardTargetingEditor(props: TargetingProps) {
           boardFilters: boards,
         }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; filters?: unknown };
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        filters?: unknown;
+        queueReset?: { removed: number; boards: string[] };
+      };
       if (!res.ok) {
         setError(data.error ?? "ذخیره نشد. کمی بعد دوباره تلاش کنید.");
         return;
       }
-      setDone(true);
+      setDone(
+        data.queueReset && data.queueReset.removed > 0
+          ? `ذخیره شد؛ ${data.queueReset.removed.toLocaleString("fa-IR")} مورد قدیمی از صف حذف شد.`
+          : "ذخیره شد.",
+      );
     } catch {
       setError("اتصال برقرار نشد. اینترنت را بررسی کنید.");
     } finally {
@@ -138,7 +146,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
   }
 
   return (
-    <Card>
+    <Card padded>
       {/* ── ۱) کدام سایت؟ ─────────────────────────────────────────────── */}
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="سایت کاریابی">
         {props.boards.map((id) => {
@@ -154,12 +162,12 @@ export function BoardTargetingEditor(props: TargetingProps) {
               className={cn(
                 "rounded-xl border px-3 py-2 text-sm transition-colors",
                 isActive
-                  ? "border-white/25 bg-white/10 text-white"
-                  : "border-white/10 bg-white/[0.02] text-white/60 hover:text-white/90",
+                  ? "border-brand/40 bg-brand/10 text-foreground"
+                  : "border-border bg-background text-muted hover:border-foreground/20 hover:text-foreground",
               )}
             >
               {props.labels[id] ?? id}
-              <span className={cn("mr-2 text-xs", on ? "text-emerald-300" : "text-white/40")}>
+              <span className={cn("mr-2 text-xs", on ? "text-emerald-600 dark:text-emerald-400" : "text-muted")}>
                 {on ? "روشن" : "خاموش"}
               </span>
             </button>
@@ -169,7 +177,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
 
       <div className="mt-5 space-y-6">
         {/* ── ۲) این سایت روشن باشد؟ ─────────────────────────────────── */}
-        <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+        <label className="flex items-start gap-3 rounded-xl border border-border bg-background p-4">
           <input
             type="checkbox"
             className="mt-1"
@@ -180,7 +188,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
             <span className="block text-sm font-medium">
               کارجو در {props.labels[active]} برایم بگردد و درخواست بفرستد
             </span>
-            <span className="mt-1 block text-xs text-white/60">
+            <span className="mt-1 block text-xs text-muted">
               {props.connected.includes(active)
                 ? "این سایت متصل است."
                 : "هنوز وصل نشده — از صفحهٔ «اتصال‌ها» وصلش کنید وگرنه اجرا نمی‌شود."}
@@ -194,11 +202,11 @@ export function BoardTargetingEditor(props: TargetingProps) {
             <h3 className="text-sm font-medium">دسته‌های شغلی در {props.labels[active]}</h3>
             <Badge tone="muted">{board.categoryKeys.length} انتخاب</Badge>
           </div>
-          <p className="mb-3 text-xs text-white/60">
+          <p className="mb-3 text-xs text-muted">
             هر سایت دسته‌بندی خودش را دارد، پس انتخاب هر سایت جداگانه است.
           </p>
           {catalog.categories.length === 0 ? (
-            <p className="text-sm text-white/60">
+            <p className="text-sm text-muted">
               فهرست دسته‌های این سایت در دسترس نیست. بعداً دوباره تلاش کنید.
             </p>
           ) : (
@@ -208,11 +216,11 @@ export function BoardTargetingEditor(props: TargetingProps) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="جست‌وجوی دسته"
-                className="mb-3 w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm"
+                className="focus-ring mb-3 min-h-11 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
               />
               <div className="grid max-h-72 gap-1 overflow-y-auto pl-1 sm:grid-cols-2">
                 {visibleCategories.map((option) => (
-                  <label key={option.key} className="flex items-center gap-2 rounded-lg p-1.5 text-sm hover:bg-white/5">
+                  <label key={option.key} className="flex min-h-9 items-center gap-2 rounded-lg p-1.5 text-sm hover:bg-foreground/5">
                     <input
                       type="checkbox"
                       checked={board.categoryKeys.includes(option.key)}
@@ -233,7 +241,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
               <legend className="mb-2 text-sm font-medium">نوع همکاری</legend>
               <div className="flex flex-wrap gap-2">
                 {catalog.employmentTypes.map((option) => (
-                  <label key={option.key} className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-1.5 text-sm">
+                  <label key={option.key} className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm">
                     <input
                       type="checkbox"
                       checked={board.employmentTypeKeys.includes(option.key)}
@@ -257,7 +265,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
 
           {supports.cities ? (
             <label className="grid gap-1 text-sm sm:col-span-2">
-              <span className="text-white/70">شهرها</span>
+              <span className="text-muted">شهرها</span>
               <input
                 type="text"
                 value={board.cities.join("، ")}
@@ -267,20 +275,20 @@ export function BoardTargetingEditor(props: TargetingProps) {
                   })
                 }
                 placeholder="تهران، اصفهان"
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+                className="focus-ring min-h-11 rounded-xl border border-border bg-background px-3 py-2 outline-none"
               />
             </label>
           ) : null}
 
           {supports.salary ? (
             <label className="grid gap-1 text-sm">
-              <span className="text-white/70">حداقل حقوق (تومان)</span>
+              <span className="text-muted">حداقل حقوق (تومان)</span>
               <input
                 type="number"
                 min={0}
                 value={board.minSalary ?? ""}
                 onChange={(e) => patch({ minSalary: Number(e.target.value) || undefined })}
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+                className="focus-ring min-h-11 rounded-xl border border-border bg-background px-3 py-2 outline-none"
                 dir="ltr"
               />
             </label>
@@ -288,11 +296,11 @@ export function BoardTargetingEditor(props: TargetingProps) {
 
           {supports.sort ? (
             <label className="grid gap-1 text-sm">
-              <span className="text-white/70">ترتیب نتایج</span>
+              <span className="text-muted">ترتیب نتایج</span>
               <select
                 value={board.sort ?? "published_at_desc"}
                 onChange={(e) => patch({ sort: e.target.value })}
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+                className="focus-ring min-h-11 rounded-xl border border-border bg-background px-3 py-2 outline-none"
               >
                 {SORT_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -303,24 +311,24 @@ export function BoardTargetingEditor(props: TargetingProps) {
         </section>
 
         {/* ── ۵) تنظیم‌های مشترکِ همه‌ی سایت‌ها ───────────────────────── */}
-        <section className="grid gap-4 rounded-xl border border-white/10 bg-white/[0.02] p-4 sm:grid-cols-2">
+        <section className="grid gap-4 rounded-xl border border-border bg-background p-4 sm:grid-cols-2">
           <p className="text-sm font-medium sm:col-span-2">این‌ها برای همهٔ سایت‌ها یکی است</p>
           <label className="grid gap-1 text-sm">
-            <span className="text-white/70">حداکثر تعداد ارسال در روز</span>
+            <span className="text-muted">حداکثر تعداد ارسال در روز</span>
             <input
               type="number"
               min={0}
               value={globals.dailyLimit ?? ""}
               onChange={(e) => {
                 setGlobals((g) => ({ ...g, dailyLimit: Number(e.target.value) || undefined }));
-                setDone(false);
+                setDone(null);
               }}
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+              className="focus-ring min-h-11 rounded-xl border border-border bg-background px-3 py-2 outline-none"
               dir="ltr"
             />
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-white/70">آگهی‌های تازه‌تر از (روز)</span>
+            <span className="text-muted">آگهی‌های تازه‌تر از (روز)</span>
             <input
               type="number"
               min={1}
@@ -328,9 +336,9 @@ export function BoardTargetingEditor(props: TargetingProps) {
               value={globals.maxAgeDays}
               onChange={(e) => {
                 setGlobals((g) => ({ ...g, maxAgeDays: Number(e.target.value) || 45 }));
-                setDone(false);
+                setDone(null);
               }}
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+              className="focus-ring min-h-11 rounded-xl border border-border bg-background px-3 py-2 outline-none"
               dir="ltr"
             />
           </label>
@@ -340,7 +348,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
               checked={globals.paused}
               onChange={(e) => {
                 setGlobals((g) => ({ ...g, paused: e.target.checked }));
-                setDone(false);
+                setDone(null);
               }}
             />
             فعلاً هیچ آگهی تازه‌ای پیدا و صف نشود
@@ -351,8 +359,8 @@ export function BoardTargetingEditor(props: TargetingProps) {
           <Button type="button" onClick={() => void save()} disabled={pending}>
             {pending ? "در حال ذخیره…" : "ذخیره"}
           </Button>
-          {done ? <span className="text-sm text-emerald-300">ذخیره شد.</span> : null}
-          {error ? <span className="text-sm text-rose-300">{error}</span> : null}
+          {done ? <span className="text-sm text-emerald-600 dark:text-emerald-400">{done}</span> : null}
+          {error ? <span className="text-sm text-rose-600 dark:text-rose-400">{error}</span> : null}
         </div>
       </div>
     </Card>

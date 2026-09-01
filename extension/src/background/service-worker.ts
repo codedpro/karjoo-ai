@@ -312,6 +312,22 @@ async function handleConnectBoard(board: BoardId, accountLabel?: string): Promis
   return api.connectBoard(payload);
 }
 
+async function connectBoardAndSync(
+  board: BoardId,
+  accountLabel?: string,
+): Promise<{ ok: boolean }> {
+  const result = await handleConnectBoard(board, accountLabel);
+  if (result.ok) {
+    try {
+      const api = await apiFromStorage();
+      await importOneBoard(api, board);
+    } catch {
+      // اتصال موفق باقی می‌ماند؛ کاربر می‌تواند همگام‌سازی پروفایل را دوباره اجرا کند.
+    }
+  }
+  return result;
+}
+
 async function handleGetProviderStates(): Promise<ProviderState[]> {
   const api = await apiFromStorage();
   const [{ boards }, { filters }, probes] = await Promise.all([
@@ -382,6 +398,12 @@ async function handleManageProvider(
   if (!probe.loggedIn) return handleGetProviderStates();
   await handleConnectBoard(board, probe.accountLabelHint);
   await setProviderEnabled(board, true);
+  try {
+    const api = await apiFromStorage();
+    await importOneBoard(api, board);
+  } catch {
+    // وضعیت اتصال مستقل از snapshot است و نباید با شکست موقت import برگردانده شود.
+  }
   return handleGetProviderStates();
 }
 
@@ -572,42 +594,63 @@ async function handleImportProfiles(boards?: BoardId[]): Promise<BoardImportOutc
 async function importOneBoard(api: KarjooApi, board: BoardId): Promise<BoardImportOutcome> {
   const cfg = BOARDS[board];
   const profileUrl = `${cfg.origin}${cfg.profilePath}`;
-
-  // صفحه‌ی رزومه‌ی خودِ کاربر را باز (یا فوکوس) می‌کنیم — جابینجا: /app/cv-builder (راستی‌آزمایی‌شده).
-  // اگر نشانیِ بردِ دیگری هنوز درست نباشد، اسکرپر «رزومه پیدا نشد» را با پیامِ راهنما برمی‌گرداند.
-  const tab = await ensureTab(profileUrl, cfg.origin);
-  if (!tab?.id) return { board, ok: false, message: "نتوانستم صفحه‌ی رزومه را باز کنم." };
-
-  // Ask the import content script to read the user's OWN profile DOM (DATA only).
-  let scraped: ScrapeProfileResult | undefined;
+  const opened = await ensureImportTab(profileUrl, cfg.origin);
+  if (!opened.tab?.id) return { board, ok: false, message: "نتوانستم صفحه‌ی رزومه را باز کنم." };
   try {
-    scraped = (await chrome.tabs.sendMessage(tab.id, {
-      type: "SCRAPE_PROFILE",
-      board,
-    })) as ScrapeProfileResult | undefined;
-  } catch {
-    return {
-      board,
-      ok: false,
-      message: "اسکریپت ایمپورت روی صفحه آماده نشد. صفحه را تازه کنید و دوباره تلاش کنید.",
-    };
-  }
+    await waitForTabComplete(opened.tab.id);
+    let scraped: ScrapeProfileResult | undefined;
+    try {
+      scraped = (await chrome.tabs.sendMessage(opened.tab.id, {
+        type: "SCRAPE_PROFILE",
+        board,
+      })) as ScrapeProfileResult | undefined;
+    } catch {
+      return {
+        board,
+        ok: false,
+        message: "اسکریپت ایمپورت روی صفحه آماده نشد. صفحه را تازه کنید و دوباره تلاش کنید.",
+      };
+    }
 
-  if (!scraped?.ok || !scraped.profile) {
-    return {
-      board,
-      ok: false,
-      message:
-        scraped?.message ??
-        "رزومه‌ای در این صفحه پیدا نشد — صفحه‌ی رزومه‌ات را در این سایت باز کن و دوباره «وارد کردن» را بزن.",
-    };
-  }
+    if (!scraped?.ok || !scraped.profile) {
+      return {
+        board,
+        ok: false,
+        message:
+          scraped?.message ??
+          "رزومه‌ای در این صفحه پیدا نشد — صفحه‌ی رزومه‌ات را در این سایت باز کن و دوباره «وارد کردن» را بزن.",
+      };
+    }
 
-  // Build the DATA-ONLY body. This THROWS if any credential-shaped key sneaked in
-  // — the single chokepoint that makes "no secret leaves the browser" provable.
-  const body = buildImportPayload(board, scraped.profile);
-  const res = await api.importProfile(body);
-  return { board, ok: res.ok, importedSummary: res.summary, message: "ایمپورت شد" };
+    const body = buildImportPayload(board, scraped.profile);
+    const res = await api.importProfile(body);
+    return { board, ok: res.ok, importedSummary: res.summary, message: "ایمپورت شد" };
+  } finally {
+    if (opened.created && opened.tab.id) {
+      await chrome.tabs.remove(opened.tab.id).catch(() => {});
+    }
+  }
+}
+
+async function ensureImportTab(
+  profileUrl: string,
+  origin: string,
+): Promise<{ tab: chrome.tabs.Tab | undefined; created: boolean }> {
+  const existing = await chrome.tabs.query({ url: `${origin}/*` });
+  const match = existing.find((tab) => tab.url && sameJob(tab.url, profileUrl));
+  if (match) return { tab: match, created: false };
+  return { tab: await chrome.tabs.create({ url: profileUrl, active: false }), created: true };
+}
+
+async function syncConnectedProviderProfiles(): Promise<void> {
+  const token = await getSessionToken();
+  if (!token) return;
+  const api = await apiFromStorage();
+  const { boards } = await api.meRaw();
+  const connected = boards
+    .filter((account) => account.status === "connected" && BOARD_IDS.includes(account.board as BoardId))
+    .map((account) => account.board as BoardId);
+  for (const board of connected) await importOneBoard(api, board);
 }
 
 /** Find an open tab for the job URL or open a new one focused on it. */
@@ -645,7 +688,7 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
     case "DETECT_BOARD":
       return { ok: true, data: await probeBoardSession(msg.board) };
     case "CONNECT_BOARD":
-      return { ok: true, data: await handleConnectBoard(msg.board, msg.accountLabel) };
+      return { ok: true, data: await connectBoardAndSync(msg.board, msg.accountLabel) };
     case "GET_PROVIDER_STATES":
       return { ok: true, data: await handleGetProviderStates() };
     case "MANAGE_PROVIDER":
@@ -734,8 +777,12 @@ async function configureSidePanel(): Promise<void> {
 chrome.runtime.onInstalled.addListener(() => {
   setupAutoApplyAlarms();
   void configureSidePanel();
+  void syncConnectedProviderProfiles().catch(() => {});
 });
-chrome.runtime.onStartup.addListener(() => setupAutoApplyAlarms());
+chrome.runtime.onStartup.addListener(() => {
+  setupAutoApplyAlarms();
+  void syncConnectedProviderProfiles().catch(() => {});
+});
 // Also ensure on plain load (covers dev-reload where onInstalled may not fire).
 setupAutoApplyAlarms();
 void configureSidePanel();

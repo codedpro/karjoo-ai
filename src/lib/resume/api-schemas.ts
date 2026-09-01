@@ -107,3 +107,26 @@ export const resumeProfileSaveSchema = z.object({
 });
 
 export type ResumeProfileSaveBody = z.infer<typeof resumeProfileSaveSchema>;
+
+/* ─────────────────────  تنظیم‌های ساخت و تطبیق رزومه  ───────────────────── */
+
+export const resumeSettingsSaveSchema = z
+  .object({
+    gender: z.enum(["male", "female", "unspecified"]),
+    fullNameLatin: z.string().trim().max(200),
+    resumePhone: z.string().trim().max(40),
+    resumeLang: z.enum(["fa", "en"]),
+    resumeTemplate: z.enum(["classic", "modern", "compact", "signature"]),
+    hideLocation: z.boolean(),
+    broadMatchingMode: z.boolean(),
+    broadMatchingSections: z
+      .array(z.enum(["software", "seo-digital-marketing", "marketing-sales"]))
+      .max(3),
+    declaredDomains: z.array(z.string().trim().min(1).max(80)).max(30),
+    resumeEmphasis: z.string().trim().max(3000),
+    clients: z.array(z.string().trim().min(1).max(200)).max(50),
+    unlimitedApply: z.boolean(),
+  })
+  .strict();
+
+export type ResumeSettingsSaveBody = z.infer<typeof resumeSettingsSaveSchema>;

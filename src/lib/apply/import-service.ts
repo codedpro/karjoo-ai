@@ -16,7 +16,7 @@ import "server-only";
 import { and, eq } from "drizzle-orm";
 
 import { db, type Database } from "@/db";
-import { candidateProfiles, profileImports } from "@/db/schema";
+import { boardProfileSnapshots, candidateProfiles, profileImports } from "@/db/schema";
 import type { JobBoardId } from "@/lib/apply/types";
 import {
   normalizeImportedProfile,
@@ -69,6 +69,7 @@ export async function applyProfileImport(
   // ۱) نرمال‌سازی — `assertNoCredentials` داخلِ این تابع پیش از هر چیز اجرا می‌شود.
   const normalized = normalizeImportedProfile(board, rawPayload);
   const applications: ImportedApplication[] = normalized.applications ?? [];
+  const snapshot = profileSnapshotDataFromImport(rawPayload, normalized.profilePatch);
 
   // ۲) پروفایلِ فعلیِ همین کاربر (قاعده‌ی §10 — مقید به userIdِ نشست).
   const [existing] = await database
@@ -91,6 +92,28 @@ export async function applyProfileImport(
   // ۴) اعمال روی DB فقط در صورتِ وجودِ تغییر.
   if (merge.appliedFieldNames.length > 0) {
     await persistProfileChanges(database, userId, existing?.id, merge.changed);
+  }
+
+  // یک منبعِ نمایش برای همه‌ی providerها. داده پیش‌تر از نگهبانِ اعتبارنامه گذشته
+  // و history اپلای عمداً وارد snapshot پروفایل نمی‌شود.
+  if (Object.keys(snapshot.data).length > 0) {
+    await database
+      .insert(boardProfileSnapshots)
+      .values({
+        userId,
+        board,
+        data: snapshot.data,
+        publicUrl: snapshot.publicUrl,
+        fetchedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [boardProfileSnapshots.userId, boardProfileSnapshots.board],
+        set: {
+          data: snapshot.data,
+          publicUrl: snapshot.publicUrl,
+          fetchedAt: new Date(),
+        },
+      });
   }
 
   // ۵) ثبتِ رکوردِ ایمپورت (همیشه — حتی اگر چیزی merge نشد، برای تاریخچه/شفافیت).
@@ -120,6 +143,43 @@ export async function applyProfileImport(
     addedSkills: merge.addedSkills,
     importedApplicationCount: applications.length,
   };
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmpty(value: unknown): boolean {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.length > 0;
+  return value !== null && typeof value === "object" && Object.keys(value as object).length > 0;
+}
+
+/** Build the display-safe profile snapshot; application history is stored separately. */
+export function profileSnapshotDataFromImport(
+  rawPayload: RawImportPayload,
+  patch: MergedProfileFields,
+): { data: Record<string, unknown>; publicUrl: string | null } {
+  const nested = record(rawPayload.profile) ?? record(rawPayload.resume) ?? rawPayload;
+  const data: Record<string, unknown> = {
+    fullName: patch.fullName,
+    headline: patch.headline,
+    city: patch.city,
+    yearsExperience: patch.yearsExperience,
+    skills: patch.skills,
+    resumeText: patch.resumeText,
+    education: nested.education,
+    experience: nested.experience,
+  };
+  for (const [key, value] of Object.entries(data)) {
+    if (!nonEmpty(value)) delete data[key];
+  }
+  const url = [nested.publicUrl, nested.profileUrl, rawPayload.publicUrl]
+    .find((value) => typeof value === "string" && value.trim().length > 0);
+  return { data, publicUrl: typeof url === "string" ? url.trim() : null };
 }
 
 /**

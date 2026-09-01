@@ -16,6 +16,7 @@ const h = vi.hoisted(() => {
     selectResults: [] as unknown[][],
     profileInsertValues: vi.fn(),
     profileUpdateSet: vi.fn(),
+    snapshotInsertValues: vi.fn(),
     importInsertValues: vi.fn(),
     /** id برگشتیِ insertِ profile_imports. */
     importInsertId: "import-1",
@@ -54,6 +55,10 @@ vi.mock("@/db", () => {
               returning: () => Promise.resolve([{ id: h.importInsertId }]),
             };
           }
+          if (table && (table as { __kind?: string }).__kind === "board_profile_snapshots") {
+            h.snapshotInsertValues(v);
+            return { onConflictDoUpdate: () => Promise.resolve(undefined) };
+          }
           h.profileInsertValues(v);
           // پروفایلِ تازه اکنون upsert است: .values(...).onConflictDoUpdate(...).
           return {
@@ -86,6 +91,11 @@ vi.mock("@/db/schema", () => ({
     status: "status",
     appliedFields: "applied_fields",
     createdAt: "created_at",
+  },
+  boardProfileSnapshots: {
+    __kind: "board_profile_snapshots",
+    userId: "user_id",
+    board: "board",
   },
 }));
 
@@ -164,6 +174,13 @@ describe("POST /api/profile/import — مسیرِ موفق", () => {
     expect(importRow.userId).toBe("user-1");
     expect(importRow.board).toBe("jobinja");
     expect(importRow.status).toBe("applied");
+    expect(h.snapshotInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        board: "jobinja",
+        data: expect.objectContaining({ headline: "توسعه‌دهنده", city: "تهران" }),
+      }),
+    );
   });
 
   it("کاربرِ بدونِ پروفایل → insertِ پروفایلِ تازه", async () => {
@@ -203,6 +220,7 @@ describe("POST /api/profile/import — مسیرِ موفق", () => {
     expect(dbUpdate).not.toHaveBeenCalled();
     // رکوردِ ایمپورت همچنان ثبت می‌شود (برای تاریخچه).
     expect(h.importInsertValues).toHaveBeenCalledTimes(1);
+    expect(h.snapshotInsertValues).toHaveBeenCalledTimes(1);
   });
 });
 

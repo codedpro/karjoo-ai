@@ -47,6 +47,12 @@ export function summarizeProfile(profile: CandidateProfile): string {
           .join("، ")}`,
       );
     }
+    if (broadPrefs.broadMatchingMode === true) {
+      const sections = Array.isArray(broadPrefs.broadMatchingSections)
+        ? broadPrefs.broadMatchingSections.filter((value): value is string => typeof value === "string")
+        : [];
+      lines.push(`حالت تطبیق گسترده فعال است${sections.length ? `: ${sections.join("، ")}` : ""}`);
+    }
     if (typeof broadPrefs.resumeEmphasis === "string" && broadPrefs.resumeEmphasis.trim()) {
       lines.push(`تأکید کاربر: ${clamp(broadPrefs.resumeEmphasis, 900)}`);
     }

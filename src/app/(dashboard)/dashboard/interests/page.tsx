@@ -8,5 +8,5 @@ import { redirect } from "next/navigation";
  * لینک‌ها و بوکمارک‌های قدیمی نشکنند.
  */
 export default function InterestsRedirectPage() {
-  redirect("/dashboard/auto-apply");
+  redirect("/dashboard/profiles#targeting");
 }

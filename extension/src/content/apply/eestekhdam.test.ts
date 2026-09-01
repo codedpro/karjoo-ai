@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { executeEEstekhdamApply } from "@ext/content/apply/eestekhdam";
+import { executeEEstekhdamApply, failureDetail } from "@ext/content/apply/eestekhdam";
 import type { ApplyPlan } from "@ext/lib/apply-runner";
 
 const plan: ApplyPlan = {
@@ -76,5 +76,32 @@ describe("e-estekhdam apply", () => {
     const result = await executeEEstekhdamApply(plan);
     expect(result).toMatchObject({ ok: false, reason: "eestekhdam_gender_mismatch" });
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("failureDetail — why a submission was refused", () => {
+  it("keeps the board's own message so the failure is diagnosable", () => {
+    expect(failureDetail(422, { message: "شما به سقف روزانه رسیده‌اید" }))
+      .toBe("422 شما به سقف روزانه رسیده‌اید");
+  });
+
+  it("unpacks field validation errors", () => {
+    expect(failureDetail(422, { errors: { workId: ["الزامی است"] } }))
+      .toContain("workId: الزامی است");
+  });
+
+  it("redacts emails, because this string is stored and shown in the dashboard", () => {
+    const detail = failureDetail(400, { message: "user someone@example.com is not allowed" });
+    expect(detail).not.toContain("someone@example.com");
+    expect(detail).toContain("[email]");
+  });
+
+  it("still says something useful when the body is a bare string or empty", () => {
+    expect(failureDetail(500, "Internal Server Error")).toBe("500 Internal Server Error");
+    expect(failureDetail(403, null)).toBe("403 {}");
+  });
+
+  it("stays short enough to store on a task row", () => {
+    expect(failureDetail(422, { message: "x".repeat(500) }).length).toBeLessThan(220);
   });
 });

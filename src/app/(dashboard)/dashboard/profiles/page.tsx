@@ -1,18 +1,16 @@
 /**
- * صفحه‌ی «رزومه و پروفایل» (Server component) — ادغامِ دو صفحه‌ی قدیمیِ «رزومه» و
- * «پروفایلِ جابینجا» در یک مقصدِ واحد (مسیرهای قبلی حالا فقط redirect‌اند).
+ * مرکزِ واحدِ رزومه، تنظیم‌های تولید، پروفایل سایت‌های کاریابی و هدف‌گیری شغل‌ها.
+ * مسیرهای قدیمیِ رزومه، علاقه‌مندی‌ها و فیلترها به لنگرهای همین صفحه redirect می‌شوند.
  *
  * الگوی Next 16 (پوسته‌ی فوری): پوسته/هدر در `dashboard/layout.tsx` استاتیک است؛ این صفحه
  * فقط محتوا می‌دهد و هدرِ خودش را با `PageHeader` بی‌درنگ می‌آورد. بخشِ وابسته به DB داخلِ
  * `<Suspense>` استریم می‌شود.
  *
  * تصمیم‌های این بازنویسی:
- *   • **ناوبریِ درون‌صفحه‌ای**: ادغام، صفحه را بلند کرد و دو `<h2>` بدونِ هیچ راهِ پرش
- *     باقی گذاشت. حالا یک نوارِ لنگر (anchor) بالای محتوا هست؛ لنگرها به‌جای تب انتخاب
- *     شدند تا بدونِ JS کار کنند و لینکِ مستقیم (`#jobinja`) قابلِ اشتراک بماند.
- *   • **اسکلتِ هم‌شکل**: اسکلتِ قبلی یک شبکه‌ی `lg:grid-cols-5` بود در حالی که محتوای
- *     واقعی بخش‌های *روی‌هم‌چیده* است ⇒ با آمدنِ داده صفحه می‌پرید. حالا اسکلت دقیقاً همان
- *     ساختار را دارد: نوارِ لنگر، عنوان، شبکه‌ی ۵ستونیِ فضای کارِ رزومه، عنوان، کارت‌های جابینجا.
+ *   • **ناوبریِ درون‌صفحه‌ای**: نوارِ لنگر به‌جای تب انتخاب شده تا بدونِ JS کار کند و
+ *     لینک‌های مستقیمِ `#resume-settings`، `#providers` و `#targeting` پایدار بمانند.
+ *   • **اسکلتِ هم‌شکل**: اسکلت، ترتیب و ابعادِ هر چهار بخش را تقلید می‌کند تا هنگام
+ *     استریم‌شدن داده، صفحه جابه‌جاییِ محسوس نداشته باشد.
  *   • **حالتِ خالی**: کاربرِ تازه پیش‌تر با داربستِ خالیِ فرم روبه‌رو می‌شد. حالا اگر نه
  *     پروفایلی هست و نه فایلی، یک فراخوانِ روشن («رزومه‌ی PDF را آپلود کن») بالای بخش
  *     می‌نشیند و مستقیم به کارتِ آپلود لنگر می‌زند.
@@ -30,18 +28,18 @@ import {
   getUserAiCostContext,
 } from "@/components/dashboard/billing-data";
 import { getDashboardUser } from "@/components/dashboard/session";
-import { IconDoc, IconUpload, IconUser } from "@/components/dashboard/icons";
-import {
-  JobinjaProfileCard,
-  type JobinjaProfileView,
-} from "@/components/dashboard/jobinja-profile-card";
+import { IconPlug, IconSparkle, IconTarget, IconUpload, IconUser } from "@/components/dashboard/icons";
 import { JobinjaProfileEdit } from "@/components/dashboard/jobinja-profile-edit";
+import { getProviderProfiles } from "@/components/dashboard/provider-profile-data";
+import { ProviderProfilesGrid } from "@/components/dashboard/provider-profiles-grid";
+import { ProviderTargetingSection } from "@/components/dashboard/provider-targeting-section";
 import {
   getFullResumeProfile,
   getResumeFileList,
 } from "@/components/dashboard/resume/profile-data";
 import { ResumeWorkspace } from "@/components/dashboard/resume/resume-workspace";
 import type { ClientResumeFile } from "@/components/dashboard/resume/profile-types";
+import { ResumeSettingsEditor } from "@/components/dashboard/resume-settings-editor";
 import {
   EmptyState,
   PageHeader,
@@ -49,18 +47,23 @@ import {
   SkeletonText,
 } from "@/components/dashboard/ui";
 import { getProfileSnapshot } from "@/lib/apply/boards/jobinja-read";
+import { SKILL_DOMAINS } from "@/lib/resume/declared-domains";
+import { RESUME_TEMPLATES } from "@/lib/resume/resume-templates";
+import { BROAD_MATCHING_SECTIONS, readResumeSettings } from "@/lib/resume/settings";
 
 export const runtime = "nodejs";
 
 export const metadata: Metadata = {
-  title: "رزومه و پروفایل",
+  title: "پروفایل‌ها و تنظیم‌ها",
   robots: { index: false, follow: false },
 };
 
 /** بخش‌های صفحه — منبعِ حقیقتِ نوارِ لنگر و عنوان‌ها (تا از هم جدا نیفتند). */
 const SECTIONS = [
   { id: "resume", label: "رزومه و پروفایلِ کارجو", icon: IconUser },
-  { id: "jobinja", label: "پروفایلِ جابینجا", icon: IconDoc },
+  { id: "resume-settings", label: "تنظیم‌های ساخت رزومه", icon: IconSparkle },
+  { id: "providers", label: "پروفایل سایت‌های کاریابی", icon: IconPlug },
+  { id: "targeting", label: "هدف‌گیری شغل‌ها", icon: IconTarget },
 ] as const;
 
 export default async function ProfilesPage() {
@@ -70,8 +73,8 @@ export default async function ProfilesPage() {
   return (
     <div className="space-y-8">
       <PageHeader
-        title="رزومه و پروفایل"
-        subtitle="اطلاعاتی که با هر درخواستِ شغلی برای کارفرما فرستاده می‌شود، این‌جا نگه‌داری می‌شود."
+        title="پروفایل‌ها و تنظیم‌ها"
+        subtitle="اطلاعات رزومه، دامنه‌های تخصصی و پروفایل هر سایت کاریابی از یک محل مدیریت می‌شود."
       />
 
       <Suspense fallback={<ProfilesSkeleton />}>
@@ -84,8 +87,8 @@ export default async function ProfilesPage() {
 /* ───────────────────────── ناوبریِ درون‌صفحه ───────────────────────── */
 
 /**
- * پرش بینِ دو بخشِ بلندِ صفحه. لنگرِ ساده (نه تب) چون بدونِ JS کار می‌کند، لینکِ مستقیم
- * می‌دهد و هر دو بخش برای Ctrl+F در DOM می‌مانند. `aria-current` عمداً نیامده: بخشِ فعال
+ * پرش بینِ بخش‌های بلندِ صفحه. لنگرِ ساده (نه تب) چون بدونِ JS کار می‌کند، لینکِ مستقیم
+ * می‌دهد و همه‌ی بخش‌ها برای Ctrl+F در DOM می‌مانند. `aria-current` عمداً نیامده: بخشِ فعال
  * فقط سمتِ کلاینت (اسکرول) معلوم می‌شود و ادعای ثابتِ سرور دروغ می‌بود.
  */
 function SectionNav() {
@@ -111,11 +114,13 @@ function SectionNav() {
 /* ───────────────────────── بخشِ async (Suspense) ───────────────────────── */
 
 async function ProfilesSection({ userId }: { userId: string }) {
-  const [profile, files, costCtx, jobinjaSnapshot] = await Promise.all([
+  const [profile, files, costCtx, jobinjaSnapshot, resumeSettings, providers] = await Promise.all([
     getFullResumeProfile(userId),
     getResumeFileList(userId),
     getUserAiCostContext(userId),
     getProfileSnapshot(userId, "jobinja"),
+    readResumeSettings(userId),
+    getProviderProfiles(userId),
   ]);
 
   const clientFiles: ClientResumeFile[] = files.map((f) => ({
@@ -129,7 +134,6 @@ async function ProfilesSection({ userId }: { userId: string }) {
   }));
 
   const snapshotData = (jobinjaSnapshot?.data as Record<string, unknown> | undefined) ?? {};
-  const jobinjaProfile = jobinjaSnapshot ? toProfileView(jobinjaSnapshot) : null;
 
   // کاربرِ تازه: نه پروفایلی ساخته، نه فایلی آپلود کرده ⇒ باید یک کارِ روشن ببیند.
   const isBlank = profile === null && files.length === 0;
@@ -171,17 +175,40 @@ async function ProfilesSection({ userId }: { userId: string }) {
         />
       </section>
 
-      <section id="jobinja" className="scroll-mt-24 space-y-4">
+      <section id="resume-settings" className="scroll-mt-24 space-y-4">
         <h2 className="text-lg font-extrabold tracking-tight">
           {SECTIONS[1].label}
         </h2>
-        <div className="grid gap-6 xl:grid-cols-2 xl:items-start">
-          <JobinjaProfileCard profile={jobinjaProfile} />
+        <ResumeSettingsEditor
+          initial={resumeSettings}
+          domains={SKILL_DOMAINS.map((domain) => ({ id: domain.id, label: domain.labelFa }))}
+          sections={BROAD_MATCHING_SECTIONS.map((section) => ({ ...section }))}
+          templates={RESUME_TEMPLATES.map((template) => ({
+            id: template.id,
+            label: template.labelFa,
+            description: template.descriptionFa,
+          }))}
+        />
+      </section>
+
+      <section id="providers" className="scroll-mt-24 space-y-4">
+        <h2 className="text-lg font-extrabold tracking-tight">
+          {SECTIONS[2].label}
+        </h2>
+        <ProviderProfilesGrid providers={providers} />
+        <div className="max-w-2xl">
           <JobinjaProfileEdit
             initialJobTitle={pick(snapshotData, "headline", "jobTitle", "job_title", "title")}
             initialFullName={pick(snapshotData, "fullName", "full_name", "name")}
           />
         </div>
+      </section>
+
+      <section id="targeting" className="scroll-mt-24 space-y-4">
+        <h2 className="text-lg font-extrabold tracking-tight">
+          {SECTIONS[3].label}
+        </h2>
+        <ProviderTargetingSection userId={userId} />
       </section>
     </div>
   );
@@ -201,57 +228,11 @@ function pick(data: Record<string, unknown>, ...keys: string[]): string | null {
   return null;
 }
 
-function skillList(v: unknown): string[] {
-  if (!Array.isArray(v)) return [];
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const item of v) {
-    const s = str(item);
-    if (s && !seen.has(s)) {
-      seen.add(s);
-      out.push(s);
-    }
-  }
-  return out;
-}
-
-function faDateTime(d: Date): string | null {
-  try {
-    return new Intl.DateTimeFormat("fa-IR", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(d);
-  } catch {
-    return null;
-  }
-}
-
-function toProfileView(snapshot: {
-  data: Record<string, unknown>;
-  publicUrl: string | null;
-  fetchedAt: Date;
-}): JobinjaProfileView {
-  const data = snapshot.data ?? {};
-  return {
-    fullName: pick(data, "fullName", "name"),
-    headline: pick(data, "headline", "title", "jobTitle"),
-    employmentStatus: pick(data, "employmentStatus", "employment_status", "jobStatus"),
-    about: pick(data, "about", "summary", "bio"),
-    skills: skillList(data.skills),
-    email: pick(data, "email"),
-    phone: pick(data, "phone", "mobile"),
-    city: pick(data, "city"),
-    province: pick(data, "province", "state"),
-    publicUrl: str(snapshot.publicUrl) ?? pick(data, "publicUrl"),
-    fetchedAtLabel: snapshot.fetchedAt instanceof Date ? faDateTime(snapshot.fetchedAt) : null,
-  };
-}
-
 /* ───────────────────────── اسکلتِ هم‌شکلِ محتوا ───────────────────────── */
 
 /**
- * دقیقاً ساختارِ `ProfilesSection` را تقلید می‌کند تا با آمدنِ داده هیچ پرشِ چیدمانی
- * رخ ندهد: نوارِ لنگر → عنوان → شبکه‌ی ۵ستونیِ فضای کارِ رزومه → عنوان → کارت‌های جابینجا.
+ * ساختارِ `ProfilesSection` را تقلید می‌کند تا با آمدنِ داده پرشِ چیدمانی رخ ندهد:
+ * نوارِ لنگر، فضای کارِ رزومه، تنظیم‌ها، چهار پروفایل provider و هدف‌گیری.
  */
 function ProfilesSkeleton() {
   return (
@@ -259,6 +240,8 @@ function ProfilesSkeleton() {
       {/* نوارِ لنگر */}
       <div className="flex flex-wrap gap-2">
         <Skeleton className="h-10 w-44 rounded-full" />
+        <Skeleton className="h-10 w-36 rounded-full" />
+        <Skeleton className="h-10 w-40 rounded-full" />
         <Skeleton className="h-10 w-36 rounded-full" />
       </div>
 
@@ -303,22 +286,32 @@ function ProfilesSkeleton() {
         </div>
       </div>
 
-      {/* بخشِ جابینجا: عنوان + دو کارتِ کنارِ هم */}
+      {/* تنظیم‌های رزومه */}
       <div className="space-y-4">
         <Skeleton className="h-6 w-44" />
-        <div className="grid gap-6 xl:grid-cols-2">
-          <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
-            <Skeleton className="h-5 w-40" />
-            <SkeletonText lines={5} className="mt-4" />
-          </div>
-          <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
-            <Skeleton className="h-5 w-44" />
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <Skeleton className="h-16 w-full rounded-xl" />
-              <Skeleton className="h-16 w-full rounded-xl" />
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
+          <SkeletonText lines={6} />
+        </div>
+      </div>
+
+      {/* پروفایل providerها */}
+      <div className="space-y-4">
+        <Skeleton className="h-6 w-52" />
+        <div className="grid gap-5 xl:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="rounded-2xl border border-border bg-card p-6 shadow-xs">
+              <Skeleton className="h-5 w-40" />
+              <SkeletonText lines={4} className="mt-4" />
             </div>
-            <Skeleton className="mt-4 h-8 w-32 rounded-full" />
-          </div>
+          ))}
+        </div>
+      </div>
+
+      {/* هدف‌گیری */}
+      <div className="space-y-4">
+        <Skeleton className="h-6 w-40" />
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
+          <SkeletonText lines={6} />
         </div>
       </div>
     </div>

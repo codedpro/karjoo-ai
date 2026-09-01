@@ -6,6 +6,7 @@ import {
   isSkippableReason,
   shouldCloseManagedTab,
   SESSION_FAILURE_STREAK_LIMIT,
+  BOARD_FAILURE_STREAK_LIMIT,
 } from "@ext/background/auto-apply";
 
 describe("discovery after filter changes", () => {
@@ -92,5 +93,14 @@ describe("session-level failures do not burn the queue", () => {
   it("leaves an ordinary transport failure alone — that is a retry, not a stop", () => {
     expect(isSessionLevelReason("request failed (502)")).toBe(false);
     expect(isSkippableReason("request failed (502)")).toBe(false);
+  });
+});
+
+describe("board circuit breaker", () => {
+  it("stops well before a run can pile up dozens of rejected submissions", () => {
+    // This queue sent 76 consecutive failed submissions into one board before
+    // anyone noticed — the fastest way to get an account restricted.
+    expect(BOARD_FAILURE_STREAK_LIMIT).toBeGreaterThan(1);
+    expect(BOARD_FAILURE_STREAK_LIMIT).toBeLessThanOrEqual(10);
   });
 });

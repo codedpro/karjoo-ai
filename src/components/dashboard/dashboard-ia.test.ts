@@ -94,20 +94,21 @@ describe("no orphan pages", () => {
 });
 
 describe("the targeting page", () => {
-  const page = readFileSync(join(DASHBOARD_DIR, "auto-apply/page.tsx"), "utf8");
+  const page = readFileSync(join(DASHBOARD_DIR, "profiles/page.tsx"), "utf8");
+  const targeting = readFileSync("src/components/dashboard/provider-targeting-section.tsx", "utf8");
 
   it("configures every active board, not just Jobinja", () => {
     // The old page exposed one shared set of filters, but each board keys its
     // categories differently (slug / urlTitle / Persian name / numeric id), so a
     // shared picker could only ever have driven one of them.
-    expect(page).toContain("BoardTargetingEditor");
+    expect(page).toContain("ProviderTargetingSection");
     for (const catalog of [
       "getJobinjaCategories",
       "getJobvisionCatalog",
       "getEEstekhdamCatalog",
       "getIranTalentCatalog",
     ]) {
-      expect(page, catalog).toContain(catalog);
+      expect(targeting, catalog).toContain(catalog);
     }
   });
 
@@ -119,7 +120,13 @@ describe("the targeting page", () => {
 
   it("leaves the old interests URL working", () => {
     const source = readFileSync(join(DASHBOARD_DIR, "interests/page.tsx"), "utf8");
-    expect(source).toContain('redirect("/dashboard/auto-apply")');
+    expect(source).toContain('redirect("/dashboard/profiles#targeting")');
+  });
+
+  it("keeps execution separate from profile targeting", () => {
+    const autoApply = readFileSync(join(DASHBOARD_DIR, "auto-apply/page.tsx"), "utf8");
+    expect(autoApply).not.toContain("BoardTargetingEditor");
+    expect(autoApply).toContain('/dashboard/profiles#targeting');
   });
 });
 

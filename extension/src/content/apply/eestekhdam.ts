@@ -45,6 +45,34 @@ function findEmail(value: unknown, depth = 0): string | null {
   return null;
 }
 
+/**
+ * The board's own rejection message, condensed into something safe to store.
+ *
+ * `eestekhdam_apply_failed` was a dead end: 72 failures in a row recorded nothing
+ * but the fact that they failed, so there was no way to tell a missing field from
+ * a closed ad from a rejected session. The server's own message is the only thing
+ * that distinguishes them. Emails are redacted because this string is persisted
+ * on the task and shown in the dashboard.
+ */
+export function failureDetail(status: number, body: unknown): string {
+  const record_ = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const raw =
+    typeof record_.message === "string" ? record_.message
+    : typeof record_.error === "string" ? record_.error
+    : typeof body === "string" ? body
+    : JSON.stringify(body ?? {});
+  const errors = record_.errors && typeof record_.errors === "object"
+    ? Object.entries(record_.errors as Record<string, unknown>)
+        .map(([field, value]) => `${field}: ${Array.isArray(value) ? value[0] : String(value)}`)
+        .join("; ")
+    : "";
+  const text = [raw, errors].filter(Boolean).join(" | ")
+    .replace(/\S+@\S+\.\S+/g, "[email]")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${status}${text ? ` ${text.slice(0, 180)}` : ""}`;
+}
+
 function looksLikeChallenge(value: string): boolean {
   return /mosparo|captcha|کپچا|بررسی امنیتی|من ربات نیستم/i.test(value);
 }
@@ -194,7 +222,11 @@ export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentAp
     return { ok: false, ranSteps: ["session", "upload"], reason: "eestekhdam_captcha_required" };
   }
   if (!applied.response.ok || record(applied.body).ok === false) {
-    return { ok: false, ranSteps: ["session", "upload"], reason: "eestekhdam_apply_failed" };
+    return {
+      ok: false,
+      ranSteps: ["session", "upload"],
+      reason: `eestekhdam_apply_failed: ${failureDetail(applied.response.status, applied.body)}`,
+    };
   }
   return { ok: true, ranSteps: ["session", "position", "upload", "confirmed"] };
 }

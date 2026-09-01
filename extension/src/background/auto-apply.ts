@@ -302,6 +302,7 @@ async function discoverAndDrain(
   }
 
   let sessionFailureStreak = 0;
+  const boardFailureStreak = new Map<string, number>();
   for (;;) {
     if (options.aborted()) {
       return record({ ranAt, outcome: "disabled", submitted, failed });
@@ -375,6 +376,12 @@ async function discoverAndDrain(
     const skipped = result.alreadyApplied || (!result.ok && isSkippableReason(result.reason));
     sessionFailureStreak =
       !result.ok && isSessionLevelReason(result.reason) ? sessionFailureStreak + 1 : 0;
+    // Only genuine failures count — a skip means we chose not to submit.
+    const hardFailure = !result.ok && !skipped;
+    boardFailureStreak.set(
+      item.board,
+      hardFailure ? (boardFailureStreak.get(item.board) ?? 0) + 1 : 0,
+    );
     const report = buildApplyResultReport({
       id: item.id,
       status: skipped ? "skipped" : result.ok ? "submitted" : "failed",
@@ -384,6 +391,18 @@ async function discoverAndDrain(
     await api.reportResult(report, executorId);
     if (result.ok && !result.alreadyApplied) submitted += 1;
     else if (!result.ok) failed += 1;
+
+    // The board is refusing everything we send it. Keep going and we are just
+    // hammering it with submissions it has already rejected.
+    if ((boardFailureStreak.get(item.board) ?? 0) >= BOARD_FAILURE_STREAK_LIMIT) {
+      const reason = result.reason ?? `${item.board}_repeated_failures`;
+      await api.mutateExecutionRun({ action: "block", executorId, reason });
+      await notify(
+        "ارسال به این سایت متوقف شد",
+        "چند درخواست پشت‌سرهم رد شد. ممکن است به سقف روزانهٔ همان سایت رسیده باشید. صف حفظ شده است.",
+      );
+      return record({ ranAt, outcome: "error", submitted, failed, message: reason });
+    }
 
     // The session, not the ad, is the problem — stop before the queue is spent.
     if (sessionFailureStreak >= SESSION_FAILURE_STREAK_LIMIT) {
@@ -529,6 +548,17 @@ export function isSessionLevelReason(reason?: string): boolean {
       ),
   );
 }
+
+/**
+ * Consecutive hard failures on ONE board before we stop applying to it.
+ *
+ * A board that has rejected the last several submissions is telling us something
+ * — a daily cap, a rate limit, an account restriction. Continuing is both futile
+ * and the fastest way to get the user's account restricted further: this queue
+ * ran 76 consecutive failed submissions into a single board before anyone
+ * noticed. Stop, surface the board's own message, and let the user decide.
+ */
+export const BOARD_FAILURE_STREAK_LIMIT = 5;
 
 /** Consecutive session-level skips that mean "stop", not "keep skipping". */
 export const SESSION_FAILURE_STREAK_LIMIT = 3;

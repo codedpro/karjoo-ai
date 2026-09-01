@@ -1097,7 +1097,10 @@ export async function generateTailoredResume(
               // آگهی نداریم — و آن‌جا هم برش می‌خورد و اولین حوزه‌ها بقیه را کنار می‌زنند.
               matchedTech.length
                 ? ""
-                : `مهارت‌های قابل‌استفاده از این حوزه‌ها (هر کدام را که آگهی می‌خواهد بیاور): ${vocabularyForDomains(declaredDomains).slice(0, 1500)}`,
+              : `مهارت‌های قابل‌استفاده از این حوزه‌ها (هر کدام را که آگهی می‌خواهد بیاور): ${vocabularyForDomains(declaredDomains).slice(0, 1500)}`,
+        prefs.broadMatchingMode === true
+          ? `تطبیق گسترده فعال است؛ زاویهٔ رزومه را از میان بخش‌های اعلامی انتخاب کن: ${Array.isArray(prefs.broadMatchingSections) ? prefs.broadMatchingSections.filter((value): value is string => typeof value === "string").join("، ") : "حوزه‌های اعلام‌شده"}.`
+          : "",
             ]
               .filter(Boolean)
               .join(" ")

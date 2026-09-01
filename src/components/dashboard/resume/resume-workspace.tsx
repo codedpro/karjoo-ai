@@ -202,7 +202,7 @@ export function ResumeWorkspace({
         {/* ستونِ پروفایل */}
         <section
           className={cn(
-            "lg:col-span-3",
+            "min-w-0 lg:col-span-3",
             tab === "profile" ? "block" : "hidden lg:block",
           )}
         >
@@ -230,7 +230,7 @@ export function ResumeWorkspace({
         {/* ستونِ فایل‌ها */}
         <aside
           className={cn(
-            "lg:col-span-2",
+            "min-w-0 lg:col-span-2",
             tab === "files" ? "block" : "hidden lg:block",
           )}
         >
