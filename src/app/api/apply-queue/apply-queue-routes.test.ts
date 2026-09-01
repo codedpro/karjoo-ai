@@ -31,7 +31,15 @@ vi.mock("@/lib/apply/execution-run", () => ({
   releaseStaleExtensionLeases: vi.fn(),
   ExecutionOwnershipError: class ExecutionOwnershipError extends Error { code = "execution_owner_conflict"; },
 }));
-vi.mock("@/lib/resume/queue-prep", () => ({ prepareNextTailoredResumeForQueue: vi.fn() }));
+vi.mock("@/lib/resume/queue-prep", () => ({
+  prepareNextTailoredResumeForQueue: vi.fn(),
+  prepareTailoredResumesForQueue: vi.fn(),
+}));
+// `after` runs post-response in Next; run it inline so the test can observe it.
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: (task: () => unknown) => { void task(); },
+}));
 vi.mock("@/lib/apply/filters", async () => {
   const actual = await vi.importActual<typeof import("@/lib/apply/filters")>("@/lib/apply/filters");
   return { ...actual, readApplyFilters: vi.fn() };
@@ -49,7 +57,10 @@ import {
 } from "@/lib/apply/auto-apply";
 import { ApplyQuotaError } from "@/lib/billing/errors";
 import { assertExtensionExecutionOwner, releaseStaleExtensionLeases } from "@/lib/apply/execution-run";
-import { prepareNextTailoredResumeForQueue } from "@/lib/resume/queue-prep";
+import {
+  prepareNextTailoredResumeForQueue,
+  prepareTailoredResumesForQueue,
+} from "@/lib/resume/queue-prep";
 import { EMPTY_APPLY_FILTERS, readApplyFilters } from "@/lib/apply/filters";
 import { HttpError } from "@/lib/api/http";
 import { POST as claimPOST } from "@/app/api/apply-queue/claim/route";
@@ -64,6 +75,7 @@ const autoApplyMock = vi.mocked(assertAutoApplyAllowed);
 const ownerMock = vi.mocked(assertExtensionExecutionOwner);
 const releaseLeasesMock = vi.mocked(releaseStaleExtensionLeases);
 const prepareResumeMock = vi.mocked(prepareNextTailoredResumeForQueue);
+const prepareBatchMock = vi.mocked(prepareTailoredResumesForQueue);
 const readFiltersMock = vi.mocked(readApplyFilters);
 
 beforeEach(() => {
@@ -81,6 +93,7 @@ beforeEach(() => {
   ownerMock.mockResolvedValue(undefined);
   releaseLeasesMock.mockResolvedValue(undefined);
   prepareResumeMock.mockResolvedValue({ status: "empty" });
+  prepareBatchMock.mockResolvedValue({ attempted: 0, prepared: 0, failed: 0 });
   readFiltersMock.mockResolvedValue(EMPTY_APPLY_FILTERS);
 });
 
@@ -128,6 +141,37 @@ describe("POST /api/apply-queue/claim", () => {
       expect.anything(),
       expect.objectContaining({ requireKind: "extension" }),
     );
+  });
+
+  it("آیتمِ آماده را بی‌درنگ می‌دهد و ساختِ رزومه را به بعد از پاسخ می‌اندازد", async () => {
+    // ساختِ رزومه یک فراخوانِ AI ده‌ها ثانیه‌ای است. اگر پیش از claim انجام شود،
+    // افزونه برای *هر* اپلای همان‌قدر منتظر می‌ماند — همان فاصله‌ی طولانیِ بینِ ارسال‌ها.
+    authMock.mockResolvedValue({ userId: "u-fast", session: { kind: "extension" } } as never);
+    claimMock.mockResolvedValue([
+      { taskId: "t1", matchId: "m1", listing: { title: "Dev" } },
+    ] as never);
+
+    const res = await claimPOST(claimReq({ executorId: "33333333-3333-4333-8333-333333333333" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).count).toBe(1);
+    // هیچ ساختِ همگامی پیش از پاسخ انجام نشد.
+    expect(prepareResumeMock).not.toHaveBeenCalled();
+    // ولی ذخیره دوباره پر می‌شود، وگرنه claimِ بعدی دوباره منتظر می‌ماند.
+    expect(prepareBatchMock).toHaveBeenCalledWith("u-fast", expect.objectContaining({
+      limit: expect.any(Number),
+    }));
+  });
+
+  it("اگر هیچ رزومه‌ای آماده نباشد، همان‌جا می‌سازد و دوباره claim می‌کند", async () => {
+    authMock.mockResolvedValue({ userId: "u-cold", session: { kind: "extension" } } as never);
+    claimMock.mockResolvedValue([] as never);
+    prepareResumeMock.mockResolvedValue({ status: "ready", taskId: "t9" } as never);
+
+    const res = await claimPOST(claimReq({ executorId: "44444444-4444-4444-8444-444444444444" }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ count: 0, reason: "tailored_resume_missing" });
+    expect(prepareResumeMock).toHaveBeenCalled();
+    expect(claimMock).toHaveBeenCalledTimes(2);
   });
 
   it("executor فقط providerهای فعال را برای آماده‌سازی و claim می‌فرستد", async () => {
