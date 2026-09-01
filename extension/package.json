@@ -1,6 +1,6 @@
 {
   "name": "karjoo-extension",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "private": true,
   "description": "Karjoo MV3 multi-board queue executor for Jobinja, JobVision, e-estekhdam, and IranTalent.",
   "type": "module",

@@ -6,6 +6,7 @@
  * These are the safety invariants for BUG 2: no way for a user to repoint the
  * extension at a rogue control plane.
  */
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { DEFAULT_API_ORIGIN, STORAGE_KEYS } from "@ext/lib/config";
 import { getApiOrigin, type StorageArea } from "@ext/lib/storage";
@@ -47,5 +48,27 @@ describe("getApiOrigin is pinned to the constant", () => {
 
   it("returns the constant even when storage would return something else", async () => {
     expect(await getApiOrigin(trapArea())).toBe(DEFAULT_API_ORIGIN);
+  });
+});
+
+describe("a selected category the catalog does not know must be visible", () => {
+  const panel = readFileSync("src/sidepanel/sidepanel.ts", "utf8");
+
+  it("derives the unknown set from the SELECTION, not the catalog", () => {
+    // The list draws a checkbox per catalog entry, so a selected key the catalog
+    // lacks rendered nothing while still being saved back and still filtering
+    // every search — a category nobody ticked stayed in a filter for weeks.
+    expect(panel).toContain("renderUnknownCategories");
+    expect(panel).toMatch(/\[\.\.\.selectedCategories\]\.filter\(\(key\) => !known\.has\(key\)\)/);
+  });
+
+  it("keeps saving the full selection, which is why an invisible key persisted", () => {
+    // collectBoardFilter copies the whole set; that is correct, and exactly why
+    // the key had to become visible rather than be silently dropped on save.
+    expect(panel).toContain("categoryKeys: [...selectedCategories]");
+  });
+
+  it("offers a way to remove one", () => {
+    expect(panel).toContain("selectedCategories.delete(key)");
   });
 });

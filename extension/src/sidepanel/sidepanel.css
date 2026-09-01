@@ -163,3 +163,16 @@ fieldset label, .check { display: flex; align-items: center; gap: 6px; font-size
 /* A run whose heartbeat has gone silent: say so instead of showing a stage
    nobody is executing. */
 #stage.stalled { color: #b4541f; }
+
+/* Selected categories the board's catalog does not contain: active but otherwise
+   invisible, so they get their own visible, removable group. */
+.category-unknown {
+  margin-bottom: 8px; padding: 8px 10px;
+  border: 1px solid #d8b25f; border-radius: 10px; background: #fdf6e3;
+}
+.category-unknown p { margin: 0 0 6px; font-size: 9px; color: #6b4e07; }
+.category-unknown-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.category-unknown-chips button {
+  padding: 3px 7px; border: 1px solid #d8b25f; border-radius: 8px;
+  background: #fff; color: #6b4e07; font-size: 9px; cursor: pointer;
+}

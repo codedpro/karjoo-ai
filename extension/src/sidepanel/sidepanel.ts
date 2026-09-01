@@ -4,6 +4,7 @@ import type {
   Identity,
   LiveQueueJob,
   BoardCatalog,
+  BoardCatalogOption,
   BoardFilter,
   ProviderState,
 } from "@ext/lib/types";
@@ -627,10 +628,12 @@ async function refreshBoardSessionStatus(force = false, openSiteOnMissing = fals
 
 function renderCategories(): void {
   const query = ($("categorySearch") as HTMLInputElement).value.trim().toLowerCase();
-  const visible = (catalogs.get(filterBoard)?.categories ?? []).filter((category) =>
+  const catalog = catalogs.get(filterBoard)?.categories ?? [];
+  const visible = catalog.filter((category) =>
     !query || `${category.label} ${category.englishLabel}`.toLowerCase().includes(query),
   );
   $("categoryCount").textContent = `${selectedCategories.size} انتخاب`;
+  renderUnknownCategories(catalog);
   $("categoryOptions").replaceChildren(...visible.map((category) => {
     const label = document.createElement("label");
     const input = document.createElement("input");
@@ -647,6 +650,42 @@ function renderCategories(): void {
     label.append(input, span);
     return label;
   }));
+}
+
+/**
+ * Selected keys this board's catalog does not contain.
+ *
+ * The list draws a checkbox per CATALOG entry, so a selected key the catalog does
+ * not know rendered nothing — while still being saved back on every write and
+ * still shaping every search. That is how a category nobody had ticked stayed in
+ * a filter for weeks: not unchecked, just invisible. Show them so they can go.
+ */
+function renderUnknownCategories(catalog: BoardCatalogOption[]): void {
+  const box = $("categoryUnknown");
+  const known = new Set(catalog.map((c) => c.key));
+  const unknown = [...selectedCategories].filter((key) => !known.has(key));
+  if (unknown.length === 0) {
+    box.classList.add("hidden");
+    box.replaceChildren();
+    return;
+  }
+  const note = document.createElement("p");
+  note.textContent = `${unknown.length} انتخابِ قدیمی که در فهرست این سایت نیست — هنوز اعمال می‌شود.`;
+  const list = document.createElement("div");
+  list.className = "category-unknown-chips";
+  for (const key of unknown) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.textContent = `${key} ✕`;
+    chip.addEventListener("click", () => {
+      selectedCategories.delete(key);
+      filtersDirty = true;
+      renderCategories();
+    });
+    list.append(chip);
+  }
+  box.replaceChildren(note, list);
+  box.classList.remove("hidden");
 }
 
 function optionalPositive(id: string): number | undefined {
