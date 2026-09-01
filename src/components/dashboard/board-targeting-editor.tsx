@@ -79,6 +79,20 @@ export function BoardTargetingEditor(props: TargetingProps) {
   const catalog = props.catalogs[active] ?? { categories: [], employmentTypes: [] };
   const supports = SUPPORTS[active];
 
+  /**
+   * Selected keys the board's own catalog does not contain.
+   *
+   * These are real, active filters — they still reach the search — but the editor
+   * draws a checkbox per catalog entry, so an unrecognized key rendered nothing
+   * and could not be removed. That is how this account ended up searching Jobinja
+   * for "sales and marketing" it never picked: a leftover internal slug that was
+   * translated into a live category filter but shown nowhere.
+   */
+  const unknownKeys = useMemo(
+    () => board.categoryKeys.filter((key) => !catalog.categories.some((c) => c.key === key)),
+    [board.categoryKeys, catalog.categories],
+  );
+
   const visibleCategories = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return catalog.categories;
@@ -205,6 +219,42 @@ export function BoardTargetingEditor(props: TargetingProps) {
           <p className="mb-3 text-xs text-muted">
             هر سایت دسته‌بندی خودش را دارد، پس انتخاب هر سایت جداگانه است.
           </p>
+          {unknownKeys.length > 0 ? (
+            <div className="mb-3 rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
+              <p className="text-sm font-medium text-amber-200">
+                {unknownKeys.length} انتخابِ قدیمی که در فهرست این سایت نیست
+              </p>
+              <p className="mt-1 text-xs text-white/70">
+                این‌ها هنوز در جست‌وجو اعمال می‌شوند ولی جای تیک‌زدن ندارند — از
+                نسخه‌های قبلی مانده‌اند. اگر انتخابشان نکرده‌اید، حذفشان کنید.
+              </p>
+              <ul className="mt-2 flex flex-wrap gap-2">
+                {unknownKeys.map((key) => (
+                  <li key={key}>
+                    <button
+                      type="button"
+                      onClick={() => toggleKey("categoryKeys", key)}
+                      className="rounded-lg border border-amber-400/30 px-2.5 py-1 text-xs text-amber-100 hover:bg-amber-400/10"
+                    >
+                      {key} ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="mt-3"
+                onClick={() =>
+                  patch({ categoryKeys: board.categoryKeys.filter((k) => !unknownKeys.includes(k)) })
+                }
+              >
+                حذف همه‌ی این‌ها
+              </Button>
+            </div>
+          ) : null}
+
           {catalog.categories.length === 0 ? (
             <p className="text-sm text-muted">
               فهرست دسته‌های این سایت در دسترس نیست. بعداً دوباره تلاش کنید.
