@@ -32,6 +32,7 @@ import {
   type ArchiveRow,
 } from "@/components/dashboard/application-archive-table";
 import { listApplicationArchive } from "@/lib/apply/application-archive";
+import { SectionTabs, APPLY_TABS } from "@/components/dashboard/section-tabs";
 
 export const runtime = "nodejs";
 
@@ -50,15 +51,11 @@ export default async function ArchivePage() {
         title="بایگانیِ ارسال‌ها"
         subtitle="هر درخواستی که ما از طرفِ تو فرستادیم — با شرحِ همان آگهی و همان نسخه‌ای از رزومه که واقعاً ارسال شد."
       />
+      <SectionTabs tabs={APPLY_TABS} active="/dashboard/archive" ariaLabel="زبانه‌های اپلای‌ها" />
 
       <Callout
         icon={<IconChart />}
         title="این‌جا کارِ ماست، نه پاسخِ کارفرما"
-        action={
-          <ButtonLink href="/dashboard/applications" variant="secondary" size="sm">
-            پرونده‌ی جابینجا
-          </ButtonLink>
-        }
       >
         برای دیدنِ اینکه کارفرما درخواستت را در چه مرحله‌ای دیده، سراغِ «پرونده‌ی
         جابینجا» برو.

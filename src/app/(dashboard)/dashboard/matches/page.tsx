@@ -31,6 +31,7 @@ import {
   SkeletonCard,
   toFaDigits,
 } from "@/components/dashboard/ui";
+import { SectionTabs, APPLY_TABS } from "@/components/dashboard/section-tabs";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node.
 export const runtime = "nodejs";
@@ -67,12 +68,8 @@ export default async function MatchesPage({
       <PageHeader
         title="فرصت‌های شغلی"
         subtitle="آگهی‌هایی که هوش مصنوعی کارجو با پروفایلت سنجیده و مناسب دیده — بالاترین امتیاز اول."
-        actions={
-          <ButtonLink href="/dashboard/interview-prep" variant="secondary" size="sm">
-            وضعیتِ اپلای‌ها
-          </ButtonLink>
-        }
-      />
+              />
+      <SectionTabs tabs={APPLY_TABS} active="/dashboard/matches" ariaLabel="زبانه‌های اپلای‌ها" />
 
       <Suspense key={limit} fallback={<MatchesSkeleton />}>
         <MatchesList userId={user.userId} limit={limit} />

@@ -19,6 +19,7 @@ import { InterviewPrepTable } from "@/components/dashboard/interview-prep-table"
 import { getDashboardUser } from "@/components/dashboard/session";
 import { PageHeader, Skeleton, SkeletonTable } from "@/components/dashboard/ui";
 import { getInterviewPrepData } from "@/lib/apply/interview-prep";
+import { SectionTabs, APPLY_TABS } from "@/components/dashboard/section-tabs";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,7 @@ export default async function ApplyStatusPage() {
         title="وضعیتِ اپلای‌ها"
         subtitle="هر آگهی که برایت فرستاده شده یا در نوبتِ ارسال است، با نتیجه‌اش."
       />
+      <SectionTabs tabs={APPLY_TABS} active="/dashboard/interview-prep" ariaLabel="زبانه‌های اپلای‌ها" />
       <Suspense fallback={<ApplyStatusSkeleton />}>
         <ApplyStatusSection userId={user.userId} />
       </Suspense>

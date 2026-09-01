@@ -48,6 +48,7 @@ import {
   ToolbarDetails,
   type ToolbarState,
 } from "./toolbar";
+import { SectionTabs, APPLY_TABS } from "@/components/dashboard/section-tabs";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (استریم با Suspense؛ بدونِ force-dynamic).
 export const runtime = "nodejs";
@@ -85,15 +86,11 @@ export default async function ApplicationsPage({
         subtitle="کارفرماها درخواست‌هایت را در چه مرحله‌ای دیده‌اند — همان چیزی که جابینجا در حسابِ خودت نشان می‌دهد."
         actions={<JobinjaSyncButton label="به‌روزرسانی از جابینجا" />}
       />
+      <SectionTabs tabs={APPLY_TABS} active="/dashboard/applications" ariaLabel="زبانه‌های اپلای‌ها" />
 
       <Callout
         icon={<IconArchive />}
         title="این وضعیت‌ها را جابینجا اعلام می‌کند، نه ما"
-        action={
-          <ButtonLink href="/dashboard/archive" variant="secondary" size="sm">
-            بایگانیِ ارسال‌ها
-          </ButtonLink>
-        }
       >
         برای دیدنِ اینکه چه فرستادیم و با کدام رزومه، سراغِ «بایگانیِ ارسال‌ها» برو.
       </Callout>

@@ -6,7 +6,6 @@ import {
   getOrCreateExecutorId,
   getSessionToken,
   getInterventionTabId,
-  setInterventionTabId,
   clearInterventionTabId,
   setAutoApplyStatus,
   setNotifiedBlockedAt,
@@ -196,9 +195,8 @@ async function discoverAndDrain(
       if (board.board === "jobinja" && board.searchUrl) {
         const result = await discoverJobinja(api, executorId, board.searchUrl, discovery.maxAgeDays);
         discovered += result.discovered;
-        if (result.blocked) {
-          return record({ ranAt, outcome: "error", submitted, failed, message: result.reason });
-        }
+        // A login/security page only makes this provider unavailable for this
+        // discovery pass. It must not stop already-queued jobs on other sites.
       } else if (board.board === "jobvision") {
         const listings = await discoverJobvisionListings({
           categoryKeys: board.categoryKeys,
@@ -350,19 +348,10 @@ async function discoverAndDrain(
       failed,
       lastDiscoveryAt,
     });
-    if (!result.ok && isBlockingReason(result.reason)) {
-      const reason = result.reason ?? "jobinja_security_check";
-      await api.mutateExecutionRun({ action: "block", executorId, taskId: item.id, reason });
-      await notify(
-        "اپلای متوقف شد",
-        "سایت کاریابی نیاز به ورود، تکمیل فرم یا تایید امنیتی دارد. صف حفظ شد.",
-      );
-      return record({ ranAt, outcome: "error", submitted, failed, message: reason });
-    }
-
+    const skipped = result.alreadyApplied || (!result.ok && isSkippableReason(result.reason));
     const report = buildApplyResultReport({
       id: item.id,
-      status: result.alreadyApplied ? "skipped" : result.ok ? "submitted" : "failed",
+      status: skipped ? "skipped" : result.ok ? "submitted" : "failed",
       ...(result.alreadyApplied ? { reason: "already_applied_on_board" } : {}),
       ...(!result.ok && result.reason ? { reason: result.reason } : {}),
     });
@@ -385,7 +374,6 @@ async function discoverJobinja(
   const cutoff = Date.now() - maxAgeDays * 86_400_000;
   let tab: chrome.tabs.Tab | undefined;
 
-  let retainTab = false;
   try {
     while (url && !visited.has(url)) {
       visited.add(url);
@@ -400,11 +388,6 @@ async function discoverJobinja(
       );
       if (page.securityChallenge || page.loginRequired) {
         const reason = page.securityChallenge ? "jobinja_security_check: discovery blocked" : "jobinja_login_required: discovery blocked";
-        await api.mutateExecutionRun({ action: "block", executorId, reason });
-        retainTab = true;
-        await retainInterventionTab(tab.id);
-        await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
-        await notify("کشف شغل متوقف شد", "صفحهٔ جابینجا را بررسی و ورود/تایید امنیتی را تکمیل کنید.");
         return { discovered, blocked: true, reason };
       }
       if (page.listings.length > 0) {
@@ -426,7 +409,7 @@ async function discoverJobinja(
     }
     return { discovered, blocked: false };
   } finally {
-    if (tab?.id && !retainTab) await chrome.tabs.remove(tab.id).catch(() => undefined);
+    if (tab?.id) await chrome.tabs.remove(tab.id).catch(() => undefined);
   }
 }
 
@@ -440,7 +423,6 @@ async function applyOne(
     return { ok: false, ranSteps: [], reason: "tailored_resume_missing" };
   }
   let managed: { tab: chrome.tabs.Tab; created: boolean } | null = null;
-  let retainTab = false;
   try {
     let preparedItem = item;
     if (item.resumeStrategy === "tailored_pdf" && item.resume) {
@@ -478,11 +460,6 @@ async function applyOne(
       type: "CONTENT_APPLY",
       plan,
     });
-    if (!result.ok && isBlockingReason(result.reason) && managed.created) {
-      retainTab = true;
-      await retainInterventionTab(managed.tab.id);
-      await chrome.tabs.update(managed.tab.id, { active: true }).catch(() => undefined);
-    }
     return result;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -492,22 +469,20 @@ async function applyOne(
       reason: /resume download/i.test(reason) ? `resume_download_failed: ${reason}` : reason,
     };
   } finally {
-    if (managed?.tab.id && shouldCloseManagedTab(managed.created, retainTab)) {
+    if (managed?.tab.id && shouldCloseManagedTab(managed.created, false)) {
       await chrome.tabs.remove(managed.tab.id).catch(() => undefined);
     }
   }
 }
 
 /**
- * Reasons that stop the WHOLE run because only the user can clear them (a login,
- * a captcha, an unverified account). Per-task problems — a closed job, a failed
- * upload, an unconfirmed submit — are recorded against that task and the run
- * continues with the next one.
+ * Conditions that cannot be completed automatically are terminal for this job,
+ * not for the queue. Record them as skipped and immediately claim the next task.
  */
-function isBlockingReason(reason?: string): boolean {
+export function isSkippableReason(reason?: string): boolean {
   return Boolean(
     reason &&
-      /(jobinja_(security_check|login_required)|jobvision_(login_required|captcha_required|security_challenge|resume_setup_required)|eestekhdam_(login_required|captcha_required|security_challenge|form_unavailable|position_required|external_form_required|session_incomplete)|irantalent_(login_required|security_challenge|account_unverified)|tailored_resume_|(?<![a-z_])resume_(render|download|upload)_failed)/.test(
+      /(login_required|captcha_required|security_(check|challenge)|form_unavailable|position_required|external_form_required|session_incomplete|resume_setup_required|account_unverified|screening_questions_required|relocation_confirmation_required|manual_action_required)/.test(
         reason,
       ),
   );
@@ -563,14 +538,6 @@ async function ensureManagedTab(
   }
   const tab = await chrome.tabs.create({ url: jobUrl, active: false });
   return { tab, created: true };
-}
-
-async function retainInterventionTab(tabId: number): Promise<void> {
-  const previous = await getInterventionTabId();
-  if (previous !== null && previous !== tabId) {
-    await chrome.tabs.remove(previous).catch(() => undefined);
-  }
-  await setInterventionTabId(tabId);
 }
 
 async function closeInterventionTab(): Promise<void> {

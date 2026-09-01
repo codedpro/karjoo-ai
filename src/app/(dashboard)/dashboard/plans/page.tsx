@@ -21,8 +21,9 @@ import { getUserPlanStatus } from "@/components/dashboard/plan-data";
 import { PlanStatusPanel } from "@/components/dashboard/plan-status-panel";
 import { PlansGrid } from "@/components/dashboard/plans-grid";
 import { IconWallet } from "@/components/dashboard/icons";
-import { ButtonLink, Callout, PageHeader, Skeleton } from "@/components/dashboard/ui";
+import { Callout, PageHeader, Skeleton } from "@/components/dashboard/ui";
 import { PLAN_LIST } from "@/lib/billing/plans";
+import { SectionTabs, ACCOUNT_TABS } from "@/components/dashboard/section-tabs";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (دیگر force-dynamic لازم نیست).
 export const runtime = "nodejs";
@@ -50,15 +51,11 @@ export default async function PlansPage() {
         title="اشتراک"
         subtitle="اشتراک تعیین می‌کند روزانه چند درخواست برایت فرستاده شود و چه امکاناتی داشته باشی."
       />
+      <SectionTabs tabs={ACCOUNT_TABS} active="/dashboard/plans" ariaLabel="زبانه‌های حساب" />
 
       <Callout
         icon={<IconWallet />}
         title="اشتراک با اعتبارِ کیف‌پول فرق دارد"
-        action={
-          <ButtonLink href="/dashboard/billing" variant="secondary" size="sm">
-            اعتبار و هزینه
-          </ButtonLink>
-        }
       >
         هزینه‌ی پردازش‌های هوش مصنوعی جدا از اشتراک، به‌اندازه‌ی مصرف، از کیف‌پول کسر می‌شود.
       </Callout>

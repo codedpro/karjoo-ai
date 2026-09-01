@@ -27,23 +27,17 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import {
-  IconArchive,
   IconBolt,
   IconCard,
-  IconChart,
   IconChevronEnd,
   IconClose,
   IconDoc,
-  IconHeart,
   IconHome,
   IconPlan,
   IconPuzzle,
   IconSend,
   IconServer,
-  IconSparkle,
-  IconTarget,
   IconUsers,
-  IconWallet,
   type IconComponent,
 } from "./icons";
 import { cn } from "./ui";
@@ -69,12 +63,14 @@ export interface NavGroupDef {
  * منبعِ حقیقتِ ناوبری. قواعدِ نام‌گذاری:
  *   • هیچ واژه‌ی لاتین یا اصطلاحِ داخلی (fleet/queue/threshold) در برچسب‌ها نیست.
  *   • برچسب‌ها «کاری» است نه «فنی»: «وضعیتِ اپلای‌ها» نه «صفِ تسک‌ها».
- *   • سه صفحه‌ی تاریخچه با *سؤالی که جواب می‌دهند* از هم جدا شده‌اند:
- *     وضعیت (الان چه خبر است؟) / بایگانی (چه فرستادیم؟) / جابینجا (آن‌ها چه دیدند؟).
+ *   • منو یک فهرستِ تختِ شش‌تایی است، نه چهار گروه. صفحه‌هایی که به *یک سؤال* جواب
+ *     می‌دهند یک ورودی دارند و با نوارِ زبانه (section-tabs.tsx) بینشان جابه‌جا می‌شویم:
+ *     «اپلای‌ها» چهار نمای تاریخچه را می‌پوشاند و «حساب» سه صفحه‌ی مالی/هوش مصنوعی را.
+ *     هیچ صفحه‌ای حذف نشد و هیچ نشانی‌ای نشکست — فقط منو از ۱۲ ورودی به ۶ رسید.
  */
 export const NAV_GROUPS: NavGroupDef[] = [
   {
-    title: "کارِ روزانه",
+    title: "کارجو",
     items: [
       {
         href: "/dashboard",
@@ -85,43 +81,15 @@ export const NAV_GROUPS: NavGroupDef[] = [
       {
         href: "/dashboard/auto-apply",
         label: "اپلای خودکار",
-        hint: "روشن/خاموش کردن و تنظیمِ شرط‌ها",
+        hint: "دنبالِ چه شغلی، کجا، و با چه سرعتی",
         icon: IconBolt,
       },
       {
-        href: "/dashboard/matches",
-        label: "فرصت‌های شغلی",
-        hint: "آگهی‌هایی که به تو می‌خورد",
-        icon: IconTarget,
-      },
-      {
         href: "/dashboard/interview-prep",
-        label: "وضعیتِ اپلای‌ها",
-        hint: "همین حالا چه چیزی در حالِ ارسال است",
+        label: "اپلای‌ها",
+        hint: "چه فرستاده شده، چه در نوبت است، و کارفرما چه گفته",
         icon: IconSend,
       },
-    ],
-  },
-  {
-    title: "سوابق",
-    items: [
-      {
-        href: "/dashboard/archive",
-        label: "بایگانیِ ارسال‌ها",
-        hint: "چه فرستادیم و با کدام رزومه",
-        icon: IconArchive,
-      },
-      {
-        href: "/dashboard/applications",
-        label: "پرونده‌ی جابینجا",
-        hint: "کارفرماها درخواستت را در چه مرحله‌ای دیده‌اند",
-        icon: IconChart,
-      },
-    ],
-  },
-  {
-    title: "رزومه و پروفایل",
-    items: [
       {
         href: "/dashboard/profiles",
         label: "رزومه و پروفایل",
@@ -129,39 +97,16 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: IconDoc,
       },
       {
-        href: "/dashboard/interests",
-        label: "زمینه‌های شغلی",
-        hint: "دنبالِ چه نوع کاری هستی",
-        icon: IconHeart,
-      },
-      {
         href: "/dashboard/extension",
-        label: "افزونه‌ی مرورگر",
-        hint: "نصب و اتصالِ افزونه به حساب",
+        label: "اتصال‌ها",
+        hint: "افزونه‌ی مرورگر و ورود به سایت‌های کاریابی",
         icon: IconPuzzle,
       },
-    ],
-  },
-  {
-    title: "حساب",
-    items: [
       {
         href: "/dashboard/plans",
-        label: "اشتراک",
-        hint: "پلنِ فعلی و ارتقا",
+        label: "حساب",
+        hint: "اشتراک، اعتبار و هوش مصنوعی",
         icon: IconPlan,
-      },
-      {
-        href: "/dashboard/billing",
-        label: "اعتبار و هزینه",
-        hint: "موجودی، شارژ و ریزِ مصرف",
-        icon: IconWallet,
-      },
-      {
-        href: "/dashboard/models",
-        label: "هوش مصنوعی",
-        hint: "انتخابِ مدل (پیش‌فرض برای اغلبِ کاربران مناسب است)",
-        icon: IconSparkle,
       },
     ],
   },
@@ -176,7 +121,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
  * حالا هیچ propی از آن مرز عبور نمی‌کند: سرور فقط *تصمیم می‌گیرد* که این بخش رندر
  * شود یا نه، و خودِ داده این‌طرفِ مرز می‌ماند.
  */
-const ADMIN_ITEMS: NavItem[] = [
+export const ADMIN_ITEMS: NavItem[] = [
   {
     href: "/dashboard/admin/users",
     label: "کاربران",
@@ -210,7 +155,6 @@ export function AdminNavSection() {
 const MOBILE_PRIMARY = [
   "/dashboard",
   "/dashboard/auto-apply",
-  "/dashboard/matches",
   "/dashboard/interview-prep",
 ];
 

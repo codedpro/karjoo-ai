@@ -30,7 +30,6 @@ import { LedgerList, UsageTable } from "@/components/dashboard/wallet-history";
 import { WalletPanel } from "@/components/dashboard/wallet-panel";
 import { IconPlan } from "@/components/dashboard/icons";
 import {
-  ButtonLink,
   Callout,
   Card,
   PageHeader,
@@ -38,6 +37,7 @@ import {
   Skeleton,
   SkeletonTable,
 } from "@/components/dashboard/ui";
+import { SectionTabs, ACCOUNT_TABS } from "@/components/dashboard/section-tabs";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (دیگر force-dynamic لازم نیست).
 export const runtime = "nodejs";
@@ -59,15 +59,11 @@ export default async function BillingPage() {
         title="اعتبار و هزینه"
         subtitle="موجودیِ کیف‌پولت و اینکه هر تومان کجا خرج شده است."
       />
+      <SectionTabs tabs={ACCOUNT_TABS} active="/dashboard/billing" ariaLabel="زبانه‌های حساب" />
 
       <Callout
         icon={<IconPlan />}
         title="این‌جا پول است؛ اشتراک جای دیگری است"
-        action={
-          <ButtonLink href="/dashboard/plans" variant="secondary" size="sm">
-            اشتراک
-          </ButtonLink>
-        }
       >
         سهمیه‌ی اپلای و امکاناتِ حساب به پلنِ اشتراکت بستگی دارد، نه به موجودی.
       </Callout>

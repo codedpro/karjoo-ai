@@ -61,6 +61,10 @@ import { buildSearchUrl } from "@/lib/apply/boards/jobinja";
 import { getJobinjaCategories } from "@/lib/apply/boards/jobinja-categories";
 import { readApplyFilters, toJobPreferences } from "@/lib/apply/filters";
 import type { CategoryOption } from "@/lib/apply/apply-filters-form";
+import {
+  InterestsPickerSection,
+  InterestsPickerSkeleton,
+} from "@/components/dashboard/interests-section";
 
 // راستی‌آزماییِ نشست + خواندنِ DB → اجرای Node (بدونِ force-dynamic؛ استریم با Suspense).
 export const runtime = "nodejs";
@@ -80,16 +84,31 @@ export default async function AutoApplyPage() {
     <div className="space-y-10">
       <PageHeader
         title="اپلای خودکار"
-        subtitle="تنظیم کن کارجو چه آگهی‌هایی را، و با چه سرعتی، به‌جای تو بفرستد."
+        subtitle="این‌جا تعیین می‌کنی کارجو دنبالِ چه شغلی بگردد و با چه سرعتی به‌جای تو درخواست بفرستد."
       />
 
-      {/* ══════════ ۱ — شرط‌های ارسال ══════════ */}
+      {/* ══════════ ۱ — زمینه‌های شغلی ══════════ */}
+      {/* پیش‌تر صفحه‌ی جدایی بود. هر دو بخش یک کلید را می‌نویسند (categorySlugs)، پس
+          کنارِ هم بودنشان تنها راهی است که کاربر ببیند دارد چه چیزی را جایگزین می‌کند. */}
       <section className="space-y-4">
         <LevelHeading
           icon="puzzle"
-          eyebrow="شرط‌های ارسال"
-          title="دنبالِ چه شغلی هستی؟"
-          subtitle="زمینه‌ی کاری، شهر، دورکاری و سقفِ ارسالِ روزانه."
+          eyebrow="گامِ اول"
+          title="دنبالِ چه نوع کاری هستی؟"
+          subtitle="زمینه‌هایی که انتخاب می‌کنی، همان‌هایی است که کارجو در سایت‌ها دنبالشان می‌گردد."
+        />
+        <Suspense fallback={<InterestsPickerSkeleton />}>
+          <InterestsPickerSection userId={userId} />
+        </Suspense>
+      </section>
+
+      {/* ══════════ ۲ — شرط‌های ارسال ══════════ */}
+      <section className="space-y-4">
+        <LevelHeading
+          icon="puzzle"
+          eyebrow="گامِ دوم"
+          title="کجا، با چه شرایطی، و با چه سرعتی؟"
+          subtitle="شهر، دورکاری، نوعِ همکاری و سقفِ ارسالِ روزانه."
         />
         <div className="grid gap-6 xl:grid-cols-3">
           <div className="min-w-0 xl:col-span-2">
@@ -105,7 +124,7 @@ export default async function AutoApplyPage() {
         </div>
       </section>
 
-      {/* ══════════ ۲ — ارسال بدونِ مرورگرِ باز ══════════ */}
+      {/* ══════════ ۳ — ارسال بدونِ مرورگرِ باز ══════════ */}
       <section className="space-y-4">
         <LevelHeading
           icon="server"
@@ -118,7 +137,7 @@ export default async function AutoApplyPage() {
         </Suspense>
       </section>
 
-      {/* ══════════ ۳ — وضعیتِ فعلی (یک کوئری، سه پنل) ══════════ */}
+      {/* ══════════ ۴ — وضعیتِ فعلی (یک کوئری، سه پنل) ══════════ */}
       <section>
         <Suspense fallback={<StatusRowSkeleton />}>
           <StatusRow userId={userId} />

@@ -27,7 +27,6 @@ import { ModelPicker } from "@/components/dashboard/model-picker";
 import { getDashboardUser } from "@/components/dashboard/session";
 import { IconSparkle } from "@/components/dashboard/icons";
 import {
-  ButtonLink,
   Callout,
   PageHeader,
   Skeleton,
@@ -38,6 +37,7 @@ import {
   recommendedModelId,
   PROVIDER_LABEL_FA,
 } from "@/lib/ai-settings/store";
+import { SectionTabs, ACCOUNT_TABS } from "@/components/dashboard/section-tabs";
 
 export const runtime = "nodejs";
 
@@ -55,12 +55,8 @@ export default async function ModelsPage() {
       <PageHeader
         title="هوش مصنوعی"
         subtitle="این انتخاب تعیین می‌کند کارجو با چه چیزی آگهی‌ها را بسنجد، انگیزه‌نامه بنویسد و رزومه‌تان را بخواند."
-        actions={
-          <ButtonLink href="/dashboard/billing" variant="secondary" size="sm">
-            اعتبار و هزینه
-          </ButtonLink>
-        }
       />
+      <SectionTabs tabs={ACCOUNT_TABS} active="/dashboard/models" ariaLabel="زبانه‌های حساب" />
 
       <Callout tone="info" icon={<IconSparkle />} title="لازم نیست چیزی را عوض کنید">
         پیش‌فرضِ کارجو برای اغلبِ کاربران بهترین انتخاب است؛ این صفحه فقط برای وقتی است که
