@@ -41,12 +41,12 @@ describe("claimUserApplyItems — معافیتِ انتخابِ کاربر", () 
     expect(src).toMatch(/'mode'\s+in\s+\('filter',\s*'manual'\)/);
   });
 
-  it("گیتِ provider و رزومهٔ PDF برای ای‌استخدام در query حاضر است", async () => {
+  it("گیتِ provider و رزومهٔ PDF برای سایت‌های PDFمحور در query حاضر است", async () => {
     const src = await import("node:fs").then((fs) =>
       fs.readFileSync("src/lib/apply/extension-queue.ts", "utf8"),
     );
     expect(src).toMatch(/allowedBoards/);
     expect(src).toMatch(/inArray\(jobListings\.board, \[\.\.\.opts\.allowedBoards\]\)/);
-    expect(src).toMatch(/eq\(jobListings\.board, "jobvision"\), tailoredResumeExists/);
+    expect(src).toMatch(/eq\(jobListings\.board, "jobvision"\), eq\(jobListings\.board, "irantalent"\), tailoredResumeExists/);
   });
 });

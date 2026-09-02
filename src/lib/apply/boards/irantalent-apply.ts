@@ -8,14 +8,12 @@ import "server-only";
  * آداپتورِ افزونه رعایت می‌شود، چون همان تراکنشِ خودِ سایت است:
  *
  *   ۱) هویت + cv_id  ۲) بازبودن و اپلای‌نشدنِ آگهی  ۳) پیش‌شرط‌های خودِ سایت
- *   ۴) آپلودِ PDFِ اختصاصی  ۵) تأییدِ اینکه پیوستِ ذخیره‌شده همان است
- *   ۶) ثبت با همان file_id  ۷) اثباتِ وجودِ درخواست
+ *   ۴) ثبت با رزومه‌ی پروفایلِ خودِ سایت  ۵) اثباتِ وجودِ درخواست
  *
  * §10: با نشستِ خودِ کاربر (که یا افزونه گرفته یا سرور با اعتبارنامه‌ی خودش ساخته).
  * هیچ کپچایی دور زده نمی‌شود؛ سؤالاتِ غربالگری پاسخِ ساختگی نمی‌گیرند.
  */
 const API_ROOT = "https://api.irantalent.com/api/v1";
-const CV_FILE_TYPE_ID = 41;
 const LIVE_STATUS_IDS = new Set([169, 170]);
 const AUTH_COOKIE = "auth_token_irantalent_new";
 
@@ -65,21 +63,6 @@ export function positionIdFromUrl(url: string): string | null {
   }
 }
 
-/** PURE: آیا پیوستِ ذخیره‌شده همانِ PDFِ این وظیفه است؟ */
-export function attachmentMatchesTask(
-  uploaded: { id: unknown; fileName: string | undefined },
-  expectedFileName: string,
-): boolean {
-  const id = uploaded.id;
-  if (typeof id !== "number" && !(typeof id === "string" && id.trim())) return false;
-  const stored = uploaded.fileName;
-  if (!stored) return true;
-  const normalize = (v: string) => v.toLowerCase().replace(/\.pdf$/, "").replace(/[^a-z0-9]+/g, "");
-  const want = normalize(expectedFileName);
-  const got = normalize(stored);
-  return want.length === 0 || got.includes(want) || want.includes(got);
-}
-
 interface Reply { status: number; body: unknown; raw: string }
 
 async function api(
@@ -112,9 +95,7 @@ function skip(reason: string, ranSteps: string[]): IranTalentApplyOutcome {
 export interface IranTalentApplyInput {
   session: string;
   jobUrl: string;
-  /** PDFِ اختصاصیِ همین آگهی. بدونِ آن اپلای انجام نمی‌شود. */
-  resumePdf: Uint8Array;
-  resumeFileName: string;
+  /** ایران‌تلنت با رزومه‌ی پروفایلِ account-level خودش ارسال می‌کند، نه PDF اختصاصی. */
   coverLetter?: string;
 }
 
@@ -127,7 +108,6 @@ export async function applyToIranTalent(
   if (!authorization) return fail("irantalent_login_required", ranSteps);
   const positionId = positionIdFromUrl(input.jobUrl);
   if (!positionId) return skip("irantalent_job_unavailable", ranSteps);
-  if (input.resumePdf.byteLength === 0) return fail("irantalent_resume_missing", ranSteps);
 
   /* ۱ — هویت */
   const profile = await api("candidate/profile", authorization, fetchImpl);
@@ -182,35 +162,7 @@ export async function applyToIranTalent(
     return fail("irantalent_account_unverified", ranSteps);
   }
 
-  /* ۴ — آپلودِ PDFِ اختصاصی */
-  const form = new FormData();
-  form.append(
-    "attach_file",
-    new Blob([input.resumePdf as unknown as BlobPart], { type: "application/pdf" }),
-    input.resumeFileName,
-  );
-  form.append("attachable_id", String(cvId));
-  form.append("attachable_type", "cv");
-  form.append("file_type_id", String(CV_FILE_TYPE_ID));
-  form.append("file_name", input.resumeFileName);
-  const upload = await api("file", authorization, fetchImpl, { method: "POST", body: form });
-  ranSteps.push("upload");
-  if (upload.status === 401 || upload.status === 403) {
-    return fail("irantalent_login_required", ranSteps);
-  }
-  if (!(upload.status >= 200 && upload.status < 300)) {
-    return fail("irantalent_resume_upload_failed", ranSteps);
-  }
-  const uploaded = record(record(upload.body).data ?? upload.body);
-  const fileId = uploaded.id;
-
-  /* ۵ — اثباتِ پیوست */
-  if (!attachmentMatchesTask({ id: fileId, fileName: text(uploaded.file_name) }, input.resumeFileName)) {
-    return fail("irantalent_resume_verification_failed", ranSteps);
-  }
-  ranSteps.push("attachment-verified");
-
-  /* ۶ — ثبت */
+  /* ۴ — ثبت با رزومه‌ی پروفایلِ خودِ ایران‌تلنت */
   const applied = await api(
     `candidate/cv/${encodeURIComponent(String(cvId))}/position/${encodeURIComponent(positionId)}/apply`,
     authorization,
@@ -218,7 +170,6 @@ export async function applyToIranTalent(
     {
       method: "POST",
       body: JSON.stringify({
-        file_id: fileId,
         ...(input.coverLetter?.trim() ? { cover_letter: input.coverLetter.trim() } : {}),
       }),
     },
@@ -234,7 +185,7 @@ export async function applyToIranTalent(
     return fail("irantalent_apply_failed", ranSteps);
   }
 
-  /* ۷ — اثباتِ ماندگار */
+  /* ۵ — اثباتِ ماندگار */
   const confirmed = await confirmApplication(positionId, String(cvId), authorization, fetchImpl);
   ranSteps.push("verify");
   if (!confirmed) return fail("irantalent_submission_unconfirmed", ranSteps);

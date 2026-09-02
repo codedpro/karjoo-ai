@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  freshApplicationsForSync,
   normalizeApplicationStatus,
   parseAppliedJobs,
   parseAppliedFromInitState,
@@ -135,5 +136,38 @@ describe("parseAppliedFromInitState — نامِ شرکت", () => {
 
   it("شکلِ قدیمیِ `name` هم پشتیبانی می‌شود", () => {
     expect(parseAppliedFromInitState(build({ name: "ایکس" }))[0]?.company).toBe("ایکس");
+  });
+});
+
+describe("freshApplicationsForSync", () => {
+  const now = new Date("2026-09-01T12:00:00.000Z");
+
+  it("درخواست‌های قدیمی‌تر از ۴۵ روز را برای sync تازه کنار می‌گذارد", () => {
+    const rows = freshApplicationsForSync(
+      [
+        {
+          externalId: "fresh",
+          statusCategory: "pending",
+          appliedAt: new Date("2026-08-20T00:00:00.000Z"),
+        },
+        {
+          externalId: "old",
+          statusCategory: "pending",
+          appliedAt: new Date("2026-06-01T00:00:00.000Z"),
+        },
+      ],
+      now,
+    );
+
+    expect(rows.map((row) => row.externalId)).toEqual(["fresh"]);
+  });
+
+  it("ردیفِ بدون تاریخ را نگه می‌دارد چون نمی‌تواند قدیمی‌بودن را ثابت کند", () => {
+    const rows = freshApplicationsForSync(
+      [{ externalId: "unknown-date", statusCategory: "review", appliedAt: null }],
+      now,
+    );
+
+    expect(rows).toHaveLength(1);
   });
 });

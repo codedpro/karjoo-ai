@@ -5,11 +5,12 @@ import { getEEstekhdamCatalog } from "@/lib/apply/boards/eestekhdam-catalog";
 import { getIranTalentCatalog } from "@/lib/apply/boards/irantalent-catalog";
 import { getJobinjaCategories } from "@/lib/apply/boards/jobinja-categories";
 import { getJobvisionCatalog } from "@/lib/apply/boards/jobvision-catalog";
+import { getKarboomCatalog } from "@/lib/apply/boards/karboom-catalog";
 import { readApplyFilters } from "@/lib/apply/filters";
 
 interface CatalogRow { key: string; label: string; englishLabel?: string }
 
-const ACTIVE_APPLY_BOARDS = ["jobinja", "jobvision", "e-estekhdam", "irantalent"] as const;
+const ACTIVE_APPLY_BOARDS = ["jobinja", "jobvision", "e-estekhdam", "irantalent", "karboom"] as const;
 const JOBINJA_EMPLOYMENT_TYPES = [
   { key: "is_fulltime", label: "تمام‌وقت" },
   { key: "is_parttime", label: "پاره‌وقت" },
@@ -23,7 +24,7 @@ function toCatalog(c: { categories: CatalogRow[]; employmentTypes: CatalogRow[] 
 
 export async function ProviderTargetingSection({ userId }: { userId: string }) {
   const empty = { categories: [], employmentTypes: [] };
-  const [filters, accounts, jobinja, jobvision, eestekhdam, irantalent] = await Promise.all([
+  const [filters, accounts, jobinja, jobvision, eestekhdam, irantalent, karboom] = await Promise.all([
     readApplyFilters(userId),
     listConnectedBoards(userId),
     getJobinjaCategories()
@@ -39,6 +40,7 @@ export async function ProviderTargetingSection({ userId }: { userId: string }) {
     getJobvisionCatalog().then(toCatalog).catch(() => empty),
     getEEstekhdamCatalog().then(toCatalog).catch(() => empty),
     getIranTalentCatalog().then(toCatalog).catch(() => empty),
+    getKarboomCatalog().then(toCatalog).catch(() => empty),
   ]);
 
   return (
@@ -46,7 +48,7 @@ export async function ProviderTargetingSection({ userId }: { userId: string }) {
       boards={[...ACTIVE_APPLY_BOARDS]}
       labels={BOARD_LABELS}
       connected={accounts}
-      catalogs={{ jobinja, jobvision, "e-estekhdam": eestekhdam, irantalent }}
+      catalogs={{ jobinja, jobvision, "e-estekhdam": eestekhdam, irantalent, karboom }}
       initial={filters.boardFilters as never}
       globals={{
         paused: filters.paused,

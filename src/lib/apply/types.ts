@@ -87,7 +87,15 @@ export type JobBoardId =
   | "e-estekhdam"
   | "irantalent"
   | "karboom"
-  | "linkedin";
+  | "linkedin"
+  | "iranestekhdam"
+  | "divar"
+  | "quera"
+  | "remoteok"
+  | "weworkremotely"
+  | "ponisha"
+  | "parscoders"
+  | "bankestekhdam";
 
 /**
  * کانکتور یک سایت کاریابی. هر متد در پیاده‌سازی واقعی، احراز هویت و قوانین همان

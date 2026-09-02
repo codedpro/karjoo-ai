@@ -22,6 +22,7 @@ import { eq } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import { candidateProfiles } from "@/db/schema";
+import { MAX_PROVIDER_SYNC_AGE_DAYS } from "@/lib/apply/freshness";
 import type { JobPreferences } from "@/lib/apply/types";
 
 /** هندلِ کمینه‌ی DB که این لایه لازم دارد — همان کلاینتِ Drizzle. */
@@ -54,7 +55,7 @@ export interface ApplyFilters {
   dailyLimit?: number;
   /** سقفِ صف‌گذاری در هفته. undefined = بدون سقف هفتگیِ کاربر. */
   weeklyLimit?: number;
-  /** Maximum posting age accepted by discovery (capped at 45 days). */
+  /** Maximum posting age accepted by discovery, capped by provider sync policy. */
   maxAgeDays: number;
   /** Versioned per-board targeting; legacy Jobinja fields above remain mirrored. */
   boardFiltersVersion: 1;
@@ -76,6 +77,7 @@ export interface BoardApplyFilters {
   jobvision: BoardFilter;
   "e-estekhdam": BoardFilter;
   irantalent: BoardFilter;
+  karboom: BoardFilter;
 }
 
 export type ActiveApplyBoard = keyof BoardApplyFilters;
@@ -129,13 +131,14 @@ export const EMPTY_APPLY_FILTERS: ApplyFilters = {
   remoteOnly: false,
   aiFilterEnabled: false,
   paused: false,
-  maxAgeDays: 45,
+  maxAgeDays: MAX_PROVIDER_SYNC_AGE_DAYS,
   boardFiltersVersion: 1,
   boardFilters: {
     jobinja: emptyBoardFilter(true),
     jobvision: emptyBoardFilter(false),
     "e-estekhdam": emptyBoardFilter(false),
     irantalent: emptyBoardFilter(false),
+    karboom: emptyBoardFilter(false),
   },
 };
 
@@ -209,6 +212,7 @@ export function parseApplyFilters(
   const jobvision = parseBoardFilter(rawBoards.jobvision, emptyBoardFilter(false));
   const eEstekhdam = parseBoardFilter(rawBoards["e-estekhdam"], emptyBoardFilter(false));
   const irantalent = parseBoardFilter(rawBoards.irantalent, emptyBoardFilter(false));
+  const karboom = parseBoardFilter(rawBoards.karboom, emptyBoardFilter(false));
   return {
     categorySlugs: jobinja.categoryKeys,
     cities: jobinja.cities,
@@ -224,9 +228,12 @@ export function parseApplyFilters(
     ...(positiveNumber(raw.weeklyLimit) === undefined
       ? {}
       : { weeklyLimit: Math.floor(positiveNumber(raw.weeklyLimit)!) }),
-    maxAgeDays: Math.min(45, Math.max(1, Math.floor(positiveNumber(raw.maxAgeDays) ?? 45))),
+    maxAgeDays: Math.min(
+      MAX_PROVIDER_SYNC_AGE_DAYS,
+      Math.max(1, Math.floor(positiveNumber(raw.maxAgeDays) ?? MAX_PROVIDER_SYNC_AGE_DAYS)),
+    ),
     boardFiltersVersion: 1,
-    boardFilters: { jobinja, jobvision, "e-estekhdam": eEstekhdam, irantalent },
+    boardFilters: { jobinja, jobvision, "e-estekhdam": eEstekhdam, irantalent, karboom },
   };
 }
 
@@ -317,9 +324,16 @@ export function mergeApplyFilters(
     filters.boardFilters?.irantalent,
     emptyBoardFilter(false),
   );
+  const karboom = parseBoardFilter(
+    filters.boardFilters?.karboom,
+    emptyBoardFilter(false),
+  );
   base.boardFiltersVersion = 1;
-  base.boardFilters = { jobinja, jobvision, "e-estekhdam": eEstekhdam, irantalent };
-  base.maxAgeDays = Math.min(45, Math.max(1, Math.floor(filters.maxAgeDays || 45)));
+  base.boardFilters = { jobinja, jobvision, "e-estekhdam": eEstekhdam, irantalent, karboom };
+  base.maxAgeDays = Math.min(
+    MAX_PROVIDER_SYNC_AGE_DAYS,
+    Math.max(1, Math.floor(filters.maxAgeDays || MAX_PROVIDER_SYNC_AGE_DAYS)),
+  );
 
   // Compatibility for the existing dashboard and Jobinja orchestrator.
   base.categorySlugs = jobinja.categoryKeys;

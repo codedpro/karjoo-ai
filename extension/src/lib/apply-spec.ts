@@ -207,7 +207,7 @@ const E_ESTEKHDAM_SPEC: BoardApplySpec = {
 /**
  * irantalent — native apply, driven by its board-specific content adapter
  * (content/apply/irantalent.ts) against IranTalent's own JSON API. The spec here
- * exists to carry the tailored PDF and the optional cover letter to that adapter;
+ * exists to carry the optional cover letter to that adapter;
  * the selectors describe the site's own easy-apply dialog for provenance, but the
  * adapter never clicks them.
  */
@@ -220,13 +220,6 @@ const IRANTALENT_SPEC: BoardApplySpec = {
   submitSelector: "button.apply-button",
   steps: [
     {
-      kind: "upload",
-      selector: "input[type='file']",
-      valueKey: "resumeFile",
-      requiresValueKey: "resumeFile",
-      note: "PDF اختصاصی همان آگهی؛ به‌عنوان پیوستِ همان درخواست ثبت می‌شود.",
-    },
-    {
       kind: "fill",
       selector: "textarea",
       valueKey: "coverLetter",
@@ -236,8 +229,46 @@ const IRANTALENT_SPEC: BoardApplySpec = {
   ],
   notes: [
     "نشستِ کوکیِ خودِ کاربر استفاده می‌شود (sessionShape=cookie، auth_token_irantalent_new).",
-    "هر درخواست به file_idِ همان PDF گره می‌خورد؛ هیچ بازگشتی به رزومه‌ی پایه وجود ندارد.",
-    "بدون رزومه‌ی اختصاصی، آگهیِ بسته/اپلای‌شده یا سؤالاتِ غربالگری، اپلای انجام نمی‌شود.",
+    "ایران‌تلنت رزومه را از پروفایل/account-level خودش می‌فرستد؛ PDF اختصاصی هر آگهی آپلود نمی‌شود.",
+    "آگهیِ بسته/اپلای‌شده یا سؤالاتِ غربالگری باعث توقف می‌شود.",
+  ],
+};
+
+/* ─────────────────────────────  karboom  ───────────────────────────────── */
+/**
+ * karboom — ارسالِ رزومه از راهِ ویزارِد چندمرحله‌ایِ خودِ کاربوم، که آداپتورِ
+ * اختصاصی‌اش (content/apply/karboom.ts) آن را دنبال می‌کند. برخلافِ ایران‌تلنت،
+ * کاربوم در مرحله‌ی «انتخابِ رزومه» آپلودِ PDF مخصوصِ همان آگهی را می‌پذیرد، پس
+ * رزومه‌ی اختصاصی واقعاً فرستاده می‌شود. سلکتورها فقط برای مستندسازیِ منشأ‌اند؛
+ * آداپتور روی آن‌ها کلیک نمی‌کند.
+ */
+const KARBOOM_SPEC: BoardApplySpec = {
+  board: "karboom",
+  maturity: "best-effort",
+  urlPattern: /^https:\/\/(www\.)?karboom\.io\/jobs\/[A-Za-z0-9_-]+/,
+  applyButtonSelector: ".js-apply-job",
+  coverLetterFieldSelector: "textarea[name=\"description\"]",
+  submitSelector: ".js-apply-job-continue",
+  steps: [
+    {
+      kind: "upload",
+      selector: ".js-upload-pdf",
+      valueKey: "resumeFile",
+      note: "PDF اختصاصیِ همین آگهی، در مرحله‌ی select_resume ویزارد آپلود می‌شود.",
+    },
+    {
+      kind: "fill",
+      selector: "textarea[name=\"description\"]",
+      valueKey: "coverLetter",
+      optional: true,
+      note: "متنِ معرفیِ اختیاری، اگر مرحله‌ای چنین فیلدی داشته باشد.",
+    },
+  ],
+  notes: [
+    "نشستِ کوکیِ خودِ کاربر استفاده می‌شود (sessionShape=cookie).",
+    "ویزارد سرورگردان است: مرحله‌ی بعدی را خودِ کاربوم در پاسخ اعلام می‌کند.",
+    "فرم‌های میانی با همان مقادیرِ پیش‌پرشده‌ی پروفایلِ کاربر پس فرستاده می‌شوند؛ داده‌ای ساخته نمی‌شود.",
+    "اگر کاربوم فیلدی لازم بداند که پروفایل ندارد، با karboom_profile_incomplete متوقف می‌شویم.",
   ],
 };
 
@@ -247,6 +278,7 @@ export const APPLY_SPEC: Record<ApplyBoardId, BoardApplySpec> = {
   jobvision: JOBVISION_SPEC,
   "e-estekhdam": E_ESTEKHDAM_SPEC,
   irantalent: IRANTALENT_SPEC,
+  karboom: KARBOOM_SPEC,
 };
 
 /** The apply spec for a board, or undefined if unsupported. */

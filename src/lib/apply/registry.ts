@@ -18,15 +18,14 @@ import type { JobBoardConnector, JobBoardId } from "@/lib/apply/types";
 /**
  * ثبت کانکتورها — افزودن سایت کاریابی تازه = یک ورودی اینجا.
  *
- * چهار سایتِ هدفِ WF1 ثبت شده‌اند (jobinja, jobvision, e-estekhdam, irantalent).
- * karboom/linkedin عمداً ثبت نشده‌اند (هنوز در دامنه‌ی محصول نیستند).
+ * کانکتور فقط برای سایت‌هایی ثبت می‌شود که اجرای واقعی دارند. providerهای بعدی در
+ * PROVIDER_CAPABILITIES شناخته می‌شوند، اما تا زمان ساخت آداپتور اینجا connector ندارند.
  */
 export const connectors: Record<string, JobBoardConnector> = {
   [jobvision.id]: jobvision,
   [jobinja.id]: jobinja,
   [eEstekhdam.id]: eEstekhdam,
   [irantalent.id]: irantalent,
-  // karboom/linkedin هنوز ثبت نشده‌اند.
 };
 
 export function getConnector(id: JobBoardId): JobBoardConnector | undefined {
@@ -52,8 +51,217 @@ export const BOARD_STATUS: Record<JobBoardId, "live" | "extension_only" | "comin
   jobvision: "extension_only",
   "e-estekhdam": "extension_only",
   irantalent: "extension_only",
-  karboom: "coming_soon",
+  karboom: "extension_only",
   linkedin: "coming_soon",
+  iranestekhdam: "coming_soon",
+  divar: "coming_soon",
+  quera: "coming_soon",
+  remoteok: "coming_soon",
+  weworkremotely: "coming_soon",
+  ponisha: "coming_soon",
+  parscoders: "coming_soon",
+  bankestekhdam: "coming_soon",
+};
+
+export type ProviderWorkflowState = "live" | "in_progress" | "planned";
+
+export interface ProviderCapability {
+  id: JobBoardId;
+  displayName: string;
+  publicName: string;
+  publicVisible: boolean;
+  workflowState: ProviderWorkflowState;
+  discovery: boolean;
+  applicationSync: boolean;
+  easyApply: boolean;
+  autoApply: boolean;
+  sessionShape: "cookie" | "token";
+  note: string;
+}
+
+export const PROVIDER_CAPABILITIES: Record<JobBoardId, ProviderCapability> = {
+  jobinja: {
+    id: "jobinja",
+    displayName: "جابینجا",
+    publicName: "Jobinja",
+    publicVisible: true,
+    workflowState: "live",
+    discovery: true,
+    applicationSync: true,
+    easyApply: true,
+    autoApply: true,
+    sessionShape: "cookie",
+    note: "جریان کامل جست‌وجو، همگام‌سازی و اپلای فعال است.",
+  },
+  jobvision: {
+    id: "jobvision",
+    displayName: "جاب‌ویژن",
+    publicName: "JobVision",
+    publicVisible: true,
+    workflowState: "in_progress",
+    discovery: true,
+    applicationSync: true,
+    easyApply: true,
+    autoApply: true,
+    sessionShape: "token",
+    note: "مسیر افزونه فعال است و تا تأیید کامل سرور در حال تکمیل می‌ماند.",
+  },
+  "e-estekhdam": {
+    id: "e-estekhdam",
+    displayName: "ای‌استخدام",
+    publicName: "E-estekhdam",
+    publicVisible: true,
+    workflowState: "in_progress",
+    discovery: true,
+    applicationSync: true,
+    easyApply: true,
+    autoApply: true,
+    sessionShape: "cookie",
+    note: "جریان افزونه فعال است و مسیر کامل ارائه‌دهنده مرحله‌ای تکمیل می‌شود.",
+  },
+  irantalent: {
+    id: "irantalent",
+    displayName: "ایران‌تلنت",
+    publicName: "IranTalent",
+    publicVisible: true,
+    workflowState: "in_progress",
+    discovery: true,
+    applicationSync: true,
+    easyApply: true,
+    autoApply: true,
+    sessionShape: "cookie",
+    note: "با رزومه‌ی پروفایل خود ایران‌تلنت ارسال می‌شود و مسیر افزونه/سرور در حال تکمیل است.",
+  },
+  karboom: {
+    id: "karboom",
+    displayName: "کاربوم",
+    publicName: "Karboom",
+    publicVisible: true,
+    workflowState: "in_progress",
+    discovery: true,
+    applicationSync: true,
+    easyApply: true,
+    autoApply: true,
+    sessionShape: "cookie",
+    note: "مسیر افزونه فعال است؛ رزومه‌ی اختصاصیِ هر آگهی در ویزارد کاربوم آپلود می‌شود.",
+  },
+  iranestekhdam: {
+    id: "iranestekhdam",
+    displayName: "ایران استخدام",
+    publicName: "IranEstekhdam",
+    publicVisible: true,
+    workflowState: "planned",
+    discovery: false,
+    applicationSync: false,
+    easyApply: false,
+    autoApply: false,
+    sessionShape: "cookie",
+    note: "مرجع فعال آگهی‌های خصوصی و دولتی؛ آداپتور جست‌وجو و سوابق در صف ساخت است.",
+  },
+  divar: {
+    id: "divar",
+    displayName: "دیوار",
+    publicName: "Divar Jobs",
+    publicVisible: true,
+    workflowState: "planned",
+    discovery: false,
+    applicationSync: false,
+    easyApply: false,
+    autoApply: false,
+    sessionShape: "cookie",
+    note: "بازار بزرگ آگهی‌های استخدام محلی؛ اتصال با محدودیت‌های ضداسپم باید جداگانه طراحی شود.",
+  },
+  quera: {
+    id: "quera",
+    displayName: "کوئرا مگنت",
+    publicName: "Quera Magnet",
+    publicVisible: true,
+    workflowState: "planned",
+    discovery: false,
+    applicationSync: false,
+    easyApply: false,
+    autoApply: false,
+    sessionShape: "cookie",
+    note: "منبع تخصصی فرصت‌های فنی و برنامه‌نویسی؛ اولویت مناسب برای کشف شغل‌های tech.",
+  },
+  remoteok: {
+    id: "remoteok",
+    displayName: "RemoteOK",
+    publicName: "RemoteOK",
+    publicVisible: true,
+    workflowState: "planned",
+    discovery: false,
+    applicationSync: false,
+    easyApply: false,
+    autoApply: false,
+    sessionShape: "cookie",
+    note: "فید بین‌المللی فرصت‌های remote؛ برای کشف و بازکردن در سایت مقصد مناسب است.",
+  },
+  weworkremotely: {
+    id: "weworkremotely",
+    displayName: "We Work Remotely",
+    publicName: "We Work Remotely",
+    publicVisible: true,
+    workflowState: "planned",
+    discovery: false,
+    applicationSync: false,
+    easyApply: false,
+    autoApply: false,
+    sessionShape: "cookie",
+    note: "منبع remote-first بین‌المللی؛ شروع خوب برای discovery بدون اپلای خودکار.",
+  },
+  ponisha: {
+    id: "ponisha",
+    displayName: "پونیشا",
+    publicName: "Ponisha",
+    publicVisible: true,
+    workflowState: "planned",
+    discovery: false,
+    applicationSync: false,
+    easyApply: false,
+    autoApply: false,
+    sessionShape: "cookie",
+    note: "بازار پروژه و فریلنس؛ رفتار آن از job board استخدامی جداگانه مدل می‌شود.",
+  },
+  parscoders: {
+    id: "parscoders",
+    displayName: "پارس‌کدرز",
+    publicName: "Parscoders",
+    publicVisible: true,
+    workflowState: "planned",
+    discovery: false,
+    applicationSync: false,
+    easyApply: false,
+    autoApply: false,
+    sessionShape: "cookie",
+    note: "بازار پروژه‌های فریلنس؛ برای مسیر project-board جدا از استخدام تمام‌وقت مناسب است.",
+  },
+  bankestekhdam: {
+    id: "bankestekhdam",
+    displayName: "بانک استخدام",
+    publicName: "Bank Estekhdam",
+    publicVisible: true,
+    workflowState: "planned",
+    discovery: false,
+    applicationSync: false,
+    easyApply: false,
+    autoApply: false,
+    sessionShape: "cookie",
+    note: "تجمیع‌کننده و خبرخوان استخدام؛ احتمالاً ابتدا فقط discovery/open-in-provider می‌گیرد.",
+  },
+  linkedin: {
+    id: "linkedin",
+    displayName: "لینکدین",
+    publicName: "LinkedIn",
+    publicVisible: true,
+    workflowState: "planned",
+    discovery: false,
+    applicationSync: false,
+    easyApply: false,
+    autoApply: false,
+    sessionShape: "cookie",
+    note: "در نقشه‌ی راه اتصال‌های بعدی است.",
+  },
 };
 
 /**
@@ -62,7 +270,7 @@ export const BOARD_STATUS: Record<JobBoardId, "live" | "extension_only" | "comin
  * ناشناخته → `false` (fail-closed).
  */
 export function isBoardLive(id: string): boolean {
-  return BOARD_STATUS[id as JobBoardId] === "live";
+  return PROVIDER_CAPABILITIES[id as JobBoardId]?.workflowState === "live";
 }
 
 /** Boards that can be connected in the extension, including browser-only adapters. */
@@ -73,7 +281,13 @@ export function isBoardConnectable(id: string): boolean {
 
 /** فهرستِ شناسه‌ی سایت‌هایی که واقعاً کار می‌کنند — درزِ یکپارچگی برای orchestrator. */
 export function liveBoardIds(): JobBoardId[] {
-  return (Object.keys(BOARD_STATUS) as JobBoardId[]).filter(
-    (id) => BOARD_STATUS[id] === "live",
-  );
+  return (Object.keys(PROVIDER_CAPABILITIES) as JobBoardId[]).filter((id) => isBoardLive(id));
+}
+
+export function providerCapabilities(): ProviderCapability[] {
+  return Object.values(PROVIDER_CAPABILITIES);
+}
+
+export function publicProviderCapabilities(): ProviderCapability[] {
+  return providerCapabilities().filter((provider) => provider.publicVisible);
 }

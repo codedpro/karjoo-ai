@@ -10,9 +10,9 @@ import "server-only";
  *
  * ترتیبِ کار برای هر کاربر:
  *   ۱) گیتِ اپلای خودکارِ سرور (همان گیتی که ناوگان استفاده می‌کند).
- *   ۲) claim فقط آیتم‌های ایران‌تلنت، فقط اگر رزومه‌ی اختصاصی از قبل ساخته شده.
+ *   ۲) claim فقط آیتم‌های ایران‌تلنت، بدون نیاز به PDF اختصاصی.
  *   ۳) نشست از خزانه؛ اگر نبود، ورودِ خودکار با اعتبارنامه‌ی ذخیره‌شده.
- *   ۴) رندرِ PDFِ اختصاصی، اپلای، و ثبتِ نتیجه با همان مسیرِ recordFleetResult.
+ *   ۴) اپلای با رزومه‌ی پروفایلِ ایران‌تلنت، و ثبتِ نتیجه با همان مسیرِ recordFleetResult.
  */
 import { and, eq, exists, or, sql } from "drizzle-orm";
 
@@ -33,10 +33,7 @@ import {
   AutoApplyNotAllowedError,
 } from "@/lib/apply/auto-apply";
 import { readUserPlan } from "@/lib/billing/apply-quota-guard";
-import { renderResumePdf } from "@/lib/resume/pdf-renderer";
 import {
-  buildResumeFileName,
-  defaultLoadResumeHtml,
   recordFleetResult,
 } from "@/lib/fleet/dispatch";
 import { readSessionBlob } from "@/lib/vault/store";
@@ -58,9 +55,6 @@ export interface IranTalentRunSummary {
 export interface IranTalentRunnerDeps {
   db?: typeof defaultDb;
   fetchImpl?: typeof fetch;
-  renderPdf?: (html: string) => Promise<Buffer>;
-  loadResumeHtml?: (userId: string, listingId: string) => Promise<string | null>;
-  resumeFileName?: (userId: string, company: string | null | undefined) => Promise<string | null>;
 }
 
 function bump(reasons: Record<string, number>, key: string): void {
@@ -77,11 +71,6 @@ export async function runIranTalentForUser(
   deps: IranTalentRunnerDeps = {},
 ): Promise<IranTalentRunSummary> {
   const db = deps.db ?? defaultDb;
-  const loadResumeHtml =
-    deps.loadResumeHtml ?? ((id: string, listingId: string) => defaultLoadResumeHtml(id, listingId, db));
-  const resumeFileName =
-    deps.resumeFileName ??
-    ((id: string, company: string | null | undefined) => buildResumeFileName(id, company, db));
   const summary: IranTalentRunSummary = {
     users: 1, attempted: 0, submitted: 0, skipped: 0, failed: 0, reasons: {},
   };
@@ -102,7 +91,7 @@ export async function runIranTalentForUser(
 
   const items = await claimUserApplyItems(userId, limit, db, {
     minScore,
-    requireTailoredResume: true,
+    requireTailoredResume: false,
     allowedBoards: [BOARD],
   });
   if (items.length === 0) return summary;
@@ -121,34 +110,11 @@ export async function runIranTalentForUser(
   }
   const session: string = stored;
 
-  const renderPdf = deps.renderPdf ?? renderResumePdf;
   for (const item of items) {
     summary.attempted += 1;
-    const html = await loadResumeHtml(userId, item.listingId);
-    if (!html) {
-      summary.failed += 1;
-      bump(summary.reasons, "tailored_resume_missing");
-      await report(item.taskId, userId, "failed", "tailored_resume_missing", db);
-      continue;
-    }
-    let pdf: Buffer;
-    try {
-      pdf = await renderPdf(html);
-    } catch {
-      summary.failed += 1;
-      bump(summary.reasons, "resume_render_failed");
-      await report(item.taskId, userId, "failed", "resume_render_failed", db);
-      continue;
-    }
-
-    // نامِ فایل همان چیزی است که کارفرما می‌بیند؛ اگر نامِ کاربر در دسترس نبود، یک
-    // نامِ خنثی می‌گذاریم تا هرگز ردی از ابزار در آن نباشد.
-    const fileName = (await resumeFileName(userId, item.listing.company)) ?? "resume.pdf";
     const outcome = await applyToIranTalent({
       session,
       jobUrl: item.listing.url,
-      resumePdf: new Uint8Array(pdf),
-      resumeFileName: fileName,
       ...(item.coverLetter ? { coverLetter: item.coverLetter } : {}),
     }, deps.fetchImpl ?? fetch);
 

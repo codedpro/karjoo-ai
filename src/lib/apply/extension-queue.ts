@@ -81,6 +81,10 @@ export interface ClaimOptions {
   allowedBoards?: readonly ActiveApplyBoard[];
 }
 
+function isNativeProfileResumeBoard(board: string): boolean {
+  return board === "jobvision" || board === "irantalent";
+}
+
 /** آیا payloadِ این task فیلترمود است؟ (اپلای بر اساسِ فیلترِ سایت، بدونِ AI). */
 export function isFilterModeTask(payload: unknown): boolean {
   return (
@@ -139,7 +143,7 @@ export async function claimUserApplyItems(
           ),
       );
   const tailoredResumeGate = opts.requireTailoredResume
-    ? or(eq(jobListings.board, "jobvision"), tailoredResumeExists)
+    ? or(eq(jobListings.board, "jobvision"), eq(jobListings.board, "irantalent"), tailoredResumeExists)
     : undefined;
   const providerGate = opts.allowedBoards
     ? inArray(jobListings.board, [...opts.allowedBoards])
@@ -235,7 +239,9 @@ export async function claimUserApplyItems(
         matchId: d.matchId,
         listingId: d.listingId,
         board: d.board,
-        resumeStrategy: d.board === "jobvision" ? ("native_profile_resume" as const) : ("tailored_pdf" as const),
+        resumeStrategy: isNativeProfileResumeBoard(d.board)
+          ? ("native_profile_resume" as const)
+          : ("tailored_pdf" as const),
         mode: isFilterModeTask(d.payload) ? ("filter" as const) : ("ai" as const),
         coverLetter: d.coverLetter,
         matchScore: d.matchScore,

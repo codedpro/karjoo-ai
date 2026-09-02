@@ -139,6 +139,37 @@ describe("KarjooApi authed calls", () => {
     ]);
   });
 
+  it("defaults IranTalent claimed items to the provider profile resume strategy", async () => {
+    const { fetchImpl } = fakeFetch(() => ({
+      status: 200,
+      body: {
+        count: 1,
+        items: [
+          {
+            taskId: "task-2",
+            matchId: "m2",
+            listingId: "l2",
+            board: "irantalent",
+            coverLetter: null,
+            matchScore: null,
+            listing: {
+              title: "Backend Developer",
+              company: "Acme",
+              city: "Tehran",
+              url: "https://www.irantalent.com/job/backend-developer/182341",
+            },
+          },
+        ],
+      },
+    }));
+    const api = new KarjooApi({ origin: "http://localhost:3000", token: "t", fetchImpl });
+    const { items } = await api.claimQueue();
+    expect(items[0]).toMatchObject({
+      board: "irantalent",
+      resumeStrategy: "native_profile_resume",
+    });
+  });
+
   it("reportResult posts to the :id/result path with NO id in the body (id is in the path)", async () => {
     const { fetchImpl, calls } = fakeFetch(() => ({
       status: 200,

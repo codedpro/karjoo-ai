@@ -46,6 +46,7 @@ const entryPoints = {
   "content/apply/jobvision": resolve(root, "src/content/apply/jobvision.ts"),
   "content/apply/eestekhdam": resolve(root, "src/content/apply/eestekhdam.ts"),
   "content/apply/irantalent": resolve(root, "src/content/apply/irantalent.ts"),
+  "content/apply/karboom": resolve(root, "src/content/apply/karboom.ts"),
   // Session-storage capture probe (one shared script on every board) — captures
   // the user's OWN localStorage/sessionStorage for the LOCAL session snapshot
   // (and premium vault push). See src/content/session-probe.ts.

@@ -79,6 +79,10 @@ function iso(value: unknown): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function resumeStrategyForBoard(board: unknown): "tailored_pdf" | "native_profile_resume" {
+  return board === "jobvision" || board === "irantalent" ? "native_profile_resume" : "tailored_pdf";
+}
+
 export async function getLiveApplyOverview(
   userId: string,
   opts: { queueLimit?: number; recentLimit?: number; db?: LiveDb } = {},
@@ -196,7 +200,7 @@ export async function getLiveApplyOverview(
       lastError: (r.last_error as string | null) ?? null,
       matchScore: typeof r.match_score === "number" ? r.match_score : null,
       hasTailoredResume: r.has_tailored_resume === true,
-      resumeStrategy: r.board === "jobvision" ? "native_profile_resume" : "tailored_pdf",
+      resumeStrategy: resumeStrategyForBoard(r.board),
       listing: {
         board: String(r.board),
         title: String(r.title),
@@ -216,7 +220,7 @@ export async function getLiveApplyOverview(
       matchScore: typeof r.match_score === "number" ? r.match_score : null,
       happenedAt: iso(r.happened_at) ?? new Date().toISOString(),
       hasResume: r.has_resume === true,
-      resumeStrategy: r.board === "jobvision" ? "native_profile_resume" : "tailored_pdf",
+      resumeStrategy: resumeStrategyForBoard(r.board),
       resumeId: r.resume_id ? String(r.resume_id) : null,
       retryEligible: r.status === "failed",
       reason: (r.reason as string | null) ?? null,

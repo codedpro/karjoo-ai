@@ -21,6 +21,7 @@ import {
   matches,
   tasks,
 } from "@/db/schema";
+import { MAX_PROVIDER_SYNC_AGE_DAYS } from "@/lib/apply/freshness";
 
 /** یک ردیفِ تطبیق همراهِ اطلاعاتِ آگهی — هم‌ساختار با خروجیِ GET /api/matches. */
 export interface DashboardMatch {
@@ -72,7 +73,7 @@ export const getMatchesForUser = cache(
       .innerJoin(jobListings, eq(matches.listingId, jobListings.id))
       .where(sql`
         ${matches.userId} = ${userId}
-        and ${jobListings.postedAt} >= now() - interval '45 days'
+        and ${jobListings.postedAt} >= now() - (${MAX_PROVIDER_SYNC_AGE_DAYS}::text || ' days')::interval
         and not exists (
           select 1
           from ${applications} a

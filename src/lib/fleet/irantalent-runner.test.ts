@@ -53,8 +53,6 @@ vi.mock("@/lib/apply/boards/irantalent-apply", () => ({
 }));
 vi.mock("@/lib/fleet/dispatch", () => ({
   recordFleetResult: (...a: unknown[]) => recordFleetResult(...a),
-  defaultLoadResumeHtml: async () => "<html>cv</html>",
-  buildResumeFileName: async () => "Sara_Acme.pdf",
 }));
 
 const { runIranTalentForUser } = await import("@/lib/fleet/irantalent-runner");
@@ -76,7 +74,7 @@ const ITEM = {
   listing: { title: "Dev", company: "Acme", city: "تهران", url: "https://www.irantalent.com/job/dev/1" },
 };
 
-const deps = { renderPdf: async () => Buffer.from("%PDF"), fetchImpl: (async () => new Response("{}")) as unknown as typeof fetch };
+const deps = { fetchImpl: (async () => new Response("{}")) as unknown as typeof fetch };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -103,14 +101,14 @@ describe("provider and plan gates", () => {
     expect(claimUserApplyItems).not.toHaveBeenCalled();
   });
 
-  it("claims only IranTalent items and only with a tailored resume", async () => {
+  it("claims only IranTalent items without requiring a tailored resume", async () => {
     await runIranTalentForUser("u1", 3, deps);
     const options = claimUserApplyItems.mock.calls[0]![3] as {
       allowedBoards: string[];
       requireTailoredResume: boolean;
     };
     expect(options.allowedBoards).toEqual(["irantalent"]);
-    expect(options.requireTailoredResume).toBe(true);
+    expect(options.requireTailoredResume).toBe(false);
   });
 });
 
@@ -139,6 +137,11 @@ describe("applying and reporting", () => {
     applyToIranTalent.mockResolvedValue({ status: "skipped", reason: "irantalent_already_applied", ranSteps: [] });
     const summary = await runIranTalentForUser("u1", 3, deps);
     expect(summary.skipped).toBe(1);
+    expect(applyToIranTalent.mock.calls[0]![0]).toEqual({
+      session: "SESSION",
+      jobUrl: ITEM.listing.url,
+      coverLetter: "سلام",
+    });
     expect(recordFleetResult).toHaveBeenCalledTimes(1);
     expect(recordFleetResult.mock.calls[0]![1]).toMatchObject({
       taskId: ITEM.taskId,
@@ -146,18 +149,6 @@ describe("applying and reporting", () => {
       status: "skipped",
       reason: "irantalent_already_applied",
     });
-  });
-
-  it("fails the task, not the run, when the tailored pdf cannot be rendered", async () => {
-    claimUserApplyItems.mockResolvedValue([ITEM]);
-    const summary = await runIranTalentForUser("u1", 3, {
-      ...deps,
-      renderPdf: async () => { throw new Error("chromium missing"); },
-    });
-    expect(summary.failed).toBe(1);
-    expect(summary.reasons).toHaveProperty("resume_render_failed");
-    expect(applyToIranTalent).not.toHaveBeenCalled();
-    expect(recordFleetResult.mock.calls[0]![1]).toMatchObject({ reason: "resume_render_failed" });
   });
 
   it("stops the batch when the session dies mid-run", async () => {

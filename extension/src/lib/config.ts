@@ -90,6 +90,15 @@ export const BOARDS = {
     /** The signed-in user's own profile page. */
     profilePath: "/karfarmas/profile",
   },
+  karboom: {
+    id: "karboom" as const,
+    displayName: "کاربوم",
+    origin: "https://karboom.io",
+    /** کاربوم سمتِ سرور رندر می‌شود؛ ورود در کوکیِ نشستِ لاراول است. */
+    sessionShape: "cookie" as const,
+    /** صفحه‌ی پروفایلِ خودِ کاربر (مهمان ۳۰۲ به /account می‌خورد). */
+    profilePath: "/profile",
+  },
   irantalent: {
     id: "irantalent" as const,
     displayName: "ایران‌تلنت",
@@ -107,7 +116,7 @@ export type BoardId = keyof typeof BOARDS;
 export const BOARD_IDS = Object.keys(BOARDS) as BoardId[];
 
 /** Providers that are production-ready in the unified extension manager. */
-export const ACTIVE_PROVIDER_IDS = ["jobinja", "jobvision", "e-estekhdam", "irantalent"] as const;
+export const ACTIVE_PROVIDER_IDS = ["jobinja", "jobvision", "e-estekhdam", "irantalent", "karboom"] as const;
 export type ActiveProviderId = (typeof ACTIVE_PROVIDER_IDS)[number];
 
 export function isActiveProviderId(value: string): value is ActiveProviderId {
@@ -119,4 +128,5 @@ export const PROVIDER_JOBS_URLS: Record<ActiveProviderId, string> = {
   jobvision: "https://jobvision.ir/jobs",
   "e-estekhdam": "https://www.e-estekhdam.com/search",
   irantalent: "https://www.irantalent.com/jobs",
+  karboom: "https://karboom.io/jobs",
 };

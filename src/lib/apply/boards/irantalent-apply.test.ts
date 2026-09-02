@@ -1,13 +1,13 @@
 /**
  * Server-side IranTalent apply tests — the same guarantees the extension adapter
- * has, now without a browser: the tailored PDF is pinned to the submission, a
- * mismatch fails closed, and `submitted` is never inferred from the POST alone.
+ * has, now without a browser: IranTalent applies with the user's provider
+ * profile CV, never uploads a per-job PDF, and never infers `submitted` from the
+ * POST alone.
  */
 import { describe, expect, it, vi } from "vitest";
 
 import {
   applyToIranTalent,
-  attachmentMatchesTask,
   authorizationFromSession,
   positionIdFromUrl,
 } from "@/lib/apply/boards/irantalent-apply";
@@ -23,8 +23,6 @@ function input(overrides: Partial<Parameters<typeof applyToIranTalent>[0]> = {})
   return {
     session: SESSION,
     jobUrl: JOB_URL,
-    resumePdf: new Uint8Array([37, 80, 68, 70]),
-    resumeFileName: "karjoo-182341.pdf",
     coverLetter: "سلام",
     ...overrides,
   };
@@ -33,7 +31,6 @@ function input(overrides: Partial<Parameters<typeof applyToIranTalent>[0]> = {})
 interface StubOptions {
   position?: Record<string, unknown>;
   conditions?: Record<string, unknown>;
-  upload?: { status?: number; body?: unknown };
   apply?: { status?: number; body?: unknown };
   appliedAfter?: boolean;
   appliedJobs?: unknown;
@@ -65,10 +62,6 @@ function stub(options: StubOptions = {}) {
     if (href.includes("check-apply-conditions")) {
       return new Response(JSON.stringify({ is_email_verified: true, ...options.conditions }));
     }
-    if (href.endsWith("/file") && method === "POST") {
-      const { status = 201, body = { id: 909, file_name: "karjoo-182341.pdf" } } = options.upload ?? {};
-      return new Response(JSON.stringify(body), { status });
-    }
     if (/\/position\/182341\/apply$/.test(href)) {
       submitted = true;
       const { status = 200, body = { ok: true } } = options.apply ?? {};
@@ -92,47 +85,29 @@ describe("authorizationFromSession", () => {
   });
 });
 
-describe("positionIdFromUrl / attachmentMatchesTask", () => {
-  it("reads the id and matches the stored attachment sensibly", () => {
+describe("positionIdFromUrl", () => {
+  it("reads the id from canonical IranTalent job URLs", () => {
     expect(positionIdFromUrl(JOB_URL)).toBe("182341");
     expect(positionIdFromUrl("https://www.irantalent.com/jobs")).toBeNull();
-    expect(attachmentMatchesTask({ id: 1, fileName: "karjoo_182341.PDF" }, "karjoo-182341.pdf")).toBe(true);
-    expect(attachmentMatchesTask({ id: 1, fileName: "other.pdf" }, "karjoo-182341.pdf")).toBe(false);
-    expect(attachmentMatchesTask({ id: null, fileName: "karjoo-182341.pdf" }, "karjoo-182341.pdf")).toBe(false);
   });
 });
 
 describe("applyToIranTalent", () => {
-  it("uploads the tailored pdf and submits pinned to that file id", async () => {
+  it("submits with the provider profile CV and optional cover letter", async () => {
     const { fetchMock, calls } = stub();
     const result = await applyToIranTalent(input(), fetchMock);
     expect(result.status).toBe("submitted");
-    expect(result.ranSteps).toContain("attachment-verified");
 
-    const upload = calls.find((c) => c.url.endsWith("/file"))!;
-    const form = upload.body as FormData;
-    expect(form.get("attachable_id")).toBe("77");
-    expect(form.get("file_type_id")).toBe("41");
+    expect(calls.some((c) => c.url.endsWith("/file"))).toBe(false);
     const submit = calls.find((c) => c.url.endsWith("/apply"))!;
-    expect(JSON.parse(String(submit.body))).toEqual({ file_id: 909, cover_letter: "سلام" });
-    expect(calls.indexOf(upload)).toBeLessThan(calls.indexOf(submit));
+    expect(JSON.parse(String(submit.body))).toEqual({ cover_letter: "سلام" });
   });
 
-  it("refuses without a tailored pdf", async () => {
-    const { fetchMock } = stub();
-    expect(await applyToIranTalent(input({ resumePdf: new Uint8Array() }), fetchMock)).toMatchObject({
-      status: "failed",
-      reason: "irantalent_resume_missing",
-    });
-  });
-
-  it("fails closed when the stored attachment is not this task's pdf", async () => {
-    const { fetchMock, calls } = stub({ upload: { body: { id: 909, file_name: "someone-else.pdf" } } });
-    expect(await applyToIranTalent(input(), fetchMock)).toMatchObject({
-      status: "failed",
-      reason: "irantalent_resume_verification_failed",
-    });
-    expect(calls.some((c) => c.url.endsWith("/apply"))).toBe(false);
+  it("sends an empty submit body when there is no cover letter", async () => {
+    const { fetchMock, calls } = stub();
+    expect(await applyToIranTalent(input({ coverLetter: "" }), fetchMock)).toMatchObject({ status: "submitted" });
+    const submit = calls.find((c) => c.url.endsWith("/apply"))!;
+    expect(JSON.parse(String(submit.body))).toEqual({});
   });
 
   it("never reports submitted without durable proof", async () => {

@@ -1,5 +1,5 @@
 /**
- * Server-side IranTalent provider tests: four-provider filter parsing, the
+ * Server-side IranTalent provider tests: five-provider filter parsing, the
  * enabled-board queue gate, the tailored-PDF requirement, and the rule that a
  * server-owned fleet run never leases IranTalent work.
  */
@@ -14,7 +14,7 @@ import {
 import { applyFiltersInputSchema } from "@/lib/apply/apply-filters-form";
 import { browserDiscoveryImportSchema } from "@/lib/api/extension-schemas";
 
-const ALL_BOARDS = ["jobinja", "jobvision", "e-estekhdam", "irantalent"] as const;
+const ALL_BOARDS = ["jobinja", "jobvision", "e-estekhdam", "irantalent", "karboom"] as const;
 
 function enable(...boards: readonly string[]) {
   const boardFilters = { ...EMPTY_APPLY_FILTERS.boardFilters };
@@ -24,8 +24,8 @@ function enable(...boards: readonly string[]) {
   return { ...EMPTY_APPLY_FILTERS, boardFilters };
 }
 
-describe("four-provider filter parsing", () => {
-  it("always materializes all four providers, defaulting IranTalent off", () => {
+describe("five-provider filter parsing", () => {
+  it("always materializes all five providers, defaulting IranTalent and Karboom off", () => {
     const filters = parseApplyFilters(null);
     expect(Object.keys(filters.boardFilters).sort()).toEqual([...ALL_BOARDS].sort());
     expect(filters.boardFilters.irantalent).toEqual({
@@ -71,7 +71,7 @@ describe("four-provider filter parsing", () => {
     expect(legacy.boardFilters.jobinja.categoryKeys).toEqual(["software"]);
   });
 
-  it("accepts IranTalent in the dashboard filter form and the discovery import", () => {
+  it("accepts IranTalent and Karboom in the dashboard filter form and the discovery import", () => {
     const board = { enabled: false, categoryKeys: [], cities: [], employmentTypeKeys: [], remoteOnly: false };
     expect(applyFiltersInputSchema.safeParse({
       boardFilters: {
@@ -79,15 +79,18 @@ describe("four-provider filter parsing", () => {
         jobvision: board,
         "e-estekhdam": board,
         irantalent: { ...board, enabled: true, categoryKeys: ["342"], employmentTypeKeys: ["186"] },
+        karboom: { ...board, enabled: true, categoryKeys: ["programming-and-software"], cities: ["تهران"] },
       },
     }).success).toBe(true);
-    // The contract is versioned: a payload that predates IranTalent is rejected
-    // rather than silently dropping the provider.
+    // The contract is versioned: a payload that predates a provider is rejected
+    // rather than silently dropping it.
     expect(applyFiltersInputSchema.safeParse({
-      boardFilters: { jobinja: board, jobvision: board, "e-estekhdam": board },
+      boardFilters: { jobinja: board, jobvision: board, "e-estekhdam": board, irantalent: board },
     }).success).toBe(false);
     expect(browserDiscoveryImportSchema.safeParse({ board: "irantalent", listings: [] }).success).toBe(true);
-    expect(browserDiscoveryImportSchema.safeParse({ board: "karboom", listings: [] }).success).toBe(false);
+    expect(browserDiscoveryImportSchema.safeParse({ board: "karboom", listings: [] }).success).toBe(true);
+    // یک سایتِ واقعاً پیاده‌نشده هنوز باید رد شود (fail-closed).
+    expect(browserDiscoveryImportSchema.safeParse({ board: "linkedin", listings: [] }).success).toBe(false);
   });
 });
 

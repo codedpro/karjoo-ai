@@ -1,4 +1,5 @@
 import type { BrowserDiscoveredListing } from "@ext/lib/types";
+import { providerCutoffMs } from "@ext/lib/freshness";
 
 const ORIGIN = "https://www.e-estekhdam.com";
 const SEARCH_URL = `${ORIGIN}/search-api/search`;
@@ -119,7 +120,7 @@ export async function discoverEEstekhdamListings(
   fetchImpl: typeof fetch = fetch,
   onPage?: (count: number) => Promise<void> | void,
 ): Promise<BrowserDiscoveredListing[]> {
-  const cutoff = Date.now() - Math.min(45, Math.max(1, options.maxAgeDays)) * 86_400_000;
+  const cutoff = providerCutoffMs(options.maxAgeDays);
   const contracts = [...options.employmentTypeKeys];
   if (options.remoteOnly && !contracts.includes("دورکاری")) contracts.push("دورکاری");
   const found = new Map<string, BrowserDiscoveredListing>();

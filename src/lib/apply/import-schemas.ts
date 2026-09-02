@@ -24,6 +24,14 @@ export const importBoardSchema = z.enum([
   "irantalent",
   "karboom",
   "linkedin",
+  "iranestekhdam",
+  "divar",
+  "quera",
+  "remoteok",
+  "weworkremotely",
+  "ponisha",
+  "parscoders",
+  "bankestekhdam",
 ]);
 
 export type ImportBoard = z.infer<typeof importBoardSchema>;

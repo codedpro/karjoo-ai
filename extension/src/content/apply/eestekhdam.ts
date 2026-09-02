@@ -181,6 +181,85 @@ async function storedFileCounts(): Promise<string> {
   }
 }
 
+function primitiveId(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function fileId(file: Record<string, unknown>): string | null {
+  for (const key of ["id", "fileId", "file_id", "uuid", "key"]) {
+    const id = primitiveId(file[key]);
+    if (id) return id;
+  }
+  return null;
+}
+
+function eestekhdamFiles(value: unknown): Record<string, unknown>[] {
+  const data = record(record(value).data ?? value);
+  return Array.isArray(data.files) ? data.files.map(record) : [];
+}
+
+/**
+ * Delete application-upload files from e-estekhdam, then the caller can retry
+ * the tailored PDF upload. The route names are intentionally tried from most
+ * likely to legacy-looking because e-estekhdam's public bundle is not available
+ * to unauthenticated fetches, while the authenticated JSON payload gives us
+ * only the file ids/counts.
+ */
+async function clearStoredApplicationFiles(): Promise<{ deleted: number; total: number; reason?: string }> {
+  const { response, body } = await jsonRequest(`${API_ROOT}/ats/cvs`);
+  if (response.status === 401 || response.status === 403) {
+    return { deleted: 0, total: 0, reason: "eestekhdam_login_required" };
+  }
+  if (!response.ok) {
+    return { deleted: 0, total: 0, reason: `eestekhdam_file_cleanup_failed: list ${response.status}` };
+  }
+  const files = eestekhdamFiles(body);
+  const ids = [...new Set(files.map(fileId).filter((id): id is string => Boolean(id)))];
+  if (files.length > 0 && ids.length === 0) {
+    return { deleted: 0, total: files.length, reason: "eestekhdam_file_cleanup_failed: no file ids" };
+  }
+
+  let deleted = 0;
+  let lastStatus = "";
+  for (const id of ids) {
+    const encoded = encodeURIComponent(id);
+    const candidates = [
+      `${API_ROOT}/ats/cvs/files/${encoded}`,
+      `${API_ROOT}/ats/files/${encoded}`,
+      `${API_ROOT}/ats/cvs/${encoded}`,
+      `${API_ROOT}/files/${encoded}`,
+    ];
+    let removed = false;
+    for (const url of candidates) {
+      const result = await jsonRequest(url, { method: "DELETE" });
+      if (result.response.status === 404 || result.response.status === 405) {
+        lastStatus = `${result.response.status}`;
+        continue;
+      }
+      if (result.response.status === 401 || result.response.status === 403) {
+        return { deleted, total: ids.length, reason: "eestekhdam_login_required" };
+      }
+      if (!result.response.ok || record(result.body).ok === false) {
+        lastStatus = failureDetail(result.response.status, result.body);
+        continue;
+      }
+      deleted += 1;
+      removed = true;
+      break;
+    }
+    if (!removed) {
+      return {
+        deleted,
+        total: ids.length,
+        reason: `eestekhdam_file_cleanup_failed: delete ${id} ${lastStatus || "failed"}`,
+      };
+    }
+  }
+  return { deleted, total: ids.length };
+}
+
 /** PURE: does this refusal mean the account cannot store another file? */
 export function isFileLimitRefusal(detail: string): boolean {
   return /محدودیت تعداد فایل|ذخیره فایل|too many files|file limit/i.test(detail);
@@ -262,24 +341,46 @@ export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentAp
     }
 
     // The account cannot store another uploaded file. e-estekhdam caps them per
-    // account and its client exposes no way to delete one — checked across the
-    // main bundle and all ten lazy chunks — so nothing here can free a slot.
+    // account. The user explicitly allows Karjoo to clear those application
+    // upload files, so remove the `data.files` collection and retry once with
+    // the same tailored PDF.
     //
     // We do NOT fall back to the CV already on the account. Every application is
     // supposed to carry the résumé written for that specific ad; sending a
     // different one and calling it an application would misrepresent what the
-    // employer received. Fail instead, with the remedy in the reason.
-    //
-    // This is a hard failure, not a skip, deliberately: the task stays queued and
-    // succeeds later once space is freed, and the board circuit breaker parks
-    // e-estekhdam after a few so the other boards keep running.
-    const counts = await storedFileCounts();
+    // employer received.
+    const cleanup = await clearStoredApplicationFiles();
+    if (!cleanup.reason && cleanup.deleted > 0) {
+      const retry = await jsonRequest(`${API_ROOT}/ats/applicants/apply/${encodeURIComponent(String(jobId))}`, {
+        method: "POST",
+        body: form,
+      });
+      const retrySerialized = typeof retry.body === "string" ? retry.body : JSON.stringify(retry.body);
+      if (retry.response.ok && record(retry.body).ok !== false) {
+        return { ok: true, ranSteps: ["session", "position", "cleanup_files", "upload", "confirmed"] };
+      }
+      if (retry.response.status === 401 || retry.response.status === 403) {
+        return { ok: false, ranSteps: ["session", "cleanup_files", "upload"], reason: "eestekhdam_login_required" };
+      }
+      if (looksLikeChallenge(retrySerialized)) {
+        return { ok: false, ranSteps: ["session", "cleanup_files", "upload"], reason: "eestekhdam_captcha_required" };
+      }
+      return {
+        ok: false,
+        ranSteps: ["session", "cleanup_files", "upload"],
+        reason: `eestekhdam_apply_failed_after_cleanup: ${failureDetail(retry.response.status, retry.body)}`,
+      };
+    }
+    const counts = cleanup.reason ? "" : await storedFileCounts();
+    const cleanupText = cleanup.reason
+      ? cleanup.reason
+      : `eestekhdam_file_cleanup_empty: هیچ فایل قابل حذفی در حساب ای‌استخدام پیدا نشد.${counts}`;
     return {
       ok: false,
-      ranSteps: ["session", "upload"],
+      ranSteps: ["session", "upload", ...(cleanup.deleted > 0 ? ["cleanup_files"] : [])],
       reason:
         `eestekhdam_file_limit_reached: سقف تعداد فایل‌های حساب شما در ای‌استخدام پر است — ` +
-        `از حساب خودتان در ای‌استخدام چند فایل قدیمی را حذف کنید تا رزومهٔ اختصاصی دوباره ارسال شود.${counts}`,
+        `پاک‌سازی خودکار فایل‌ها کامل نشد. ${cleanupText}`,
     };
   }
   return { ok: true, ranSteps: ["session", "position", "upload", "confirmed"] };

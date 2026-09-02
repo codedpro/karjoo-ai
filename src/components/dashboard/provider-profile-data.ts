@@ -11,6 +11,7 @@ export const PROFILE_PROVIDER_IDS = [
   "jobvision",
   "e-estekhdam",
   "irantalent",
+  "karboom",
 ] as const satisfies readonly ActiveApplyBoard[];
 
 export type ProfileProviderId = (typeof PROFILE_PROVIDER_IDS)[number];
@@ -20,6 +21,7 @@ const PROFILE_URLS: Record<ProfileProviderId, string> = {
   jobvision: "https://jobvision.ir/resume",
   "e-estekhdam": "https://www.e-estekhdam.com/karfarmas/profile",
   irantalent: "https://www.irantalent.com/candidate/cv/edit",
+  karboom: "https://karboom.io/profile",
 };
 
 export interface ProviderProfileView {

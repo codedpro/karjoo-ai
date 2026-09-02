@@ -33,7 +33,20 @@ export const dynamic = "force-dynamic";
  * بقیه — از جمله ایران‌تلنتِ SPA — نشست را در کوکیِ first-party نگه می‌دارند.
  */
 const SESSION_SHAPE_BY_BOARD: Record<
-  "jobvision" | "jobinja" | "e-estekhdam" | "irantalent" | "karboom" | "linkedin",
+  | "jobvision"
+  | "jobinja"
+  | "e-estekhdam"
+  | "irantalent"
+  | "karboom"
+  | "linkedin"
+  | "iranestekhdam"
+  | "divar"
+  | "quera"
+  | "remoteok"
+  | "weworkremotely"
+  | "ponisha"
+  | "parscoders"
+  | "bankestekhdam",
   "cookie" | "token"
 > = {
   jobvision: "token",
@@ -44,6 +57,14 @@ const SESSION_SHAPE_BY_BOARD: Record<
   irantalent: "cookie",
   karboom: "cookie",
   linkedin: "cookie",
+  iranestekhdam: "cookie",
+  divar: "cookie",
+  quera: "cookie",
+  remoteok: "cookie",
+  weworkremotely: "cookie",
+  ponisha: "cookie",
+  parscoders: "cookie",
+  bankestekhdam: "cookie",
 };
 
 export async function POST(request: Request): Promise<Response> {

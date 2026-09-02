@@ -85,9 +85,9 @@ export const NAV_GROUPS: NavGroupDef[] = [
         icon: IconBolt,
       },
       {
-        href: "/dashboard/interview-prep",
+        href: "/dashboard/jobs",
         label: "اپلای‌ها",
-        hint: "چه فرستاده شده، چه در نوبت است، و کارفرما چه گفته",
+        hint: "جست‌وجو، اپلای و پیگیری از یک جای واحد",
         icon: IconSend,
       },
       {
@@ -155,7 +155,7 @@ export function AdminNavSection() {
 const MOBILE_PRIMARY = [
   "/dashboard",
   "/dashboard/auto-apply",
-  "/dashboard/interview-prep",
+  "/dashboard/jobs",
 ];
 
 /** آیا این آیتم با مسیرِ جاری فعال است؟ خانه فقط با تطبیقِ دقیق (تا زیرمسیرها آن را

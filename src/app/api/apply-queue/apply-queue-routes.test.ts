@@ -100,8 +100,8 @@ beforeEach(() => {
 const VALID_ID = "11111111-1111-4111-8111-111111111111";
 
 /**
- * The pre-executor claim paths never lease IranTalent: it is extension-only and
- * every task must carry a tailored PDF, which only the executor path guarantees.
+ * The pre-executor claim paths never lease IranTalent: it is handled by the
+ * executor/server adapter with the provider's profile CV.
  */
 const LEGACY_CLAIM_BOARDS = ["jobinja", "jobvision", "e-estekhdam"];
 
@@ -206,6 +206,7 @@ describe("POST /api/apply-queue/claim", () => {
         jobvision: { ...EMPTY_APPLY_FILTERS.boardFilters.jobvision, enabled: false },
         "e-estekhdam": { ...EMPTY_APPLY_FILTERS.boardFilters["e-estekhdam"], enabled: false },
         irantalent: { ...EMPTY_APPLY_FILTERS.boardFilters.irantalent, enabled: false },
+        karboom: { ...EMPTY_APPLY_FILTERS.boardFilters.karboom, enabled: false },
       },
     });
 

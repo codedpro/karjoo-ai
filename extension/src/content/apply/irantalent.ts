@@ -10,14 +10,11 @@
  *   1. read the user's identity + cv id           (candidate/profile)
  *   2. confirm the job is still open and unapplied (employer/position/:id)
  *   3. check the site's own apply preconditions    (…/check-apply-conditions)
- *   4. upload the TAILORED pdf as a cv attachment  (POST /file → file id)
- *   5. verify the stored attachment is that pdf    (returned id + file name)
- *   6. submit with that explicit file id           (…/position/:id/apply)
- *   7. prove the application exists                (is_applied / applied-jobs)
+ *   4. submit with IranTalent's own profile CV      (…/position/:id/apply)
+ *   5. prove the application exists                 (is_applied / applied-jobs)
  *
- * Step 4 uses IranTalent's per-application attachment (`file_id` in the apply
- * body), so each submission is pinned to the pdf generated for THAT job — no
- * blind account-level CV swap, and no way for two tasks to cross attachments.
+ * IranTalent keeps the CV as an account/profile document. We therefore do not
+ * upload a per-job PDF here; the UI labels this board as "رزومه پروفایل سایت".
  *
  * ════════════════════════════════════════════════════════════════════════════
  * §10 — the user's OWN session in the user's OWN browser, acting only when the
@@ -31,8 +28,6 @@ import type { BackgroundToContent, ContentApplyResult } from "@ext/lib/messages"
 import type { ApplyPlan } from "@ext/lib/apply-runner";
 
 const API_ROOT = "https://api.irantalent.com/api/v1";
-/** IranTalent's file-type lookup id for a CV document (lookup type 16, id 41). */
-const CV_FILE_TYPE_ID = 41;
 /** Position status ids that mean "still live". */
 const LIVE_STATUS_IDS = new Set([169, 170]);
 /** The site's own auth cookie; holds a JSON token envelope. */
@@ -85,41 +80,8 @@ function looksLikeChallenge(value: string): boolean {
   return /recaptcha|captcha|کپچا|بررسی امنیتی|are you a robot/i.test(value);
 }
 
-function planValue(plan: ApplyPlan, key: "resumeFile" | "coverLetter"): string | undefined {
+function planValue(plan: ApplyPlan, key: "coverLetter"): string | undefined {
   return plan.steps.find((step) => step.valueKey === key)?.value;
-}
-
-function planFileName(plan: ApplyPlan): string {
-  return plan.steps.find((step) => step.valueKey === "resumeFile")?.fileName ?? "resume.pdf";
-}
-
-/** PURE: decode the runner's data: url into an uploadable File. */
-export function dataUrlFile(dataUrl: string, fileName: string): File {
-  const match = /^data:([^;,]+)?;base64,(.+)$/s.exec(dataUrl);
-  if (!match) throw new Error("irantalent_resume_missing: invalid resume data");
-  const binary = atob(match[2]!);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return new File([bytes], fileName || "resume.pdf", { type: match[1] || "application/pdf" });
-}
-
-/**
- * PURE: does the attachment IranTalent stored correspond to the pdf we just
- * uploaded for THIS task? The site rewrites the stored name, so we accept an
- * exact match or the uploaded stem, and require the returned id to be present.
- */
-export function attachmentMatchesTask(
-  uploaded: { id: unknown; fileName: string | undefined },
-  expectedFileName: string,
-): boolean {
-  const id = uploaded.id;
-  if (typeof id !== "number" && !(typeof id === "string" && id.trim())) return false;
-  const stored = uploaded.fileName;
-  if (!stored) return true;
-  const normalize = (value: string) => value.toLowerCase().replace(/\.pdf$/, "").replace(/[^a-z0-9]+/g, "");
-  const want = normalize(expectedFileName);
-  const got = normalize(stored);
-  return want.length === 0 || got.includes(want) || want.includes(got);
 }
 
 interface JsonReply { status: number; body: unknown; raw: string }
@@ -143,11 +105,9 @@ async function api(
 }
 
 /**
- * Serialize attachment replacement + submission within this origin. The
- * background runner already drains the queue one item at a time; this is a
- * second, local guarantee that no two IranTalent tasks overlap between the
- * upload and the terminal result (the window in which a shared account-level
- * attachment could otherwise be crossed).
+ * Serialize submissions within this origin. The background runner already
+ * drains the queue one item at a time; this keeps the board transaction ordered
+ * if the content script receives overlapping messages.
  */
 let applyChain: Promise<unknown> = Promise.resolve();
 
@@ -168,12 +128,6 @@ async function runIranTalentApply(plan: ApplyPlan): Promise<ContentApplyResult> 
 
   const positionId = positionIdFromUrl(plan.jobUrl || location.href);
   if (!positionId) return fail("irantalent_job_unavailable", ranSteps);
-
-  const resumeData = planValue(plan, "resumeFile");
-  // Every IranTalent application carries its own tailored pdf — there is no
-  // fallback to the profile resume.
-  if (!resumeData) return fail("irantalent_resume_missing", ranSteps);
-  const fileName = planFileName(plan);
 
   /* 1 — identity ---------------------------------------------------------- */
   const profile = await api("candidate/profile", authorization);
@@ -239,32 +193,7 @@ async function runIranTalentApply(plan: ApplyPlan): Promise<ContentApplyResult> 
     return fail("irantalent_account_unverified", ranSteps);
   }
 
-  /* 4 — attach the tailored pdf ------------------------------------------- */
-  const form = new FormData();
-  form.append("attach_file", dataUrlFile(resumeData, fileName), fileName);
-  form.append("attachable_id", String(cvId));
-  form.append("attachable_type", "cv");
-  form.append("file_type_id", String(CV_FILE_TYPE_ID));
-  form.append("file_name", fileName);
-  const upload = await api("file", authorization, { method: "POST", body: form });
-  ranSteps.push("upload");
-  if (upload.status === 401 || upload.status === 403) {
-    return fail("irantalent_login_required", ranSteps);
-  }
-  if (looksLikeChallenge(upload.raw)) return fail("irantalent_security_challenge", ranSteps);
-  if (!(upload.status >= 200 && upload.status < 300)) {
-    return fail("irantalent_resume_upload_failed", ranSteps);
-  }
-  const uploaded = record(record(upload.body).data ?? upload.body);
-  const fileId = uploaded.id;
-
-  /* 5 — prove the stored attachment is THIS task's pdf --------------------- */
-  if (!attachmentMatchesTask({ id: fileId, fileName: text(uploaded.file_name) }, fileName)) {
-    return fail("irantalent_resume_verification_failed", ranSteps);
-  }
-  ranSteps.push("attachment-verified");
-
-  /* 6 — submit, pinned to that attachment ---------------------------------- */
+  /* 4 — submit with the user's IranTalent profile CV ----------------------- */
   const coverLetter = planValue(plan, "coverLetter")?.trim();
   const applied = await api(
     `candidate/cv/${encodeURIComponent(String(cvId))}/position/${encodeURIComponent(positionId)}/apply`,
@@ -272,7 +201,6 @@ async function runIranTalentApply(plan: ApplyPlan): Promise<ContentApplyResult> 
     {
       method: "POST",
       body: JSON.stringify({
-        file_id: fileId,
         ...(coverLetter ? { cover_letter: coverLetter } : {}),
       }),
     },
@@ -289,7 +217,7 @@ async function runIranTalentApply(plan: ApplyPlan): Promise<ContentApplyResult> 
     return fail("irantalent_apply_failed", ranSteps);
   }
 
-  /* 7 — durable proof, never inferred from the submit call alone ----------- */
+  /* 5 — durable proof, never inferred from the submit call alone ----------- */
   const confirmed = await confirmApplication(positionId, String(cvId), authorization);
   ranSteps.push("verify");
   if (!confirmed) return fail("irantalent_submission_unconfirmed", ranSteps);

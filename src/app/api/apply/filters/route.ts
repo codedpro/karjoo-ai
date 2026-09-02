@@ -103,6 +103,7 @@ export async function PUT(request: Request): Promise<Response> {
         jobvision: current.boardFilters.jobvision,
         "e-estekhdam": current.boardFilters["e-estekhdam"],
         irantalent: current.boardFilters.irantalent,
+        karboom: current.boardFilters.karboom,
       },
     };
 

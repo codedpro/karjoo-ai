@@ -26,6 +26,7 @@ import { discoverJobvisionListings } from "@ext/lib/jobvision-discovery";
 import { discoverEEstekhdamListings } from "@ext/lib/eestekhdam-discovery";
 import { discoverIranTalentListings } from "@ext/lib/irantalent-discovery";
 import { readIranTalentAuthorization } from "@ext/lib/irantalent-session";
+import { discoverKarboomListings } from "@ext/lib/karboom-discovery";
 
 let activeCycle: Promise<AutoApplyStatus> | null = null;
 
@@ -292,6 +293,35 @@ async function discoverAndDrain(
         for (let index = 0; index < listings.length; index += 100) {
           const imported = await api.importDiscoveredListings(
             "irantalent",
+            listings.slice(index, index + 100),
+          );
+          discovered += imported.ingested;
+        }
+      } else if (board.board === "karboom") {
+        // کاربوم API ندارد و هر نشانی فقط یک وجهِ مسیری می‌پذیرد؛ ماژولِ کشف
+        // خودش دسته و نوعِ همکاری را جدا می‌گیرد و اشتراک‌شان را برمی‌گرداند.
+        const listings = await discoverKarboomListings({
+          categoryKeys: board.categoryKeys,
+          cities: board.cities,
+          employmentTypeKeys: board.employmentTypeKeys,
+          remoteOnly: board.remoteOnly,
+          maxAgeDays: discovery.maxAgeDays,
+          deadlineAt: discoveryDeadline,
+          maxListings: DISCOVERY_LISTING_CEILING,
+        }, fetch, async (count) => {
+          await api.mutateExecutionRun({
+            action: "progress",
+            executorId,
+            progress: {
+              stage: "discovering",
+              board: "karboom",
+              discovered: discovered + count,
+            },
+          });
+        });
+        for (let index = 0; index < listings.length; index += 100) {
+          const imported = await api.importDiscoveredListings(
+            "karboom",
             listings.slice(index, index + 100),
           );
           discovered += imported.ingested;
@@ -635,7 +665,7 @@ export const SESSION_FAILURE_STREAK_LIMIT = 3;
 export function isSkippableReason(reason?: string): boolean {
   return Boolean(
     reason &&
-      /(login_required|captcha_required|security_(check|challenge)|form_unavailable|position_required|external_form_required|session_incomplete|resume_setup_required|account_unverified|screening_questions_required|relocation_confirmation_required|manual_action_required|job_unavailable|already_applied|gender_mismatch)/.test(
+      /(login_required|captcha_required|security_(check|challenge)|form_unavailable|position_required|external_form_required|session_incomplete|resume_setup_required|account_unverified|screening_questions_required|relocation_confirmation_required|manual_action_required|job_unavailable|already_applied|gender_mismatch|eestekhdam_file_limit_reached)/.test(
         reason,
       ),
   );

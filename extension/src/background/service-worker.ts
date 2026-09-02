@@ -35,6 +35,7 @@ import {
 import { boardTabPatterns } from "@ext/lib/board-session";
 import { getOrCreateExecutorId } from "@ext/lib/storage";
 import { probeIranTalentIdentity } from "@ext/lib/irantalent-session";
+import { probeKarboomIdentity } from "@ext/lib/karboom-session";
 import {
   getApiOrigin,
   getSessionToken,
@@ -119,6 +120,8 @@ async function probeBoardSession(board: BoardId): Promise<ProbeSessionResult> {
   // IranTalent: its own profile endpoint, reachable from the background because
   // the bearer token is rebuilt from the site's cookie (see irantalent-session.ts).
   if (board === "irantalent") return probeIranTalentIdentity();
+  // کاربوم سمتِ سرور رندر می‌شود: صفحه‌ی پروفایلِ خودِ کاربر پاسخ را می‌دهد.
+  if (board === "karboom") return probeKarboomIdentity();
   // JobVision: SPA whose JWT lives in localStorage, invisible to chrome.cookies.
   // A content script reports which KEYS exist — never their values.
   if (board === "jobvision") {
@@ -475,7 +478,7 @@ async function handleGetJobinjaCategories(): Promise<JobinjaCategory[]> {
 }
 
 async function handleGetBoardCatalog(
-  board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent",
+  board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent" | "karboom",
 ): Promise<BoardCatalog> {
   return (await apiFromStorage()).getBoardCatalog(board);
 }

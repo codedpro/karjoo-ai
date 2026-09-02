@@ -63,7 +63,7 @@ export interface ApplyFilters {
   aiFilterEnabled: boolean;
   maxAgeDays: number;
   boardFiltersVersion: 1;
-  boardFilters: Record<"jobinja" | "jobvision" | "e-estekhdam" | "irantalent", BoardFilter>;
+  boardFilters: Record<"jobinja" | "jobvision" | "e-estekhdam" | "irantalent" | "karboom", BoardFilter>;
 }
 
 export interface BoardFilter {
@@ -78,7 +78,7 @@ export interface BoardFilter {
 
 export interface BoardCatalogOption { key: string; label: string; englishLabel: string }
 export interface BoardCatalog {
-  board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent";
+  board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent" | "karboom";
   categories: BoardCatalogOption[];
   employmentTypes: BoardCatalogOption[];
 }
@@ -234,6 +234,7 @@ export interface ExtensionDiscoveryConfig {
     | { board: "jobvision"; enabled: boolean; hasTargeting: boolean; categoryKeys: string[]; employmentTypeKeys: string[]; remoteOnly: boolean }
     | { board: "e-estekhdam"; enabled: boolean; hasTargeting: boolean; categoryKeys: string[]; cities: string[]; employmentTypeKeys: string[]; remoteOnly: boolean }
     | { board: "irantalent"; enabled: boolean; hasTargeting: boolean; categoryKeys: string[]; employmentTypeKeys: string[]; remoteOnly: boolean }
+    | { board: "karboom"; enabled: boolean; hasTargeting: boolean; categoryKeys: string[]; cities: string[]; employmentTypeKeys: string[]; remoteOnly: boolean }
   >;
 }
 

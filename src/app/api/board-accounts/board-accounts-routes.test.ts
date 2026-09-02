@@ -118,7 +118,7 @@ describe("POST /api/board-accounts/connect — قاعده‌ی ایمنیِ ۱",
   it("سایتِ واقعاً پشتیبانی‌نشده هنوز ۴۰۹ می‌گیرد", async () => {
     authMock.mockResolvedValue({ userId: "u", session: { kind: "extension" } } as never);
     dbInsert.mockClear();
-    const res = await connectPOST(connectReq({ board: "karboom" }));
+    const res = await connectPOST(connectReq({ board: "linkedin" }));
     expect(res.status).toBe(409);
     expect(dbInsert).not.toHaveBeenCalled();
   });

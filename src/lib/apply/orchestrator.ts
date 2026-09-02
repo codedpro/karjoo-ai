@@ -41,6 +41,11 @@ import {
   readFilterCursor,
 } from "@/lib/apply/filter-cursor";
 import { getConnector, isBoardLive, liveBoardIds } from "@/lib/apply/registry";
+import {
+  isFreshJobPosting,
+  MAX_PROVIDER_SYNC_AGE_DAYS,
+  toPostedDate,
+} from "@/lib/apply/freshness";
 import { sanitizePgText } from "@/lib/apply/pg-text";
 import { orchestratorRunCap } from "@/lib/env";
 import { enqueue as defaultEnqueue } from "@/lib/queue";
@@ -63,8 +68,6 @@ const MATCH_UPSERT_RETRY_MS = 100;
 
 /** آستانه‌ی پیش‌فرضِ «بالای آستانه» برای drafted-شدنِ یک تطبیق. */
 const DEFAULT_SCORE_THRESHOLD = 0.6;
-const MAX_JOB_POSTED_AGE_DAYS = 45;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** خلاصه‌ی یک اجرای ingest+match. */
 export interface IngestRunResult {
@@ -257,6 +260,7 @@ async function upsertListing(
     description: listing.description ?? null,
     salary: listing.salary ?? null,
     postedAt: toPostedDate(listing.postedAt),
+    lastSeenAt: new Date(),
     updatedAt: new Date(),
   };
 
@@ -273,6 +277,7 @@ async function upsertListing(
         description: values.description,
         salary: values.salary,
         postedAt: values.postedAt,
+        lastSeenAt: values.lastSeenAt,
         updatedAt: values.updatedAt,
       },
     })
@@ -405,65 +410,6 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/**
- * `JobListing.postedAt` قراردادِ فرمتِ ISO ندارد (types.ts) و کانکتورها آن را به‌صورتِ
- * متنِ انسانیِ نسبی برمی‌گردانند (مثلِ «امروز» یا «۳ روز پیش»). `new Date()` روی چنین
- * رشته‌ای `Invalid Date` می‌سازد و درایزل هنگامِ سریال‌سازیِ ستونِ timestamp با
- * `RangeError: Invalid time value` می‌شکند — که کلِ ingestِ فیلترمود را از کار می‌انداخت.
- * این کمک‌تابع فقط وقتی `Date` می‌سازد که مقدار به یک زمانِ معتبر پارس شود؛ در غیرِ این
- * صورت `null` (ستونِ postedAt خالی می‌ماند؛ `ingestedAt` همچنان ثبت می‌شود).
- */
-function toPostedDate(raw?: string | Date | null): Date | null {
-  if (!raw) return null;
-  if (raw instanceof Date) return Number.isNaN(raw.getTime()) ? null : raw;
-
-  const relative = relativePostedDate(raw);
-  if (relative) return relative;
-
-  const d = new Date(raw);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function normalizeDigits(input: string): string {
-  const fa = "۰۱۲۳۴۵۶۷۸۹";
-  const ar = "٠١٢٣٤٥٦٧٨٩";
-  return input.replace(/[۰-۹٠-٩]/g, (ch) => {
-    const faIdx = fa.indexOf(ch);
-    if (faIdx >= 0) return String(faIdx);
-    const arIdx = ar.indexOf(ch);
-    return arIdx >= 0 ? String(arIdx) : ch;
-  });
-}
-
-function relativePostedDate(raw: string, now = new Date()): Date | null {
-  const text = normalizeDigits(raw).replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
-  if (!text) return null;
-
-  let days: number | null = null;
-  if (/^(امروز|today)$/i.test(text)) days = 0;
-  else if (/^(دیروز|yesterday)$/i.test(text)) days = 1;
-  else {
-    const match = /(\d+)\s*(روز|day|days|هفته|week|weeks|ماه|month|months)\s*(?:پیش|ago)?/i.exec(text);
-    if (match) {
-      const n = Number(match[1]);
-      const unit = match[2];
-      if (Number.isFinite(n)) {
-        if (/روز|day/i.test(unit)) days = n;
-        else if (/هفته|week/i.test(unit)) days = n * 7;
-        else if (/ماه|month/i.test(unit)) days = n * 30;
-      }
-    }
-  }
-  if (days === null) return null;
-  return new Date(now.getTime() - days * MS_PER_DAY);
-}
-
-function isFreshJobPosting(job: JobListing, now = new Date()): boolean {
-  const posted = toPostedDate(job.postedAt);
-  if (!posted) return false;
-  return posted.getTime() >= now.getTime() - MAX_JOB_POSTED_AGE_DAYS * MS_PER_DAY;
-}
-
 function normalizedJobText(job: JobListing): string {
   return `${job.title}\n${job.description ?? ""}\n${job.url}`.toLowerCase();
 }
@@ -549,9 +495,10 @@ async function persistListingWith(
       city: job.city ?? null,
       url: job.url,
       description: job.description ?? null,
-      salary: job.salary ?? null,
-      postedAt: toPostedDate(job.postedAt),
-    })
+        salary: job.salary ?? null,
+        postedAt: toPostedDate(job.postedAt),
+        lastSeenAt: sql`now()`,
+      })
     .onConflictDoUpdate({
       target: jobListings.canonicalId,
       set: {
@@ -562,6 +509,7 @@ async function persistListingWith(
         description: sql`excluded.description`,
         salary: sql`excluded.salary`,
         postedAt: sql`excluded.posted_at`,
+        lastSeenAt: sql`now()`,
         updatedAt: sql`now()`,
       },
     })
@@ -1077,7 +1025,7 @@ export async function runFilterApply(
           startPage,
           maxPages: unlimitedApply ? Number.POSITIVE_INFINITY : FILTER_SCRAPE_MAX_PAGES,
           ...(targetCount === undefined ? {} : { targetCount }),
-          ...(unlimitedApply ? { stopWhenStaleDays: MAX_JOB_POSTED_AGE_DAYS } : {}),
+          ...(unlimitedApply ? { stopWhenStaleDays: MAX_PROVIDER_SYNC_AGE_DAYS } : {}),
         });
         listings = res.listings;
         pagesFetched = res.pagesFetched;

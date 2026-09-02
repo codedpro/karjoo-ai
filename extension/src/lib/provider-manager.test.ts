@@ -22,6 +22,7 @@ const filters: ApplyFilters = {
     jobvision: { enabled: true, categoryKeys: ["web"], cities: [], employmentTypeKeys: [], remoteOnly: true },
     "e-estekhdam": { enabled: false, categoryKeys: [], cities: [], employmentTypeKeys: [], remoteOnly: false },
     irantalent: { enabled: false, categoryKeys: [], cities: [], employmentTypeKeys: [], remoteOnly: false },
+    karboom: { enabled: false, categoryKeys: [], cities: [], employmentTypeKeys: [], remoteOnly: false },
   },
 };
 
@@ -97,11 +98,11 @@ describe("withProviderEnabled", () => {
     expect(next.categorySlugs).toEqual(["software"]);
   });
 
-  it("carries every active provider through, including IranTalent", () => {
+  it("carries every active provider through, including IranTalent and Karboom", () => {
     const next = withProviderEnabled(filters, "irantalent", true);
     expect(next.boardFilters.irantalent.enabled).toBe(true);
     expect(Object.keys(next.boardFilters).sort()).toEqual(
-      ["e-estekhdam", "irantalent", "jobinja", "jobvision"],
+      ["e-estekhdam", "irantalent", "jobinja", "jobvision", "karboom"],
     );
     expect(next.boardFilters["e-estekhdam"]).toEqual(filters.boardFilters["e-estekhdam"]);
   });

@@ -51,6 +51,7 @@ describe("non-automatable job outcomes", () => {
     "jobvision_captcha_required",
     "eestekhdam_form_unavailable",
     "eestekhdam_external_form_required",
+    "eestekhdam_file_limit_reached: سقف تعداد فایل‌های حساب پر است",
     "irantalent_account_unverified",
     "irantalent_screening_questions_required",
   ])("skips %s instead of blocking the queue", (reason) => {

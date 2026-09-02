@@ -147,6 +147,10 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+function defaultResumeStrategy(board: ServerClaimedItem["board"]): "tailored_pdf" | "native_profile_resume" {
+  return board === "jobvision" || board === "irantalent" ? "native_profile_resume" : "tailored_pdf";
+}
+
 /** Map the server's claimed item onto the extension's render-ready ApplyQueueItem. */
 function toApplyQueueItem(it: ServerClaimedItem): ApplyQueueItem {
   return {
@@ -158,7 +162,7 @@ function toApplyQueueItem(it: ServerClaimedItem): ApplyQueueItem {
     jobUrl: it.listing.url,
     coverLetter: it.coverLetter ?? "",
     matchScore: it.matchScore ?? undefined,
-    resumeStrategy: it.resumeStrategy ?? (it.board === "jobvision" ? "native_profile_resume" : "tailored_pdf"),
+    resumeStrategy: it.resumeStrategy ?? defaultResumeStrategy(it.board),
     ...(it.resume
       ? {
           resume: {
@@ -439,7 +443,7 @@ export class KarjooApi {
   }
 
   async getBoardCatalog(
-    board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent",
+    board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent" | "karboom",
   ): Promise<import("@ext/lib/types").BoardCatalog> {
     return this.request<import("@ext/lib/types").BoardCatalog>(`/api/boards/${board}/catalog`, { method: "GET" });
   }
@@ -588,7 +592,7 @@ export class KarjooApi {
   }
 
   async importDiscoveredListings(
-    board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent",
+    board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent" | "karboom",
     listings: BrowserDiscoveredListing[],
   ): Promise<{
     ingested: number;

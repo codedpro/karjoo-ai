@@ -1,12 +1,11 @@
 /**
- * IranTalent apply-executor tests. Covers the per-application attachment, the
- * serialized upload→submit window, attachment proof, already-applied handling,
- * captcha/login blocking, and the refusal to report `submitted` without proof.
+ * IranTalent apply-executor tests. Covers the provider-profile CV submission,
+ * already-applied handling, captcha/login blocking, and the refusal to report
+ * `submitted` without proof.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  attachmentMatchesTask,
   authorizationFromCookie,
   executeIranTalentApply,
   positionIdFromUrl,
@@ -24,13 +23,6 @@ function plan(overrides: Partial<ApplyPlan> = {}): ApplyPlan {
     jobTitle: "Backend Developer",
     maturity: "best-effort",
     steps: [
-      {
-        kind: "upload",
-        selector: "input[type=file]",
-        valueKey: "resumeFile",
-        value: "data:application/pdf;base64,JVBERi0=",
-        fileName: "karjoo-182341.pdf",
-      },
       { kind: "fill", selector: "textarea", valueKey: "coverLetter", value: "سلام" },
     ],
     ...overrides,
@@ -42,7 +34,6 @@ interface StubOptions {
   pageText?: string;
   position?: Record<string, unknown>;
   conditions?: Record<string, unknown>;
-  upload?: { status?: number; body?: unknown };
   apply?: { status?: number; body?: unknown };
   appliedAfter?: boolean;
   appliedJobs?: unknown;
@@ -87,10 +78,6 @@ function stub(options: StubOptions = {}) {
         ...options.conditions,
       }));
     }
-    if (url.endsWith("/file") && method === "POST") {
-      const { status = 201, body = { id: 909, file_name: "karjoo-182341.pdf" } } = options.upload ?? {};
-      return new Response(JSON.stringify(body), { status });
-    }
     if (/\/position\/182341\/apply$/.test(url)) {
       submitted = true;
       const { status = 200, body = { ok: true } } = options.apply ?? {};
@@ -129,56 +116,22 @@ describe("positionIdFromUrl", () => {
   });
 });
 
-describe("attachmentMatchesTask", () => {
-  it("requires an attachment id", () => {
-    expect(attachmentMatchesTask({ id: null, fileName: "a.pdf" }, "a.pdf")).toBe(false);
-    expect(attachmentMatchesTask({ id: 12, fileName: "a.pdf" }, "a.pdf")).toBe(true);
-  });
-  it("tolerates the site's own renaming but rejects a different document", () => {
-    expect(attachmentMatchesTask({ id: 1, fileName: "karjoo_182341.PDF" }, "karjoo-182341.pdf")).toBe(true);
-    expect(attachmentMatchesTask({ id: 1, fileName: "someone-else.pdf" }, "karjoo-182341.pdf")).toBe(false);
-  });
-});
-
 describe("IranTalent apply", () => {
-  it("uploads the tailored pdf and submits pinned to that file id", async () => {
+  it("submits with the provider profile CV and optional cover letter", async () => {
     const { calls } = stub();
     const result = await executeIranTalentApply(plan());
     expect(result).toMatchObject({ ok: true });
-    expect(result.ranSteps).toContain("attachment-verified");
     expect(result.ranSteps).toContain("confirmed");
 
-    const upload = calls.find((c) => c.url.endsWith("/file"))!;
-    const form = upload.body as FormData;
-    expect(form.get("attachable_id")).toBe("77");
-    expect(form.get("attachable_type")).toBe("cv");
-    expect(form.get("file_type_id")).toBe("41");
-    expect(form.get("attach_file")).toBeInstanceOf(File);
-
+    expect(calls.some((c) => c.url.endsWith("/file"))).toBe(false);
     const submit = calls.find((c) => c.url.endsWith("/apply"))!;
-    expect(submit.body).toEqual({ file_id: 909, cover_letter: "سلام" });
-    // The upload must precede the submit, never the other way round.
-    expect(calls.indexOf(upload)).toBeLessThan(calls.indexOf(submit));
+    expect(submit.body).toEqual({ cover_letter: "سلام" });
   });
 
-  it("refuses to apply without a tailored pdf — there is no base-resume fallback", async () => {
+  it("does not require a tailored pdf step", async () => {
     stub();
     const result = await executeIranTalentApply(plan({ steps: [] }));
-    expect(result).toMatchObject({ ok: false, reason: "irantalent_resume_missing" });
-  });
-
-  it("fails closed when the stored attachment cannot be tied to this task", async () => {
-    const { calls } = stub({ upload: { body: { id: 909, file_name: "someone-else.pdf" } } });
-    const result = await executeIranTalentApply(plan());
-    expect(result).toMatchObject({ ok: false, reason: "irantalent_resume_verification_failed" });
-    expect(calls.some((c) => c.url.endsWith("/apply"))).toBe(false);
-  });
-
-  it("fails closed when the upload itself is rejected", async () => {
-    const { calls } = stub({ upload: { status: 422, body: { message: "bad" } } });
-    const result = await executeIranTalentApply(plan());
-    expect(result).toMatchObject({ ok: false, reason: "irantalent_resume_upload_failed" });
-    expect(calls.some((c) => c.url.endsWith("/apply"))).toBe(false);
+    expect(result).toMatchObject({ ok: true });
   });
 
   it("never infers success from the submit call alone", async () => {
@@ -243,7 +196,7 @@ describe("IranTalent apply", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("serializes concurrent tasks so two attachments never interleave", async () => {
+  it("serializes concurrent tasks so two apply transactions never interleave", async () => {
     // `appliedAfter: false` keeps the position flag from flipping, so both tasks
     // run the full upload→submit window and the ordering stays observable.
     const { calls } = stub({
@@ -256,9 +209,9 @@ describe("IranTalent apply", () => {
     ]);
     expect(results.every((r) => r.ok)).toBe(true);
     const order = calls
-      .filter((c) => c.url.endsWith("/file") || c.url.endsWith("/apply"))
-      .map((c) => (c.url.endsWith("/file") ? "upload" : "submit"));
-    expect(order).toEqual(["upload", "submit", "upload", "submit"]);
+      .filter((c) => c.url.endsWith("/apply") || c.url.includes("applied-jobs"))
+      .map((c) => (c.url.endsWith("/apply") ? "submit" : "verify-history"));
+    expect(order).toEqual(["submit", "verify-history", "submit", "verify-history"]);
   });
 
   it("lets the second task see the first one's result instead of re-applying", async () => {
@@ -269,6 +222,6 @@ describe("IranTalent apply", () => {
     ]);
     expect(results[0]).toMatchObject({ ok: true });
     expect(results[1]).toMatchObject({ ok: true, alreadyApplied: true });
-    expect(calls.filter((c) => c.url.endsWith("/file"))).toHaveLength(1);
+    expect(calls.filter((c) => c.url.endsWith("/apply"))).toHaveLength(1);
   });
 });

@@ -17,6 +17,8 @@
  */
 import { z } from "zod";
 
+import { MAX_PROVIDER_SYNC_AGE_DAYS } from "@/lib/apply/freshness";
+
 /** میزبانِ جست‌وجوی جابینجا — پایه‌ی URLِ پیش‌نمایش (هم‌سو با buildSearchUrl). */
 const JOBINJA_JOBS_URL = "https://jobinja.ir/jobs";
 
@@ -108,13 +110,19 @@ export const applyFiltersInputSchema = z.object({
   dailyLimit: z.number().int().positive().max(10_000).optional(),
   /** سقفِ صف‌گذاری هفتگیِ کاربر. */
   weeklyLimit: z.number().int().positive().max(100_000).optional(),
-  maxAgeDays: z.number().int().min(1).max(45).default(45),
+  maxAgeDays: z
+    .number()
+    .int()
+    .min(1)
+    .max(MAX_PROVIDER_SYNC_AGE_DAYS)
+    .default(MAX_PROVIDER_SYNC_AGE_DAYS),
   boardFiltersVersion: z.literal(1).optional(),
   boardFilters: z.object({
     jobinja: boardFilterInputSchema,
     jobvision: boardFilterInputSchema,
     "e-estekhdam": boardFilterInputSchema,
     irantalent: boardFilterInputSchema,
+    karboom: boardFilterInputSchema,
   }).optional(),
 });
 

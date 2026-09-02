@@ -176,6 +176,20 @@
       "when": 1788181509629,
       "tag": "0024_flowery_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788273521938,
+      "tag": "0025_slippery_venom",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788332142888,
+      "tag": "0026_modern_khan",
+      "breakpoints": true
     }
   ]
 }

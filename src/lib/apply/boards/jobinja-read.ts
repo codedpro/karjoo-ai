@@ -15,6 +15,7 @@ import { readSessionBlob } from "@/lib/vault/store";
 import { decryptSession } from "@/lib/vault/crypto";
 import { sessionBundleSchema } from "@/lib/api/session-schemas";
 import { KARJOO_USER_AGENT } from "@/lib/apply/robots";
+import { isFreshProviderDate } from "@/lib/apply/freshness";
 
 const ORIGIN = "https://jobinja.ir";
 
@@ -438,7 +439,7 @@ export async function upsertApplications(
 ): Promise<number> {
   const conn = deps.db ?? defaultDb;
   let n = 0;
-  for (const a of apps) {
+  for (const a of freshApplicationsForSync(apps)) {
     if (!a.externalId) continue;
     await conn
       .insert(boardApplications)
@@ -470,6 +471,18 @@ export async function upsertApplications(
     n += 1;
   }
   return n;
+}
+
+export function freshApplicationsForSync(
+  apps: ParsedApplication[],
+  now = new Date(),
+): ParsedApplication[] {
+  return apps.filter((app) => !app.appliedAt || isFreshProviderDate(app.appliedAt, now));
+}
+
+function pageIsPastSyncWindow(apps: ParsedApplication[], now = new Date()): boolean {
+  const dated = apps.filter((app) => app.appliedAt);
+  return dated.length > 0 && dated.every((app) => !isFreshProviderDate(app.appliedAt, now));
 }
 
 /** عکس‌برداریِ پروفایل را upsert می‌کند (یک ردیف به‌ازای user×board). */
@@ -534,12 +547,15 @@ export async function syncJobinjaFromVault(
     const all = [...parseAppliedJobs(appliedHtml)];
     const page1 = parseAppliedPageInfo(appliedHtml);
     const lastPage = Math.min(page1?.lastPage ?? 1, MAX_APPLIED_PAGES);
-    for (let page = 2; page <= lastPage; page += 1) {
-      const html = await fetchWithCookies(`/jobs/applied?page=${page}`, cookieHeader);
-      if (!html) break;
-      const rows = parseAppliedJobs(html);
-      if (rows.length === 0) break; // صفحه‌ی خالی → پایان
-      all.push(...rows);
+    if (!pageIsPastSyncWindow(all)) {
+      for (let page = 2; page <= lastPage; page += 1) {
+        const html = await fetchWithCookies(`/jobs/applied?page=${page}`, cookieHeader);
+        if (!html) break;
+        const rows = parseAppliedJobs(html);
+        if (rows.length === 0) break; // صفحه‌ی خالی → پایان
+        if (pageIsPastSyncWindow(rows)) break;
+        all.push(...rows);
+      }
     }
     // یکتاسازی روی externalId (صفحه‌ها ممکن است هم‌پوشانی داشته باشند).
     const seen = new Set<string>();

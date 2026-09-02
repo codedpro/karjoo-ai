@@ -25,6 +25,14 @@ export const jobBoardSchema = z.enum([
   "irantalent",
   "karboom",
   "linkedin",
+  "iranestekhdam",
+  "divar",
+  "quera",
+  "remoteok",
+  "weworkremotely",
+  "ponisha",
+  "parscoders",
+  "bankestekhdam",
 ]);
 
 /* ───────────────────────────  POST /api/extension/link  ─────────────────── */
@@ -80,7 +88,7 @@ export const applyQueueClaimBodySchema = z
      * everything, so one board's outage halted the whole queue.
      */
     excludeBoards: z
-      .array(z.enum(["jobinja", "jobvision", "e-estekhdam", "irantalent"]))
+      .array(z.enum(["jobinja", "jobvision", "e-estekhdam", "irantalent", "karboom"]))
       .max(4)
       .optional(),
   })
@@ -176,7 +184,7 @@ export const browserDiscoveredListingSchema = z.object({
 }).strict();
 
 export const browserDiscoveryImportSchema = z.object({
-  board: z.enum(["jobinja", "jobvision", "e-estekhdam", "irantalent"]),
+  board: z.enum(["jobinja", "jobvision", "e-estekhdam", "irantalent", "karboom"]),
   listings: z.array(browserDiscoveredListingSchema).max(100),
 }).strict();
 

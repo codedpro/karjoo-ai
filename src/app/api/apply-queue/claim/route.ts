@@ -72,10 +72,9 @@ function clampToRemaining(requested: number, remaining: number | null): number {
 
 /**
  * Boards the pre-executor claim paths may lease. IranTalent is excluded: it is
- * extension-only and every one of its tasks must carry a tailored PDF, which
- * only the executor path (`requireTailoredResume`) guarantees. Older extension
- * builds therefore never see an IranTalent task instead of applying to one with
- * the base profile resume.
+ * handled by the executor/server adapter with the provider's profile CV. Older
+ * extension builds therefore never see an IranTalent task they might handle with
+ * stale DOM assumptions.
  */
 const LEGACY_CLAIM_BOARDS = ["jobinja", "jobvision", "e-estekhdam"] as const;
 

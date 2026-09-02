@@ -18,6 +18,7 @@ import { jobListings, matches } from "@/db/schema";
 import { json, parseSearchParams, withErrorHandling } from "@/lib/api/http";
 import { requireBearerSession } from "@/lib/api/bearer-auth";
 import { matchesQuerySchema } from "@/lib/api/schemas";
+import { MAX_PROVIDER_SYNC_AGE_DAYS } from "@/lib/apply/freshness";
 
 // به DB دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -33,7 +34,9 @@ export async function GET(request: Request): Promise<Response> {
     const query = parseSearchParams(searchParams, matchesQuerySchema);
 
     // ۳) شرطِ where: همیشه userIdِ نشست؛ به‌علاوه‌ی status در صورت وجود (قاعده‌ی ۴).
-    const freshness = sql`${jobListings.postedAt} >= now() - interval '45 days'`;
+    const freshness = sql`
+      ${jobListings.postedAt} >= now() - (${MAX_PROVIDER_SYNC_AGE_DAYS}::text || ' days')::interval
+    `;
     const where = query.status
       ? and(eq(matches.userId, userId), eq(matches.status, query.status), freshness)
       : and(eq(matches.userId, userId), freshness);

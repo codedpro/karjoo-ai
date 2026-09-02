@@ -38,6 +38,14 @@ export const jobBoardEnum = pgEnum("job_board", [
   "irantalent",
   "karboom",
   "linkedin",
+  "iranestekhdam",
+  "divar",
+  "quera",
+  "remoteok",
+  "weworkremotely",
+  "ponisha",
+  "parscoders",
+  "bankestekhdam",
 ]);
 
 /** نوع اپلای هر سایت (ساختاریافته با فرم، یا تماس از طریق متن آگهی). */
@@ -585,6 +593,7 @@ export const jobListings = pgTable(
     applyType: applyTypeEnum("apply_type").notNull().default("structured"),
     postedAt: timestamp("posted_at", { withTimezone: true }),
     ingestedAt: timestamp("ingested_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -592,6 +601,8 @@ export const jobListings = pgTable(
     uniqueIndex("job_listings_board_external_uq").on(t.board, t.externalId),
     index("job_listings_board_idx").on(t.board),
     index("job_listings_city_idx").on(t.city),
+    index("job_listings_board_posted_idx").on(t.board, t.postedAt),
+    index("job_listings_last_seen_idx").on(t.lastSeenAt),
   ],
 );
 

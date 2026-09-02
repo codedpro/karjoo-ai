@@ -1,4 +1,5 @@
 import type { BrowserDiscoveredListing } from "@ext/lib/types";
+import { providerCutoffMs } from "@ext/lib/freshness";
 
 const LIST_URL = "https://candidateapi.jobvision.ir/api/v1/JobPost/List";
 
@@ -75,7 +76,7 @@ export async function discoverJobvisionListings(
   fetchImpl: typeof fetch = fetch,
   onPage?: (count: number) => Promise<void> | void,
 ): Promise<BrowserDiscoveredListing[]> {
-  const cutoff = Date.now() - Math.min(45, Math.max(1, options.maxAgeDays)) * 86_400_000;
+  const cutoff = providerCutoffMs(options.maxAgeDays);
   const categories = options.categoryKeys.length > 0 ? options.categoryKeys : [null];
   const found = new Map<string, BrowserDiscoveredListing>();
 

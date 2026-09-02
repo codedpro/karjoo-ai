@@ -7,9 +7,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   BOARD_STATUS,
+  PROVIDER_CAPABILITIES,
   isBoardConnectable,
   isBoardLive,
   liveBoardIds,
+  publicProviderCapabilities,
 } from "@/lib/apply/registry";
 import type { JobBoardId } from "@/lib/apply/types";
 
@@ -21,7 +23,26 @@ const ALL_BOARDS: JobBoardId[] = [
   "irantalent",
   "karboom",
   "linkedin",
+  "iranestekhdam",
+  "divar",
+  "quera",
+  "remoteok",
+  "weworkremotely",
+  "ponisha",
+  "parscoders",
+  "bankestekhdam",
 ];
+const PLANNED_BOARDS = [
+  "linkedin",
+  "iranestekhdam",
+  "divar",
+  "quera",
+  "remoteok",
+  "weworkremotely",
+  "ponisha",
+  "parscoders",
+  "bankestekhdam",
+] as const;
 
 describe("BOARD_STATUS — جامعیت روی JobBoardId", () => {
   it("برای هر مقدارِ یونیونِ JobBoardId دقیقاً یک وضعیت دارد", () => {
@@ -32,14 +53,34 @@ describe("BOARD_STATUS — جامعیت روی JobBoardId", () => {
     }
   });
 
-  it("جابینجا live، سه ارائه‌دهنده‌ی فعالِ دیگر extension-only و بقیه داربست‌اند", () => {
+  it("جابینجا live، چهار ارائه‌دهنده‌ی فعالِ دیگر extension-only و بقیه داربست‌اند", () => {
     expect(BOARD_STATUS.jobinja).toBe("live");
-    for (const id of ["jobvision", "e-estekhdam", "irantalent"] as const) {
+    for (const id of ["jobvision", "e-estekhdam", "irantalent", "karboom"] as const) {
       expect(BOARD_STATUS[id], id).toBe("extension_only");
     }
-    for (const id of ["karboom", "linkedin"] as const) {
+    for (const id of PLANNED_BOARDS) {
       expect(BOARD_STATUS[id], id).toBe("coming_soon");
     }
+  });
+});
+
+describe("PROVIDER_CAPABILITIES", () => {
+  it("برای هر مقدار JobBoardId یک رکورد قابلیت دارد", () => {
+    expect(Object.keys(PROVIDER_CAPABILITIES).sort()).toEqual([...ALL_BOARDS].sort());
+  });
+
+  it("فقط ارائه‌دهنده‌ی full-workflow را live می‌داند", () => {
+    expect(PROVIDER_CAPABILITIES.jobinja.workflowState).toBe("live");
+    for (const id of ["jobvision", "e-estekhdam", "irantalent"] as const) {
+      expect(PROVIDER_CAPABILITIES[id].workflowState).toBe("in_progress");
+    }
+    for (const id of PLANNED_BOARDS) {
+      expect(PROVIDER_CAPABILITIES[id].workflowState).toBe("planned");
+    }
+  });
+
+  it("پروژکشن عمومی فقط providerهای قابل نمایش مارکتینگ را می‌دهد", () => {
+    expect(publicProviderCapabilities().map((p) => p.id).sort()).toEqual([...ALL_BOARDS].sort());
   });
 });
 
@@ -51,7 +92,7 @@ describe("isBoardConnectable", () => {
   });
 
   it("سایت‌های خارج از دامنه و شناسه‌ی ناشناخته قابلِ اتصال نیستند (fail-closed)", () => {
-    for (const id of ["karboom", "linkedin", "bogus", ""]) {
+    for (const id of [...PLANNED_BOARDS, "bogus", ""]) {
       expect(isBoardConnectable(id), id).toBe(false);
     }
   });
@@ -63,7 +104,7 @@ describe("isBoardLive", () => {
   });
 
   it("برای هر سایتِ دیگر false است — extension_only یعنی سرور اجرا نمی‌کند", () => {
-    for (const id of ["jobvision", "e-estekhdam", "irantalent", "karboom", "linkedin"]) {
+    for (const id of ["jobvision", "e-estekhdam", "irantalent", ...PLANNED_BOARDS]) {
       expect(isBoardLive(id), id).toBe(false);
     }
   });

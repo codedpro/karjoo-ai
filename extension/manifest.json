@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Karjoo — assisted apply (کارجو)",
-  "version": "0.9.8",
-  "description": "Karjoo multi-board queue executor with synced filters, live progress, tailored PDFs, and browser-session apply for Jobinja, JobVision, e-estekhdam, and IranTalent.",
+  "version": "0.9.9",
+  "description": "Karjoo multi-board queue executor with synced filters, live progress, tailored PDFs, and browser-session apply for Jobinja, JobVision, e-estekhdam, IranTalent, and Karboom.",
   "default_locale": "en",
   "icons": {
     "16": "icons/icon-16.png",
@@ -26,7 +26,16 @@
   "side_panel": {
     "default_path": "sidepanel.html"
   },
-  "permissions": ["storage", "cookies", "scripting", "activeTab", "tabs", "alarms", "sidePanel", "notifications"],
+  "permissions": [
+    "storage",
+    "cookies",
+    "scripting",
+    "activeTab",
+    "tabs",
+    "alarms",
+    "sidePanel",
+    "notifications"
+  ],
   "host_permissions": [
     "https://jobinja.ir/*",
     "https://*.jobinja.ir/*",
@@ -36,18 +45,28 @@
     "https://*.e-estekhdam.com/*",
     "https://irantalent.com/*",
     "https://*.irantalent.com/*",
+    "https://karboom.io/*",
+    "https://*.karboom.io/*",
     "https://karjoo.1xai.ir/*",
     "https://karjooai.itmaster.uk/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://jobinja.ir/*", "https://*.jobinja.ir/*"],
-      "js": ["content/jobinja-cvid.js"],
+      "matches": [
+        "https://jobinja.ir/*",
+        "https://*.jobinja.ir/*"
+      ],
+      "js": [
+        "content/jobinja-cvid.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
     {
-      "matches": ["https://jobinja.ir/*", "https://*.jobinja.ir/*"],
+      "matches": [
+        "https://jobinja.ir/*",
+        "https://*.jobinja.ir/*"
+      ],
       "js": [
         "content/jobinja.js",
         "content/import/jobinja.js",
@@ -57,7 +76,10 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://jobvision.ir/*", "https://*.jobvision.ir/*"],
+      "matches": [
+        "https://jobvision.ir/*",
+        "https://*.jobvision.ir/*"
+      ],
       "js": [
         "content/jobvision.js",
         "content/import/jobvision.js",
@@ -66,7 +88,10 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://e-estekhdam.com/*", "https://*.e-estekhdam.com/*"],
+      "matches": [
+        "https://e-estekhdam.com/*",
+        "https://*.e-estekhdam.com/*"
+      ],
       "js": [
         "content/import/eestekhdam.js",
         "content/apply/eestekhdam.js",
@@ -75,10 +100,24 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://irantalent.com/*", "https://*.irantalent.com/*"],
+      "matches": [
+        "https://irantalent.com/*",
+        "https://*.irantalent.com/*"
+      ],
       "js": [
         "content/import/irantalent.js",
         "content/apply/irantalent.js",
+        "content/session-probe.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://karboom.io/*",
+        "https://*.karboom.io/*"
+      ],
+      "js": [
+        "content/apply/karboom.js",
         "content/session-probe.js"
       ],
       "run_at": "document_idle"

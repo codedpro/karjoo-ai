@@ -61,6 +61,7 @@ describe("changedApplyFilterBoards", () => {
       "jobvision",
       "e-estekhdam",
       "irantalent",
+      "karboom",
     ]);
   });
 });

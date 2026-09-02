@@ -3,6 +3,8 @@ import Link from "next/link";
 import { Logo } from "@/components/brand/logo";
 import { LedgerPanel } from "@/components/site-ledger-panel";
 import { KARJOO_EXTENSION_DOWNLOAD_PATH } from "@/lib/extension/version";
+import { publicProviderCapabilities } from "@/lib/apply/registry";
+import { MAX_PROVIDER_SYNC_AGE_DAYS } from "@/lib/apply/freshness";
 import { site } from "@/lib/site";
 
 /**
@@ -30,41 +32,41 @@ const boardNames = site.boards.map((b) => b.name).join("، ");
 const pipeline = [
   {
     n: "۰۱",
-    title: "سایتت را وصل کن",
-    body: "افزونه را نصب کن و با کدِ داشبورد در چند ثانیه به حسابِ کارجو وصل شو — بدونِ ورودِ دوباره.",
+    title: "ارائه‌دهنده‌ها را وصل کن",
+    body: "حساب‌های کاریابی‌ات را به کارجو وصل کن تا شغل‌ها و وضعیت درخواست‌ها از یک جا دیده شوند.",
   },
   {
     n: "۰۲",
-    title: "فیلترها را انتخاب کن",
-    body: "دسته‌های شغلی، شهر، نوعِ همکاری و مرتب‌سازی را از میانِ گزینه‌های خودِ سایت انتخاب کن. همین — بدونِ نیاز به هوشِ مصنوعی.",
+    title: "در یک Job Board بگرد",
+    body: "عنوان، شهر، شرکت و ارائه‌دهنده را یک‌جا جست‌وجو کن؛ هر آگهی را در سایت اصلی باز کن یا از کارجو اقدام کن.",
   },
   {
     n: "۰۳",
-    title: "کارجو به همه اپلای می‌کند",
-    body: "کارجو همه‌ی آگهی‌های آن فیلتر را پیدا می‌کند و برایت اپلای می‌کند — در مرورگرِ خودت یا ۲۴ ساعته روی سرور.",
+    title: "اپلای و پیگیری کن",
+    body: "کارجو درخواست را با حساب خودت ثبت می‌کند و وضعیت‌های برگشتی ارائه‌دهنده‌ها را در کارجو نگه می‌دارد.",
   },
 ];
 
 const capabilities = [
   {
-    k: "اپلای انبوهِ فیلتری",
-    v: "پیش‌فرض، بدونِ AI",
-    body: "دسته و فیلترهای سایت را انتخاب کن؛ کارجو به همه‌ی آن شغل‌ها اپلای می‌کند. ساده، شفاف و قابل‌کنترل.",
+    k: "یک Job Board برای همه",
+    v: "جست‌وجوی واحد",
+    body: "آگهی‌های تازه‌ی ارائه‌دهنده‌ها در یک فهرست می‌آیند؛ با فیلترهای کارجو سریع‌تر به گزینه‌ی درست می‌رسی.",
   },
   {
-    k: "فیلترِ هوشمند (AI)",
-    v: "افزودنیِ اختیاری",
-    body: "اگر بخواهی، هوشِ مصنوعی فهرست را به متناسب‌ترین شغل‌ها باریک می‌کند. اختیاری، پولی، و هرگز الزامی نیست.",
+    k: "اپلای از کارجو یا سایت اصلی",
+    v: "دو مسیر روشن",
+    body: "روی هر آگهی می‌توانی سایت اصلی را باز کنی یا وقتی ارائه‌دهنده کامل فعال است، از کارجو اپلای کنی.",
   },
   {
-    k: "اپلای با هویتِ خودت",
-    v: "حسابِ خودت",
-    body: "اپلای‌ها با حسابِ خودت روی سایت ثبت می‌شوند — درست مثلِ اینکه خودت اپلای کرده‌ای، با اجازه‌ی تو و زیرِ کنترلِ کامل.",
+    k: "وضعیت درخواست‌ها برمی‌گردد",
+    v: "تا همیشه در کارجو",
+    body: "هر چیزی که کارجو قبلاً همگام کرده، در تاریخچه می‌ماند؛ همگام‌سازی‌های بعدی فقط تا ۴۵ روز عقب می‌روند.",
   },
   {
-    k: "تأییدِ نهایی با تو",
-    v: "کنترلِ کامل",
-    body: "فرم خودکار پر می‌شود، اما ارسالِ نهایی فقط با کلیکِ تو ثبت می‌شود. سقفِ روزانه و تاریخچه‌ی کامل.",
+    k: "ارائه‌دهنده‌ها مرحله‌ای اضافه می‌شوند",
+    v: "قابل اعتماد",
+    body: "یک سایت فقط وقتی live می‌شود که جست‌وجو، همگام‌سازی وضعیت و اپلای از کارجو برایش کامل شده باشد.",
   },
 ];
 
@@ -72,10 +74,10 @@ const capabilities = [
 // derived from the same list rendered below, so the number can never drift from
 // what the page actually shows. Category count is a conservative floor.
 const stats = [
-  { v: toFa(site.boards.length), k: "سایتِ کاریابی" },
-  { v: "۲۰+", k: "دسته‌ی شغلیِ جابینجا" },
+  { v: toFa(publicProviderCapabilities().length), k: "ارائه‌دهنده در نقشه‌ی راه" },
+  { v: toFa(MAX_PROVIDER_SYNC_AGE_DAYS), k: "روز سقفِ واکشی" },
   { v: "چندمدلی", k: "GPT · Claude · Gemini" },
-  { v: "۲۴/۷", k: "اپلای روی سرور" },
+  { v: "یک‌جا", k: "جست‌وجو و اپلای" },
 ];
 
 const faqs = [
@@ -85,7 +87,7 @@ const faqs = [
   },
   {
     q: "روی چه سایت‌هایی اپلای می‌کند؟",
-    a: `${boardNames} — و فهرست به‌مرور گسترده‌تر می‌شود.`,
+    a: `${boardNames} — ارائه‌دهنده‌ها یکی‌یکی اضافه می‌شوند و فقط وقتی کامل‌اند live می‌شوند.`,
   },
   {
     q: "اطلاعاتم امن است؟",
@@ -152,18 +154,18 @@ export default function Home() {
                 dir="ltr"
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-[#FFB020]" />
-                karjoo · night-shift apply engine
+                karjoo · unified job board + apply engine
               </span>
 
               <h1 className="mt-6 text-balance text-4xl font-extrabold leading-[1.18] tracking-tight sm:text-6xl">
-                تو می‌خوابی،
+                همه‌ی سایت‌های کاریابی،
                 <br />
-                <span className="text-[#FFB020]">کارجو اپلای می‌کند.</span>
+                <span className="text-[#FFB020]">در یک جای واحد.</span>
               </h1>
 
               <p className="mt-6 max-w-xl text-pretty text-[17px] leading-8 text-[#a7adb8]">
-                دسته و فیلترهای سایت‌های کاریابی را انتخاب کن؛ کارجو همه‌ی آن شغل‌ها را پیدا می‌کند و
-                برایت اپلای می‌کند — شبانه‌روز، با نشستِ خودت. هوشِ مصنوعی فقط یک افزودنیِ اختیاری است.
+                شغل‌ها را از ارائه‌دهنده‌های مختلف یک‌جا پیدا کن، در سایت اصلی باز کن یا با کارجو اپلای کن،
+                و وضعیت درخواست‌ها را همان‌جا پیگیری کن.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -208,8 +210,8 @@ export default function Home() {
         {/* ───────── How it works ───────── */}
         <section id="how" className="border-t border-[#242832]">
           <div className="mx-auto max-w-6xl px-5 py-16">
-            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">// how it works</p>
-            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">سه گام، بدونِ پیچیدگی</h2>
+            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">{"// how it works"}</p>
+            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">از جست‌وجو تا پیگیری، یک مسیر</h2>
             <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-[#242832] bg-[#242832] md:grid-cols-3">
               {pipeline.map((s) => (
                 <div key={s.n} className="bg-[#14161B] p-7">
@@ -227,8 +229,8 @@ export default function Home() {
         {/* ───────── Capabilities ───────── */}
         <section id="caps" className="border-t border-[#242832]">
           <div className="mx-auto max-w-6xl px-5 py-16">
-            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">// what you get</p>
-            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">اپلای، آن‌طور که باید باشد</h2>
+            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">{"// what you get"}</p>
+            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">قابلیت‌هایی که واقعاً وقت می‌خرند</h2>
             <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-[#242832] bg-[#242832] sm:grid-cols-2">
               {capabilities.map((c) => (
                 <div key={c.k} className="bg-[#14161B] p-7">
@@ -248,17 +250,17 @@ export default function Home() {
         {/* ───────── Boards (source list) ───────── */}
         <section id="boards" className="border-t border-[#242832]">
           <div className="mx-auto max-w-6xl px-5 py-16">
-            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">// integrated sources</p>
-            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">روی سایت‌های کاریابی ایران</h2>
+            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">{"// integrated sources"}</p>
+            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">ارائه‌دهنده‌ها، مرحله‌ای و شفاف</h2>
             <ul className="mt-8 divide-y divide-[#1c1f27] overflow-hidden rounded-lg border border-[#242832]">
-              {site.boards.map((b) => (
-                <li key={b.en} className="flex items-center justify-between bg-[#14161B] px-5 py-4">
+              {publicProviderCapabilities().map((b) => (
+                <li key={b.id} className="flex items-center justify-between gap-4 bg-[#14161B] px-5 py-4">
                   <span className="flex items-center gap-3">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#37C08A]" />
-                    <span className="text-base font-bold">{b.name}</span>
+                    <span className={b.workflowState === "live" ? "h-1.5 w-1.5 rounded-full bg-[#37C08A]" : b.workflowState === "in_progress" ? "h-1.5 w-1.5 rounded-full bg-[#FFB020]" : "h-1.5 w-1.5 rounded-full bg-[#8A9099]"} />
+                    <span className="text-base font-bold">{b.displayName}</span>
                   </span>
-                  <span className="ltr-nums font-mono text-xs text-[#8A9099]" dir="ltr">
-                    {b.en}
+                  <span className="ltr-nums shrink-0 font-mono text-xs text-[#8A9099]" dir="ltr">
+                    {b.workflowState === "live" ? "live" : b.workflowState === "in_progress" ? "in progress" : "planned"}
                   </span>
                 </li>
               ))}
@@ -271,15 +273,15 @@ export default function Home() {
           <div className="mx-auto max-w-6xl px-5 py-16">
             <div className="grid items-center gap-10 lg:grid-cols-2">
               <div>
-                <p className="font-mono text-xs text-[#8A9099]" dir="ltr">// browser extension</p>
+                <p className="font-mono text-xs text-[#8A9099]" dir="ltr">{"// browser extension"}</p>
                 <h2 className="mt-2 text-2xl font-extrabold leading-snug sm:text-3xl">
                   افزونه را نصب کن،
                   <br />
                   <span className="text-[#FFB020]">اپلای در مرورگرِ خودت</span>
                 </h2>
                 <p className="mt-5 max-w-xl leading-8 text-[#a7adb8]">
-                  افزونه مستقیم در مرورگرِ تو اجرا می‌شود و با نشستِ خودت به شغل‌های فیلترشده اپلای می‌کند.
-                  اپلای خودکار در مرورگر، یا ۲۴ ساعته روی سرور (پلن‌های بالاتر).
+                  افزونه مستقیم در مرورگرِ تو اجرا می‌شود، ارائه‌دهنده‌ها را وصل می‌کند و اپلای‌ها را با حساب خودت جلو می‌برد.
+                  مسیر سرور برای پلن‌های بالاتر، همین جریان را ۲۴ ساعته ادامه می‌دهد.
                 </p>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <a
@@ -332,7 +334,7 @@ export default function Home() {
         {/* ───────── FAQ (transcript) ───────── */}
         <section className="border-t border-[#242832]">
           <div className="mx-auto max-w-3xl px-5 py-16">
-            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">// faq</p>
+            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">{"// faq"}</p>
             <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">سؤال‌های پرتکرار</h2>
             <div className="mt-8 space-y-3">
               {faqs.map((f) => (
@@ -363,7 +365,7 @@ export default function Home() {
               امشب، بگذار کارجو <span className="text-[#FFB020]">شیفتِ شب</span> را بگیرد.
             </h2>
             <p className="mx-auto mt-4 max-w-xl leading-8 text-[#a7adb8]">
-              فیلترهایت را انتخاب کن و بخواب. صبح، فهرستِ اپلای‌ها منتظرت است.
+              ارائه‌دهنده‌ها را وصل کن؛ کارجو شغل‌های تازه، اپلای و وضعیت‌ها را در یک مسیر نگه می‌دارد.
             </p>
             <div className="mt-8">
               <Link

@@ -5,6 +5,7 @@ import { getJobinjaCategories } from "@/lib/apply/boards/jobinja-categories";
 import { getJobvisionCatalog } from "@/lib/apply/boards/jobvision-catalog";
 import { getEEstekhdamCatalog } from "@/lib/apply/boards/eestekhdam-catalog";
 import { getIranTalentCatalog } from "@/lib/apply/boards/irantalent-catalog";
+import { getKarboomCatalog } from "@/lib/apply/boards/karboom-catalog";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,7 @@ export async function GET(
     if (board === "e-estekhdam") return json(await getEEstekhdamCatalog());
     if (board === "jobvision") return json(await getJobvisionCatalog());
     if (board === "irantalent") return json(await getIranTalentCatalog());
+    if (board === "karboom") return json(await getKarboomCatalog());
     if (board === "jobinja") {
       const { categories } = await getJobinjaCategories();
       return json({

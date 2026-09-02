@@ -34,6 +34,7 @@ const pushSchema = z
           url: z.string().max(500).nullish(),
           statusRaw: z.string().max(120).nullish(),
           statusCategory: z.enum(["pending", "review", "interview", "hired", "rejected", "other"]).nullish(),
+          appliedAt: z.coerce.date().nullish(),
         }),
       )
       .max(2000)
@@ -61,6 +62,7 @@ export async function POST(request: Request): Promise<Response> {
             categoryFromRaw && categoryFromRaw !== "other"
               ? categoryFromRaw
               : (a.statusCategory ?? normalizeApplicationStatus(a.statusRaw)),
+          appliedAt: a.appliedAt ?? null,
         };
       });
       applications = await upsertApplications(userId, "jobinja", apps);

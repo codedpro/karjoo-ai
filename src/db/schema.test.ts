@@ -89,8 +89,22 @@ describe("schema داربست کارجو", () => {
       "applied",
       "failed",
     ]);
-    // irantalent به enumِ سایت‌ها افزوده شده.
+    // همه‌ی providerهای شناخته‌شده در enum سایت‌ها حاضرند.
     expect(jobBoardEnum.enumValues).toContain("irantalent");
+    for (const board of [
+      "karboom",
+      "linkedin",
+      "iranestekhdam",
+      "divar",
+      "quera",
+      "remoteok",
+      "weworkremotely",
+      "ponisha",
+      "parscoders",
+      "bankestekhdam",
+    ]) {
+      expect(jobBoardEnum.enumValues).toContain(board);
+    }
   });
 
   it("صف (tasks) ستون idempotency_key دارد (یکتایی dedupe)", () => {

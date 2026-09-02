@@ -11,7 +11,7 @@
  * نشستِ *خودِ کاربر* پر می‌شوند (اقدام به‌عنوانِ کاربرِ مجاز).
  *
  * وضعیت: jobinja «best-effort واقعی» (سلکتورهای محتمل بر اساسِ ساختارِ فرمِ jobinja)؛
- * jobvision/irantalent داربست‌اند با TODO(real-account). ای‌استخدام با API رسمی
+ * jobvision داربست است. ای‌استخدام و ایران‌تلنت با API/آداپتور اختصاصی اجرا می‌شوند
  * فرم ATS در نشست فعال افزونه اجرا می‌شود.
  */
 
@@ -249,45 +249,27 @@ const E_ESTEKHDAM_SPEC: BoardApplySpec = {
 };
 
 /* ────────────────────────────  irantalent  ─────────────────────────────── */
-/**
- * irantalent — داربست (TODO(real-account)). شکلِ نشست/فرم هنوز TBD است (§۷).
- */
+/** irantalent — اپلای با API خود سایت و رزومه‌ی پروفایل account-level. */
 const IRANTALENT_SPEC: BoardApplySpec = {
   board: "irantalent",
-  maturity: "scaffold",
-  urlPattern: /^https:\/\/(www\.)?irantalent\.com\/.+/,
-  // TODO(real-account): سلکتورهای واقعیِ فرمِ اپلایِ irantalent.
-  applyButtonSelector: "[data-qa='apply-button']",
-  coverLetterFieldSelector: "[data-qa='cover-letter']",
-  submitSelector: "[data-qa='apply-submit']",
-  confirmSelector: "[data-qa='apply-success']",
+  maturity: "best-effort",
+  urlPattern: /^https:\/\/(www\.)?irantalent\.com\/(en\/)?job\/[^/]+\/\d+/,
+  applyButtonSelector: "button.apply-button",
+  coverLetterFieldSelector: "textarea",
+  submitSelector: "button.apply-button",
   steps: [
     {
-      kind: "click",
-      selector: "[data-qa='apply-button']",
-      note: "TODO(real-account): شروعِ اپلای.",
-    },
-    {
-      kind: "waitFor",
-      selector: "[data-qa='apply-form']",
-      note: "TODO(real-account): انتظار تا فرم.",
-    },
-    {
       kind: "fill",
-      selector: "[data-qa='cover-letter']",
+      selector: "textarea",
       valueKey: "coverLetter",
       optional: true,
-      note: "TODO(real-account): انگیزه‌نامه.",
-    },
-    {
-      kind: "click",
-      selector: "[data-qa='apply-submit']",
-      note: "TODO(real-account): ثبت.",
+      note: "انگیزه‌نامه‌ی اختیاری همراهِ درخواست.",
     },
   ],
   notes: [
-    "شکلِ نشست/فرم TBD (§۷ سند معماری).",
-    "TODO(real-account): همه‌ی سلکتورها با حسابِ واقعی صحت‌سنجی شوند.",
+    "نشستِ کوکیِ خودِ کاربر استفاده می‌شود (sessionShape=cookie، auth_token_irantalent_new).",
+    "ایران‌تلنت رزومه را از پروفایل/account-level خودش می‌فرستد؛ PDF اختصاصی هر آگهی آپلود نمی‌شود.",
+    "آگهیِ بسته/اپلای‌شده یا سؤالاتِ غربالگری باعث توقف می‌شود.",
   ],
 };
 

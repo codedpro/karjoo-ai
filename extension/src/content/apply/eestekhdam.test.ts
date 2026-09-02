@@ -82,6 +82,76 @@ describe("e-estekhdam apply", () => {
     expect(result).toMatchObject({ ok: false, reason: "eestekhdam_gender_mismatch" });
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
+
+  it("clears stored e-estekhdam files and retries the tailored PDF when the account file bucket is full", async () => {
+    vi.stubGlobal("document", { body: { innerText: "Apply" } });
+    vi.stubGlobal("location", new URL(plan.jobUrl));
+    let applyAttempts = 0;
+    const deleted: string[] = [];
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/auth/session")) {
+        return new Response(JSON.stringify({ data: { user: { email: "candidate@example.com" } } }));
+      }
+      if (url.includes("/jobs/kabc12")) {
+        return new Response(JSON.stringify({ data: { id: 42, uuid: "abc12", ats: true } }));
+      }
+      if (url.includes("/ats/positions/abc12")) {
+        return new Response(JSON.stringify({ data: [{ id: 7, title: "Backend Developer" }] }));
+      }
+      if (url.endsWith("/ats/cvs")) {
+        return new Response(JSON.stringify({ data: { cvs: [{ id: 1 }], files: [{ id: "f1" }, { file_id: 22 }] } }));
+      }
+      if (init?.method === "DELETE" && url.includes("/ats/cvs/files/")) {
+        deleted.push(url.split("/").pop() ?? "");
+        return new Response(JSON.stringify({ ok: true }));
+      }
+      if (url.includes("/ats/applicants/apply/42")) {
+        applyAttempts += 1;
+        return applyAttempts === 1
+          ? new Response(JSON.stringify({ message: "خطا در زمان ذخیره فایل" }), { status: 400 })
+          : new Response(JSON.stringify({ ok: true }), { status: 201 });
+      }
+      throw new Error(`unexpected request ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await executeEEstekhdamApply(plan);
+
+    expect(result).toMatchObject({
+      ok: true,
+      ranSteps: ["session", "position", "cleanup_files", "upload", "confirmed"],
+    });
+    expect(applyAttempts).toBe(2);
+    expect(deleted).toEqual(["f1", "22"]);
+  });
+
+  it("reports a cleanup failure when e-estekhdam lists files without deletable ids", async () => {
+    vi.stubGlobal("document", { body: { innerText: "Apply" } });
+    vi.stubGlobal("location", new URL(plan.jobUrl));
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith("/auth/session")) {
+        return new Response(JSON.stringify({ data: { user: { email: "candidate@example.com" } } }));
+      }
+      if (url.includes("/jobs/kabc12")) {
+        return new Response(JSON.stringify({ data: { id: 42, uuid: "abc12", ats: true } }));
+      }
+      if (url.includes("/ats/positions/abc12")) {
+        return new Response(JSON.stringify({ data: [{ id: 7, title: "Backend Developer" }] }));
+      }
+      if (url.endsWith("/ats/cvs")) {
+        return new Response(JSON.stringify({ data: { files: [{ title: "old.pdf" }] } }));
+      }
+      return new Response(JSON.stringify({ message: "خطا در زمان ذخیره فایل" }), { status: 400 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await executeEEstekhdamApply(plan);
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain("eestekhdam_file_cleanup_failed: no file ids");
+  });
 });
 
 describe("failureDetail — why a submission was refused", () => {
@@ -132,17 +202,18 @@ describe("the account file limit", () => {
     expect(src).toContain("eestekhdam_file_limit_reached");
   });
 
-  it("fails rather than skips, so the ad is retried once space is freed", () => {
+  it("keeps the no-submission path provider-specific when cleanup cannot recover", () => {
     const src = readFileSync("src/content/apply/eestekhdam.ts", "utf8");
     const block = src.slice(src.indexOf("eestekhdam_file_limit_reached") - 700);
     expect(block).toContain("ok: false");
-    // A skip is terminal; this ad can succeed later, so it must stay queued.
+    // The background runner owns the terminal skip decision; the content script
+    // must still report that no application was submitted.
     expect(src).not.toMatch(/file_limit[^\n]*alreadyApplied/);
   });
 
   it("tells the user the one action that fixes it", () => {
     const src = readFileSync("src/content/apply/eestekhdam.ts", "utf8");
-    expect(src).toContain("حذف کنید");
+    expect(src).toContain("پاک‌سازی خودکار");
   });
 
   it("counts the collection that actually fills up", () => {

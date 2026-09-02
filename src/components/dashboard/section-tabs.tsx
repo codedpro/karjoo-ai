@@ -57,6 +57,7 @@ export function SectionTabs({
 
 /** زبانه‌های «اپلای‌ها» — همه‌ی چیزی که دربارهٔ درخواست‌ها پرسیده می‌شود. */
 export const APPLY_TABS: SectionTab[] = [
+  { href: "/dashboard/jobs", label: "جست‌وجوی شغل" },
   { href: "/dashboard/interview-prep", label: "وضعیت" },
   { href: "/dashboard/matches", label: "پیشنهادها" },
   { href: "/dashboard/archive", label: "ارسال‌شده‌ها" },

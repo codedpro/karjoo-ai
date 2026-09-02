@@ -1,4 +1,5 @@
 import type { BrowserDiscoveredListing } from "@ext/lib/types";
+import { clampProviderAgeDays, MS_PER_DAY } from "@ext/lib/freshness";
 
 /**
  * IranTalent public job discovery.
@@ -216,9 +217,9 @@ export async function discoverIranTalentListings(
   fetchImpl: typeof fetch = fetch,
   onPage?: (count: number) => Promise<void> | void,
 ): Promise<BrowserDiscoveredListing[]> {
-  const maxAgeDays = Math.min(45, Math.max(1, options.maxAgeDays));
+  const maxAgeDays = clampProviderAgeDays(options.maxAgeDays);
   const now = Date.now();
-  const cutoff = now - maxAgeDays * 86_400_000;
+  const cutoff = now - maxAgeDays * MS_PER_DAY;
   const body: Record<string, unknown> = {};
   const categoryIds = numericIds(options.categoryKeys);
   const employmentTypeIds = numericIds(options.employmentTypeKeys);

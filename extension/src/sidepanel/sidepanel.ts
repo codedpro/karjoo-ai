@@ -18,6 +18,7 @@ import {
   PROVIDER_JOBS_URLS,
   type ActiveProviderId,
 } from "@ext/lib/config";
+import { clampProviderAgeDays, MAX_PROVIDER_SYNC_AGE_DAYS } from "@ext/lib/freshness";
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const stateLabels: Record<string, string> = {
@@ -782,7 +783,7 @@ function collectFilters(): Omit<ApplyFilters, "aiFilterEnabled"> {
     paused: ($("discoveryPausedInput") as HTMLInputElement).checked,
     ...(optionalPositive("dailyInput") ? { dailyLimit: optionalPositive("dailyInput") } : {}),
     ...(optionalPositive("weeklyInput") ? { weeklyLimit: optionalPositive("weeklyInput") } : {}),
-    maxAgeDays: Math.min(45, optionalPositive("maxAgeInput") ?? 45),
+    maxAgeDays: clampProviderAgeDays(optionalPositive("maxAgeInput") ?? MAX_PROVIDER_SYNC_AGE_DAYS),
     boardFiltersVersion: 1,
     boardFilters: filtersState.boardFilters,
   };

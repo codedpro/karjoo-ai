@@ -11,6 +11,14 @@ export const BOARD_LABELS: Record<string, string> = {
   irantalent: "ایران‌تلنت",
   karboom: "کاربوم",
   linkedin: "لینکدین",
+  iranestekhdam: "ایران استخدام",
+  divar: "دیوار",
+  quera: "کوئرا مگنت",
+  remoteok: "RemoteOK",
+  weworkremotely: "We Work Remotely",
+  ponisha: "پونیشا",
+  parscoders: "پارس‌کدرز",
+  bankestekhdam: "بانک استخدام",
 };
 
 export function boardLabel(board: string): string {

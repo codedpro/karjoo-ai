@@ -17,9 +17,11 @@
  */
 import { useMemo, useState } from "react";
 
+import { MAX_PROVIDER_SYNC_AGE_DAYS } from "@/lib/apply/freshness";
+
 import { Badge, Button, Card, cn } from "./ui";
 
-export type BoardId = "jobinja" | "jobvision" | "e-estekhdam" | "irantalent";
+export type BoardId = "jobinja" | "jobvision" | "e-estekhdam" | "irantalent" | "karboom";
 
 export interface CatalogOption {
   key: string;
@@ -58,6 +60,8 @@ const SUPPORTS: Record<BoardId, { cities: boolean; salary: boolean; sort: boolea
   "e-estekhdam": { cities: true, salary: false, sort: false },
   jobvision: { cities: false, salary: false, sort: false },
   irantalent: { cities: false, salary: false, sort: false },
+  // کاربوم فقط `address_city_id[]` را واقعاً اعمال می‌کند؛ حقوق و ترتیب ندارد.
+  karboom: { cities: true, salary: false, sort: false },
 };
 
 const SORT_OPTIONS = [
@@ -382,10 +386,13 @@ export function BoardTargetingEditor(props: TargetingProps) {
             <input
               type="number"
               min={1}
-              max={45}
+              max={MAX_PROVIDER_SYNC_AGE_DAYS}
               value={globals.maxAgeDays}
               onChange={(e) => {
-                setGlobals((g) => ({ ...g, maxAgeDays: Number(e.target.value) || 45 }));
+                setGlobals((g) => ({
+                  ...g,
+                  maxAgeDays: Number(e.target.value) || MAX_PROVIDER_SYNC_AGE_DAYS,
+                }));
                 setDone(null);
               }}
               className="focus-ring min-h-11 rounded-xl border border-border bg-background px-3 py-2 outline-none"

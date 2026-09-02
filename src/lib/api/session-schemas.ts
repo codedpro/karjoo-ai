@@ -27,6 +27,14 @@ export const sessionBoardSchema = z.enum([
   "irantalent",
   "karboom",
   "linkedin",
+  "iranestekhdam",
+  "divar",
+  "quera",
+  "remoteok",
+  "weworkremotely",
+  "ponisha",
+  "parscoders",
+  "bankestekhdam",
 ]);
 
 export type SessionBoard = z.infer<typeof sessionBoardSchema>;
@@ -116,6 +124,14 @@ const SESSION_SHAPE_BY_BOARD: Record<SessionBoard, "cookie" | "token"> = {
   irantalent: "cookie",
   karboom: "cookie",
   linkedin: "cookie",
+  iranestekhdam: "cookie",
+  divar: "cookie",
+  quera: "cookie",
+  remoteok: "cookie",
+  weworkremotely: "cookie",
+  ponisha: "cookie",
+  parscoders: "cookie",
+  bankestekhdam: "cookie",
 };
 
 /**

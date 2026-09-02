@@ -26,11 +26,11 @@ describe("APPLY_SPEC coverage + maturity", () => {
     expect(isApplySpecReady("irantalent")).toBe(true);
   });
 
-  it("irantalent carries the tailored pdf as a required step — no base-resume fallback", () => {
+  it("irantalent uses the provider profile resume, not a per-job upload", () => {
     const spec = getApplySpec("irantalent")!;
-    const upload = spec.steps.find((step) => step.kind === "upload");
-    expect(upload).toMatchObject({ valueKey: "resumeFile", requiresValueKey: "resumeFile" });
-    expect(upload?.optional).toBeUndefined();
+    expect(spec.steps.some((step) => step.kind === "upload")).toBe(false);
+    expect(JSON.stringify(spec.notes)).toContain("پروفایل");
+    expect(JSON.stringify(spec.notes)).not.toContain("file_id");
   });
 
   it("only matches a canonical irantalent job URL", () => {
