@@ -1,22 +1,61 @@
-# karjoo-ai front-end (karjooai.itmaster.uk) as a Docker container with restart: always.
-# Runs the host-built .next via a node image over the bind-mounted app dir, host
-# networking so it binds :3030. Deploy = `next build` (host) then
-# `docker compose -f docker-compose.web.yml restart web`. Env from .env.local.
+# Karjoo blue-green web topology. Deploy only through scripts/deploy-web.sh.
 name: karjoo-web
 
+x-web-base: &web-base
+  build:
+    context: .
+    dockerfile: Dockerfile.web
+  image: karjoo-web:local
+  restart: always
+  network_mode: host
+  user: "${KARJOO_RUNTIME_UID:-1000}:${KARJOO_RUNTIME_GID:-1000}"
+  working_dir: /app
+  volumes:
+    - .:/app
+  environment: &web-environment
+    NODE_ENV: production
+    CHROMIUM_PATH: /usr/bin/chromium
+  healthcheck:
+    test:
+      - CMD-SHELL
+      - >-
+        node -e "fetch('http://127.0.0.1:' + process.env.KARJOO_SLOT_PORT +
+        '/api/extension/version').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+    interval: 10s
+    timeout: 5s
+    retries: 3
+    start_period: 15s
+
 services:
-  web:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
-    image: karjoo-web:local
-    container_name: karjoo-web
+  proxy:
+    image: nginx:1.27-alpine
+    container_name: karjoo-proxy
     restart: always
     network_mode: host
-    working_dir: /app
     volumes:
-      - .:/app
+      - ./deploy/karjoo-nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./.karjoo-runtime:/etc/nginx/runtime:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3030/api/extension/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  blue:
+    <<: *web-base
+    container_name: karjoo-web-blue
     environment:
-      NODE_ENV: production
-      CHROMIUM_PATH: /usr/bin/chromium
-    command: ["node", "node_modules/next/dist/bin/next", "start", "-p", "3030"]
+      <<: *web-environment
+      KARJOO_NEXT_DIST_DIR: .next-blue
+      KARJOO_SLOT_PORT: "3031"
+    command: ["node", "node_modules/next/dist/bin/next", "start", "-p", "3031"]
+
+  green:
+    <<: *web-base
+    container_name: karjoo-web-green
+    environment:
+      <<: *web-environment
+      KARJOO_NEXT_DIST_DIR: .next-green
+      KARJOO_SLOT_PORT: "3032"
+    command: ["node", "node_modules/next/dist/bin/next", "start", "-p", "3032"]

@@ -15,6 +15,10 @@
 
 # next.js
 /.next/
+/.next-blue/
+/.next-green/
+/.next-candidate/
+/.karjoo-runtime/
 /out/
 
 # production

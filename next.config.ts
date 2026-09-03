@@ -23,6 +23,9 @@ import { withSentryConfig } from "@sentry/nextjs";
  *   شدند، این پرچم می‌تواند در یک PRِ مجزا و هماهنگ روشن شود.
  */
 const nextConfig: NextConfig = {
+  // Production deploys build blue/green slots independently. Keeping the
+  // active slot's output immutable prevents old HTML from losing its chunks.
+  distDir: process.env.KARJOO_NEXT_DIST_DIR || ".next",
   // cacheComponents: true, // ← عمداً خاموش؛ توضیح بالا. UX از راهِ static-shell + Suspense.
 
   /**
