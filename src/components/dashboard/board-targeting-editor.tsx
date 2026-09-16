@@ -185,7 +185,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
               )}
             >
               {props.labels[id] ?? id}
-              <span className={cn("mr-2 text-xs", on ? "text-emerald-600 dark:text-emerald-400" : "text-muted")}>
+              <span className={cn("mr-2 text-xs", on ? "text-jade" : "text-muted")}>
                 {on ? "روشن" : "خاموش"}
               </span>
             </button>
@@ -224,11 +224,11 @@ export function BoardTargetingEditor(props: TargetingProps) {
             هر سایت دسته‌بندی خودش را دارد، پس انتخاب هر سایت جداگانه است.
           </p>
           {unknownKeys.length > 0 ? (
-            <div className="mb-3 rounded-xl border border-amber-400/30 bg-amber-400/5 p-3">
-              <p className="text-sm font-medium text-amber-200">
+            <div className="mb-3 rounded-xl border border-amber/30 bg-amber/5 p-3">
+              <p className="text-sm font-medium text-amber">
                 {unknownKeys.length} انتخابِ قدیمی که در فهرست این سایت نیست
               </p>
-              <p className="mt-1 text-xs text-white/70">
+              <p className="mt-1 text-xs text-bone-soft">
                 این‌ها هنوز در جست‌وجو اعمال می‌شوند ولی جای تیک‌زدن ندارند — از
                 نسخه‌های قبلی مانده‌اند. اگر انتخابشان نکرده‌اید، حذفشان کنید.
               </p>
@@ -238,7 +238,7 @@ export function BoardTargetingEditor(props: TargetingProps) {
                     <button
                       type="button"
                       onClick={() => toggleKey("categoryKeys", key)}
-                      className="rounded-lg border border-amber-400/30 px-2.5 py-1 text-xs text-amber-100 hover:bg-amber-400/10"
+                      className="rounded-lg border border-amber/30 px-2.5 py-1 text-xs text-amber hover:bg-amber/10"
                     >
                       {key} ✕
                     </button>
@@ -416,8 +416,8 @@ export function BoardTargetingEditor(props: TargetingProps) {
           <Button type="button" onClick={() => void save()} disabled={pending}>
             {pending ? "در حال ذخیره…" : "ذخیره"}
           </Button>
-          {done ? <span className="text-sm text-emerald-600 dark:text-emerald-400">{done}</span> : null}
-          {error ? <span className="text-sm text-rose-600 dark:text-rose-400">{error}</span> : null}
+          {done ? <span className="text-sm text-jade">{done}</span> : null}
+          {error ? <span className="text-sm text-rose">{error}</span> : null}
         </div>
       </div>
     </Card>

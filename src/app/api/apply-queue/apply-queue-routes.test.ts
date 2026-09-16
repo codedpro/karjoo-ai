@@ -16,7 +16,7 @@ vi.mock("@/lib/apply/extension-queue", () => ({
 // «عبور» (سهمیه آزاد) است تا تست‌های موجود دست‌نخورده بمانند.
 vi.mock("@/lib/billing/apply-quota-guard", () => ({
   assertApplyQuotaForUser: vi.fn(),
-  readUserPlan: vi.fn(),
+  readUserEntitlements: vi.fn(),
 }));
 // گیتِ اپلای خودکار (قاعده‌ی ۱) — چوک‌پوینتِ claim. پیش‌فرضِ تست: «مجاز با آستانه‌ی ۰٫۷»؛
 // تست‌های اختصاصیِ گیت آن را برای حالتِ خاموش/سقف override می‌کنند.
@@ -49,8 +49,9 @@ import { requireBearerSession } from "@/lib/api/bearer-auth";
 import { claimUserApplyItems, recordResult } from "@/lib/apply/extension-queue";
 import {
   assertApplyQuotaForUser,
-  readUserPlan,
+  readUserEntitlements,
 } from "@/lib/billing/apply-quota-guard";
+import { testEntitlements } from "@/lib/billing/entitlements";
 import {
   assertAutoApplyAllowed,
   AutoApplyNotAllowedError,
@@ -70,7 +71,7 @@ const authMock = vi.mocked(requireBearerSession);
 const claimMock = vi.mocked(claimUserApplyItems);
 const recordMock = vi.mocked(recordResult);
 const quotaMock = vi.mocked(assertApplyQuotaForUser);
-const planMock = vi.mocked(readUserPlan);
+const planMock = vi.mocked(readUserEntitlements);
 const autoApplyMock = vi.mocked(assertAutoApplyAllowed);
 const ownerMock = vi.mocked(assertExtensionExecutionOwner);
 const releaseLeasesMock = vi.mocked(releaseStaleExtensionLeases);
@@ -80,8 +81,8 @@ const readFiltersMock = vi.mocked(readApplyFilters);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // پیش‌فرض‌های مسیرِ claim: پلنِ free و گیتِ اپلای خودکار «مجاز با آستانه‌ی ۰٫۷».
-  planMock.mockResolvedValue("free");
+  // پیش‌فرض‌های مسیرِ claim: مزایای رایگان و گیتِ اپلای خودکار «مجاز با آستانه‌ی ۰٫۷».
+  planMock.mockResolvedValue(testEntitlements());
   autoApplyMock.mockResolvedValue({
     minScore: 0.7,
     quota: { limit: 100, usedToday: 0, remaining: 100 },

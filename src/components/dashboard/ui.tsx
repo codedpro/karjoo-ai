@@ -1,6 +1,10 @@
 /**
  * پرایمیتیوهای طراحیِ داشبورد — سیستمِ اجزای ارائه‌ایِ مشترک (server-safe، بدونِ state).
  *
+ * زبانِ بصری همان 1xAi است (web/components/ui/kit.tsx): گوشه‌های تیز روی دسکتاپ، خطوطِ
+ * مویی، دکمه‌ی اصلیِ persimmon و تیترهای display-fa. رنگ‌ها فقط از توکن‌ها می‌آیند
+ * (night/bone/persimmon/jade/amber/rose) تا در هر دو تمِ تیره و روشن درست بنشینند.
+ *
  * همه‌چیز روی توکن‌های `globals.css` سوار است (رنگ/شعاع/سایه/حلقه‌ی تمرکز) تا کارت‌ها،
  * دکمه‌ها، نشان‌ها و حالت‌های خالی در همه‌ی صفحه‌های داشبورد *یکدست* بمانند. هیچ رازی،
  * هیچ I/O، هیچ importِ `server-only`؛ پس هم در Server و هم در Client component قابلِ
@@ -51,10 +55,10 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border bg-card shadow-xs",
+        "rounded-2xl border border-hairline-soft bg-card",
         padded && "p-5 sm:p-6",
         interactive &&
-          "transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-sm",
+          "transition-colors duration-200 hover:border-persimmon/40 hover:bg-night-700",
         className,
       )}
     >
@@ -81,11 +85,11 @@ export function SectionHeading({
 }) {
   return (
     <div className="max-w-2xl">
-      <As className="text-balance text-2xl font-extrabold tracking-tight sm:text-3xl">
+      <As className="display-fa text-balance text-2xl text-bone sm:text-3xl">
         {title}
       </As>
       {subtitle ? (
-        <p className="mt-2 text-pretty text-sm leading-7 text-muted">{subtitle}</p>
+        <p className="mt-2 text-pretty text-sm leading-7 text-bone-dim">{subtitle}</p>
       ) : null}
     </div>
   );
@@ -107,7 +111,7 @@ export function PageHeader({
   as?: "h1" | "h2" | "h3";
 }) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex flex-col gap-4 border-b border-hairline-soft pb-5 sm:flex-row sm:items-end sm:justify-between">
       <SectionHeading title={title} subtitle={subtitle} as={as} />
       {actions ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
@@ -121,17 +125,17 @@ export function PageHeader({
 type BadgeTone = "brand" | "accent" | "muted" | "green" | "amber" | "rose";
 
 const BADGE_TONES: Record<BadgeTone, string> = {
-  brand: "bg-brand/10 text-brand ring-brand/15",
-  accent: "bg-accent/10 text-accent ring-accent/15",
-  muted: "bg-foreground/5 text-muted ring-foreground/10",
-  green: "bg-emerald-500/12 text-emerald-600 ring-emerald-500/15 dark:text-emerald-400",
-  amber: "bg-amber-500/12 text-amber-600 ring-amber-500/15 dark:text-amber-400",
-  rose: "bg-rose-500/12 text-rose-600 ring-rose-500/15 dark:text-rose-400",
+  brand: "bg-persimmon/8 text-persimmon ring-persimmon/35",
+  accent: "bg-jade/8 text-jade ring-jade/35",
+  muted: "bg-bone/5 text-bone-dim ring-hairline-strong",
+  green: "bg-jade/8 text-jade ring-jade/35",
+  amber: "bg-amber/8 text-amber ring-amber/35",
+  rose: "bg-rose/8 text-rose ring-rose/35",
 };
 
 /**
- * نشانِ کوچکِ وضعیت/برچسب. `whitespace-nowrap` تا هیچ برچسبی به خطِ دوم نشکند؛
- * حلقه‌ی ۱px برای جداییِ ظریف روی زمینه‌های هم‌رنگ.
+ * نشانِ کوچکِ وضعیت/برچسب — چیپِ چهارگوشِ مویی به سبکِ 1xAi. `whitespace-nowrap` تا هیچ
+ * برچسبی به خطِ دوم نشکند.
  */
 export function Badge({
   children,
@@ -148,7 +152,7 @@ export function Badge({
     <span
       title={title}
       className={cn(
-        "inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset",
+        "inline-flex max-w-full items-center gap-1 whitespace-nowrap px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
         BADGE_TONES[tone],
         className,
       )}
@@ -164,21 +168,20 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md";
 
 const BUTTON_BASE =
-  "focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap font-semibold transition-[transform,background-color,opacity,box-shadow] duration-150 active:translate-y-px disabled:pointer-events-none disabled:opacity-55";
+  "focus-ring press inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-colors duration-150 disabled:pointer-events-none disabled:opacity-50";
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary:
-    "bg-brand text-brand-foreground shadow-xs hover:brightness-110 hover:-translate-y-0.5",
+  // همان چهار لحنِ Button در 1xAi: persimmon پُر، خطیِ قوی، شبح، خطر.
+  primary: "bg-persimmon text-night-950 hover:bg-persimmon-soft",
   secondary:
-    "border border-border bg-card text-foreground hover:bg-foreground/5 hover:border-foreground/20",
-  ghost: "text-muted hover:bg-foreground/5 hover:text-foreground",
-  danger:
-    "border border-rose-500/30 bg-rose-500/10 text-rose-600 hover:bg-rose-500/15 dark:text-rose-400",
+    "border border-hairline-strong text-bone-soft hover:border-persimmon/50 hover:text-bone",
+  ghost: "text-bone-dim hover:bg-bone/5 hover:text-bone",
+  danger: "border border-rose text-rose hover:bg-rose hover:text-night-950",
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
-  sm: "rounded-full px-3.5 py-1.5 text-xs",
-  md: "rounded-full px-5 py-2.5 text-sm",
+  sm: "px-3 py-1.5 text-xs",
+  md: "px-4 py-2.5 text-sm",
 };
 
 function buttonClass(
@@ -220,11 +223,11 @@ export function ButtonLink({
 type StatTone = "brand" | "accent" | "green" | "amber" | "muted";
 
 const STAT_ICON_TONES: Record<StatTone, string> = {
-  brand: "bg-brand/10 text-brand",
-  accent: "bg-accent/10 text-accent",
-  green: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
-  amber: "bg-amber-500/12 text-amber-600 dark:text-amber-400",
-  muted: "bg-foreground/5 text-muted",
+  brand: "border-persimmon/40 text-persimmon",
+  accent: "border-jade/40 text-jade",
+  green: "border-jade/40 text-jade",
+  amber: "border-amber/40 text-amber",
+  muted: "border-hairline-strong text-bone-dim",
 };
 
 /**
@@ -256,7 +259,7 @@ export function StatCard({
       <div className="flex items-center gap-4">
         <span
           className={cn(
-            "grid h-11 w-11 shrink-0 place-items-center rounded-xl [&>svg]:h-5 [&>svg]:w-5",
+            "grid h-11 w-11 shrink-0 place-items-center border [&>svg]:h-5 [&>svg]:w-5",
             STAT_ICON_TONES[tone],
           )}
           aria-hidden
@@ -264,18 +267,18 @@ export function StatCard({
           {icon}
         </span>
         <div className="min-w-0">
-          <div className="ltr-nums text-2xl font-extrabold leading-tight">
+          <div className="ltr-nums text-2xl font-extrabold leading-tight text-bone tabular-nums">
             {typeof value === "number" ? toFaDigits(value) : value}
           </div>
-          <div className="text-pretty text-xs leading-5 text-muted">{label}</div>
+          <div className="text-pretty text-xs leading-5 text-bone-dim">{label}</div>
         </div>
       </div>
-      {hint ? <p className="mt-3 text-xs text-muted/80">{hint}</p> : null}
+      {hint ? <p className="mt-3 text-xs text-whisper">{hint}</p> : null}
     </Card>
   );
 
   return href ? (
-    <Link href={href} className="focus-ring block rounded-2xl">
+    <Link href={href} className="focus-ring block">
       {body}
     </Link>
   ) : (
@@ -292,12 +295,16 @@ export function StatCard({
 export function ScoreRing({ score }: { score: number | null }) {
   const pct = Math.round(Math.min(1, Math.max(0, score ?? 0)) * 100);
   const tone =
-    pct >= 75 ? "var(--brand)" : pct >= 50 ? "var(--accent)" : "var(--muted)";
+    pct >= 75
+      ? "var(--color-persimmon)"
+      : pct >= 50
+        ? "var(--color-jade)"
+        : "var(--color-bone-dim)";
   return (
     <div
       className="relative grid h-14 w-14 shrink-0 place-items-center rounded-full"
       style={{
-        background: `conic-gradient(${tone} ${pct}%, color-mix(in oklab, var(--border) 70%, transparent) 0)`,
+        background: `conic-gradient(${tone} ${pct}%, var(--color-night-600) 0)`,
       }}
       role="img"
       aria-label={`امتیاز تطبیق ${toFaDigits(pct)} درصد`}
@@ -335,19 +342,19 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center rounded-2xl border border-dashed border-border bg-surface/60 px-6 py-14 text-center",
+        "flex flex-col items-center border-y border-hairline-soft px-6 py-14 text-center",
         className,
       )}
     >
       <div
-        className="grid h-14 w-14 place-items-center rounded-2xl bg-brand/10 text-brand [&>svg]:h-7 [&>svg]:w-7"
+        className="grid h-14 w-14 place-items-center border border-persimmon/40 text-persimmon [&>svg]:h-7 [&>svg]:w-7"
         aria-hidden
       >
         {icon ?? <Inbox strokeWidth={1.75} aria-hidden />}
       </div>
-      <h3 className="mt-4 text-balance text-lg font-bold">{title}</h3>
+      <h3 className="display-fa mt-4 text-balance text-lg text-bone">{title}</h3>
       {body ? (
-        <p className="mt-2 max-w-sm text-pretty text-sm leading-7 text-muted">
+        <p className="mt-2 max-w-sm text-pretty text-sm leading-7 text-bone-dim">
           {body}
         </p>
       ) : null}
@@ -361,17 +368,17 @@ export function EmptyState({
 type CalloutTone = "info" | "warn" | "success" | "danger";
 
 const CALLOUT_TONES: Record<CalloutTone, string> = {
-  info: "border-brand/25 bg-brand/[0.06] text-foreground",
-  warn: "border-amber-500/30 bg-amber-500/[0.08] text-foreground",
-  success: "border-emerald-500/30 bg-emerald-500/[0.08] text-foreground",
-  danger: "border-rose-500/30 bg-rose-500/[0.08] text-foreground",
+  info: "border-persimmon/50 bg-persimmon/5 text-bone",
+  warn: "border-saffron/70 bg-saffron/5 text-bone",
+  success: "border-jade bg-jade/5 text-bone",
+  danger: "border-rose bg-rose/5 text-bone",
 };
 
 const CALLOUT_ICON_TONES: Record<CalloutTone, string> = {
-  info: "text-brand",
-  warn: "text-amber-600 dark:text-amber-400",
-  success: "text-emerald-600 dark:text-emerald-400",
-  danger: "text-rose-600 dark:text-rose-400",
+  info: "text-persimmon",
+  warn: "text-amber",
+  success: "text-jade",
+  danger: "text-rose",
 };
 
 /**
@@ -398,7 +405,7 @@ export function Callout({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-start gap-3 rounded-xl border px-4 py-3",
+        "flex flex-wrap items-start gap-3 border-s-2 py-3 pe-4 ps-4",
         CALLOUT_TONES[tone],
         className,
       )}
@@ -414,7 +421,7 @@ export function Callout({
       <div className="min-w-0 flex-1 space-y-1">
         {title ? <p className="text-sm font-semibold">{title}</p> : null}
         {children ? (
-          <div className="text-pretty text-sm leading-6 text-muted">{children}</div>
+          <div className="text-pretty text-sm leading-6 text-bone-dim">{children}</div>
         ) : null}
       </div>
       {action ? <div className="shrink-0">{action}</div> : null}
@@ -445,7 +452,7 @@ export function TableFrame({
   return (
     <div
       className={cn(
-        "overflow-x-auto rounded-2xl border border-border bg-card shadow-xs",
+        "overflow-x-auto rounded-2xl border border-hairline-soft bg-card",
         className,
       )}
     >
@@ -464,7 +471,7 @@ export function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
       className={cn(
-        "skeleton-shimmer rounded-lg bg-foreground/[0.06]",
+        "skeleton-shimmer bg-bone/[0.06]",
         className,
       )}
       aria-hidden
@@ -497,18 +504,18 @@ export function SkeletonCard({ className = "" }: { className?: string }) {
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border bg-card p-5 shadow-xs",
+        "rounded-2xl border border-hairline-soft bg-card p-5",
         className,
       )}
       aria-hidden
     >
       <div className="flex items-center gap-4">
-        <Skeleton className="h-12 w-12 shrink-0 rounded-xl" />
+        <Skeleton className="h-12 w-12 shrink-0" />
         <div className="min-w-0 flex-1 space-y-2.5">
           <Skeleton className="h-4 w-1/2" />
           <Skeleton className="h-3 w-3/4" />
         </div>
-        <Skeleton className="h-8 w-16 shrink-0 rounded-full" />
+        <Skeleton className="h-8 w-16 shrink-0" />
       </div>
     </div>
   );
@@ -536,13 +543,13 @@ export function SkeletonStat({ className = "" }: { className?: string }) {
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border bg-card p-5 shadow-xs sm:p-6",
+        "rounded-2xl border border-hairline-soft bg-card p-5 sm:p-6",
         className,
       )}
       aria-hidden
     >
       <div className="flex items-center gap-4">
-        <Skeleton className="h-11 w-11 shrink-0 rounded-xl" />
+        <Skeleton className="h-11 w-11 shrink-0" />
         <div className="space-y-2">
           <Skeleton className="h-6 w-14" />
           <Skeleton className="h-3 w-24" />
@@ -568,19 +575,19 @@ export function SkeletonTable({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-2xl border border-border bg-card shadow-xs",
+        "overflow-hidden rounded-2xl border border-hairline-soft bg-card",
         className,
       )}
       aria-hidden
     >
       {/* سرستون */}
-      <div className="flex items-center gap-4 border-b border-border bg-surface/60 px-5 py-3.5">
+      <div className="flex items-center gap-4 border-b border-hairline-soft bg-surface/60 px-5 py-3.5">
         {Array.from({ length: cols }).map((_, i) => (
           <Skeleton key={i} className="h-3.5 flex-1" />
         ))}
       </div>
       {/* ردیف‌ها */}
-      <div className="divide-y divide-border">
+      <div className="divide-y divide-hairline-soft">
         {Array.from({ length: rows }).map((_, r) => (
           <div key={r} className="flex items-center gap-4 px-5 py-4">
             {Array.from({ length: cols }).map((_, c) => (

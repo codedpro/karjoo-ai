@@ -415,7 +415,7 @@ function ArraySection<T>({
         <button
           type="button"
           onClick={onAdd}
-          className="focus-ring inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-4 py-2 text-sm font-medium transition-colors hover:border-brand active:translate-y-px"
+          className="focus-ring inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border border-border px-4 py-2 text-sm font-medium transition-colors hover:border-brand active:translate-y-px"
         >
           <IconPlus className="h-4 w-4" />
           {addLabel}
@@ -440,7 +440,7 @@ function ArraySection<T>({
                 <button
                   type="button"
                   onClick={() => onRemove(i)}
-                  className="focus-ring inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-500/10 dark:text-rose-400"
+                  className="focus-ring inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-rose transition-colors hover:bg-rose/10"
                 >
                   <IconTrash className="h-3.5 w-3.5" />
                   حذف

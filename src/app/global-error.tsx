@@ -36,10 +36,11 @@ export default function GlobalError({
             display: "flex",
             flexDirection: "column",
             minHeight: "100vh",
+            // پالتِ 1xAi (night-900 / bone) — مقادیرِ خام، چون globals.css شاید بار نشده باشد.
             fontFamily:
-              'Vazirmatn, Tahoma, "Segoe UI", system-ui, -apple-system, sans-serif',
-            backgroundColor: "#0c0d10",
-            color: "#e8e9ec",
+              'Vazirmatn, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Tahoma, system-ui, sans-serif',
+            backgroundColor: "#0d0a07",
+            color: "#f4ede0",
           }}
         >
           <div
@@ -57,8 +58,7 @@ export default function GlobalError({
               style={{
                 width: "5rem",
                 height: "5rem",
-                borderRadius: "1.25rem",
-                backgroundColor: "rgba(255, 176, 32, 0.14)",
+                border: "1px solid rgba(255, 107, 53, 0.4)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -71,7 +71,7 @@ export default function GlobalError({
                 height="40"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#ffb020"
+                stroke="#ff6b35"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -85,16 +85,16 @@ export default function GlobalError({
             <h1
               style={{
                 fontSize: "1.75rem",
-                fontWeight: 700,
+                fontWeight: 900,
                 margin: "0 0 0.5rem",
-                letterSpacing: "-0.01em",
+                letterSpacing: "-0.02em",
               }}
             >
               مشکلی پیش آمد
             </h1>
             <p
               style={{
-                color: "#8a9099",
+                color: "#a89b80",
                 margin: "0 0 2rem",
                 maxWidth: "28rem",
                 lineHeight: 1.8,
@@ -118,10 +118,10 @@ export default function GlobalError({
                 onClick={() => reset()}
                 style={{
                   padding: "0.75rem 1.75rem",
-                  backgroundColor: "#ffb020",
-                  color: "#0c0d10",
+                  backgroundColor: "#ff6b35",
+                  color: "#07050a",
                   border: "none",
-                  borderRadius: "0.75rem",
+                  borderRadius: 0,
                   cursor: "pointer",
                   fontSize: "0.875rem",
                   fontWeight: 600,
@@ -142,9 +142,9 @@ export default function GlobalError({
                 style={{
                   padding: "0.75rem 1.75rem",
                   backgroundColor: "transparent",
-                  color: "#c9cdd4",
-                  border: "1px solid #242832",
-                  borderRadius: "0.75rem",
+                  color: "#c4b8a3",
+                  border: "1px solid rgba(244, 237, 224, 0.28)",
+                  borderRadius: 0,
                   fontSize: "0.875rem",
                   fontWeight: 500,
                   textDecoration: "none",

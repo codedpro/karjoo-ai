@@ -146,7 +146,7 @@ export function InterestsPicker({
         </p>
         <div className="flex items-center gap-3">
           {error ? (
-            <span role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+            <span role="alert" className="text-sm text-rose">
               {error}
             </span>
           ) : null}
@@ -206,7 +206,7 @@ export function InterestsPicker({
                         onClick={() => toggle(cat.slug)}
                         aria-pressed={isOn}
                         className={cn(
-                          "focus-ring inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-[background-color,border-color,color,transform] active:translate-y-px",
+                          "focus-ring inline-flex items-center gap-1.5 whitespace-nowrap border px-4 py-2 text-sm font-medium transition-[background-color,border-color,color,transform] active:translate-y-px",
                           isOn
                             ? "border-brand/50 bg-brand/10 text-brand"
                             : "border-border bg-card text-muted hover:border-foreground/20 hover:text-foreground",

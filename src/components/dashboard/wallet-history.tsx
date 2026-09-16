@@ -34,7 +34,7 @@ export function LedgerList({ entries }: { entries: DashboardLedgerEntry[] }) {
       <h3 className="text-base font-bold">تراکنش‌های کیف‌پول</h3>
 
       {entries.length === 0 ? (
-        <p className="mt-4 text-pretty rounded-xl border border-dashed border-border bg-surface/60 px-4 py-6 text-center text-sm text-muted">
+        <p className="mt-4 text-pretty border border-dashed border-border bg-surface/60 px-4 py-6 text-center text-sm text-muted">
           هنوز تراکنشی ثبت نشده است.
         </p>
       ) : (
@@ -67,7 +67,7 @@ export function LedgerList({ entries }: { entries: DashboardLedgerEntry[] }) {
                   <div
                     className={
                       positive
-                        ? "ltr-nums whitespace-nowrap text-sm font-bold text-emerald-600 dark:text-emerald-400"
+                        ? "ltr-nums whitespace-nowrap text-sm font-bold text-jade"
                         : "ltr-nums whitespace-nowrap text-sm font-bold text-foreground"
                     }
                   >

@@ -30,12 +30,12 @@ export async function DashboardUserChip() {
   return (
     <div className="flex items-center gap-2.5">
       <div className="hidden min-w-0 text-end sm:block">
-        <div className="max-w-[12rem] truncate text-sm font-semibold" title={displayName}>
+        <div className="max-w-[12rem] truncate text-sm font-semibold text-bone" title={displayName}>
           {displayName}
         </div>
         {secondary ? (
           <div
-            className="ltr-nums max-w-[12rem] truncate text-xs text-muted"
+            className="ltr-nums max-w-[12rem] truncate text-xs text-bone-dim"
             title={secondary}
           >
             {secondary}
@@ -88,10 +88,10 @@ export function DashboardUserChipSkeleton() {
   return (
     <div className="flex items-center gap-2.5" aria-hidden>
       <div className="hidden space-y-1.5 sm:block">
-        <div className="skeleton-shimmer h-3.5 w-24 rounded bg-foreground/[0.06]" />
-        <div className="skeleton-shimmer h-3 w-32 rounded bg-foreground/[0.06]" />
+        <div className="skeleton-shimmer h-3.5 w-24 bg-bone/[0.06]" />
+        <div className="skeleton-shimmer h-3 w-32 bg-bone/[0.06]" />
       </div>
-      <div className="skeleton-shimmer h-9 w-9 rounded-full bg-foreground/[0.06]" />
+      <div className="skeleton-shimmer h-9 w-9 rounded-full bg-bone/[0.06]" />
     </div>
   );
 }

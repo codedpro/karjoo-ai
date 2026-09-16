@@ -4,7 +4,7 @@ import "server-only";
  * تخصیصِ نودِ ورکر به کاربر (server-only) — قاعده‌ی ۲ (سقفِ IP بر اساسِ پلن).
  *
  * یک نود به کاربر تخصیص می‌یابد تا «به‌جای او» اپلای کند. هر کاربر حداکثر
- * workerIpLimitFor(plan) نود می‌تواند داشته باشد (Max=۱، MaxPlus=۵؛ Free/Pro=۰ → هیچ
+ * workerIpLimitOf(entitlements) نود می‌تواند داشته باشد (از اشتراکِ 1xai؛ ۰ → هیچ
  * اپلای خودکارِ ورکری، فقط افزونه). سقف *هنگامِ تخصیص* اعمال می‌شود:
  *   • اگر سقفِ پلن ۰ باشد → WorkerIpLimitError (این پلن ورکر ندارد).
  *   • اگر تعدادِ تخصیص‌های فعلیِ کاربر ≥ سقف باشد → WorkerIpLimitError.
@@ -20,10 +20,9 @@ import { db as defaultDb } from "@/db";
 import {
   workerAssignments,
   workerNodes,
-  type Plan,
   type WorkerAssignment,
 } from "@/db/schema";
-import { workerIpLimitFor } from "@/lib/billing/plans";
+import { workerIpLimitOf, type Entitlements } from "@/lib/billing/entitlements";
 
 /** هندلِ کمینه‌ی DB که این لایه نیاز دارد. */
 export type FleetAssignDb = typeof defaultDb;
@@ -67,16 +66,16 @@ export class WorkerIpLimitError extends Error {
  *
  * @param userId کاربری که نود برایش اپلای می‌کند (همیشه از نشست — قاعده‌ی امنیت).
  * @param nodeId نودِ ورکر (worker_nodes.id).
- * @param plan   پلنِ کاربر (از users.plan) — سقف از plans.ts.
+ * @param entitlements مزایای کاربر از اشتراکِ 1xai — سقفِ ورکر.
  * @throws WorkerIpLimitError اگر پلن ورکر نداشته باشد یا سقف پر باشد.
  */
 export async function assignNodeToUser(
   userId: string,
   nodeId: string,
-  plan: Plan,
+  entitlements: Entitlements,
   conn: FleetAssignDb = defaultDb,
 ): Promise<WorkerAssignment> {
-  const limit = workerIpLimitFor(plan);
+  const limit = workerIpLimitOf(entitlements);
 
   return conn.transaction(async (tx) => {
     // اگر این (کاربر، نود) از قبل تخصیص یافته، همان را برگردان (idempotent، بدونِ سقف‌شکنی).
@@ -181,11 +180,11 @@ export async function listAssignments(
  */
 export async function autoAssignNodeForUser(
   userId: string,
-  plan: Plan,
+  entitlements: Entitlements,
   conn: FleetAssignDb = defaultDb,
 ): Promise<WorkerAssignment | null> {
   // پلنِ بی‌ورکر (Free/Pro) → اصلاً تلاش نکن.
-  if (workerIpLimitFor(plan) <= 0) return null;
+  if (workerIpLimitOf(entitlements) <= 0) return null;
 
   // از قبل نود دارد → کارِ تازه‌ای لازم نیست (idempotent).
   const existing = await listAssignments(userId, conn);
@@ -218,7 +217,7 @@ export async function autoAssignNodeForUser(
   if (!node) return null;
 
   try {
-    return await assignNodeToUser(userId, node.id, plan, conn);
+    return await assignNodeToUser(userId, node.id, entitlements, conn);
   } catch (err) {
     // سقفِ پلن یا رقابتِ هم‌زمان → تاگل را نمی‌شکنیم؛ فقط تخصیص نداده‌ایم.
     if (err instanceof WorkerIpLimitError) return null;

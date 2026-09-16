@@ -30,7 +30,7 @@ import { applyQueueClaimBodySchema } from "@/lib/api/extension-schemas";
 import { claimUserApplyItems } from "@/lib/apply/extension-queue";
 import {
   assertApplyQuotaForUser,
-  readUserPlan,
+  readUserEntitlements,
 } from "@/lib/billing/apply-quota-guard";
 import { ApplyQuotaError } from "@/lib/billing/errors";
 import {
@@ -144,14 +144,14 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     // ۳) پلنِ کاربر را از DB می‌خوانیم (سقفِ روزانه از روی پلن).
-    const plan = await readUserPlan(userId);
+    const entitlements = await readUserEntitlements(userId);
 
     // ۴) گیتِ اپلای خودکارِ AI (قاعده‌ی ۱). اگر روشن و زیرِ سقف باشد → مسیرِ کامل: آیتم‌های
     //    AIمود بالای آستانه + همه‌ی آیتم‌های فیلترمود.
     let minScore: number;
     let remaining: number | null = null;
     try {
-      const allowance = await assertAutoApplyAllowed(userId, plan);
+      const allowance = await assertAutoApplyAllowed(userId, entitlements);
       minScore = allowance.minScore;
       remaining = allowance.quota.remaining;
     } catch (err) {

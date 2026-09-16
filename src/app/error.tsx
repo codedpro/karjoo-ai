@@ -49,8 +49,7 @@ export default function Error({
       <div className="w-full max-w-md space-y-6 text-center">
         {/* آیکنِ هشدار — با رنگِ برندِ کارجو */}
         <div
-          className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl"
-          style={{ backgroundColor: "color-mix(in oklab, var(--brand) 14%, transparent)" }}
+          className="mx-auto flex h-20 w-20 items-center justify-center border border-persimmon/40"
           aria-hidden="true"
         >
           <svg
@@ -70,8 +69,8 @@ export default function Error({
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold tracking-tight">مشکلی پیش آمد</h1>
-          <p className="text-muted text-sm leading-7">
+          <h1 className="display-fa text-2xl">مشکلی پیش آمد</h1>
+          <p className="text-sm leading-7 text-bone-dim">
             بابتِ این وقفه پوزش می‌خواهیم. تیمِ ما به‌طورِ خودکار مطلع شد و در حالِ بررسی
             است. می‌توانید دوباره تلاش کنید یا به صفحه‌ی نخست بازگردید.
           </p>
@@ -79,10 +78,10 @@ export default function Error({
 
         {process.env.NODE_ENV === "development" && error?.message && (
           <pre
-            className="ltr-nums overflow-auto rounded-lg border p-4 text-left font-mono text-xs"
+            className="ltr-nums overflow-auto border p-4 text-left font-mono text-xs"
             style={{
               backgroundColor: "var(--surface)",
-              color: "#ef4444",
+              color: "var(--color-rose)",
               borderColor: "var(--border)",
             }}
           >
@@ -94,15 +93,13 @@ export default function Error({
           <button
             type="button"
             onClick={() => reset()}
-            className="focus-ring inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-brand-foreground transition-[filter] hover:brightness-95"
-            style={{ backgroundColor: "var(--brand)", boxShadow: "var(--shadow-brand)" }}
+            className="focus-ring press inline-flex items-center justify-center gap-2 bg-persimmon px-5 py-2.5 text-sm font-medium text-night-950 transition-colors hover:bg-persimmon-soft"
           >
             تلاش دوباره
           </button>
           <Link
             href="/"
-            className="focus-ring inline-flex items-center justify-center gap-2 rounded-xl border px-5 py-2.5 text-sm font-medium transition-colors"
-            style={{ borderColor: "var(--border)", color: "var(--foreground)" }}
+            className="focus-ring press inline-flex items-center justify-center gap-2 border border-hairline-strong px-5 py-2.5 text-sm font-medium text-bone-soft transition-colors hover:border-persimmon/50 hover:text-bone"
           >
             بازگشت به خانه
           </Link>

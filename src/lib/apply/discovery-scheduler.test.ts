@@ -2,6 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runServerDiscovery, type EligibleUser } from "@/lib/apply/discovery-scheduler";
 import type { RunFilterApplyReport } from "@/lib/apply/orchestrator";
+import { testEntitlements } from "@/lib/billing/entitlements";
+
+const MAX = testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" });
+
+// مزایای پیش‌فرض (اشتراکِ با ورکر) — هیچ تستی نباید به 1xaiِ واقعی برود.
+const readEntitlementsMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/billing/subscription", () => ({
+  readEntitlements: readEntitlementsMock,
+}));
 
 function report(queued: number): RunFilterApplyReport {
   return {
@@ -20,8 +29,8 @@ function report(queued: number): RunFilterApplyReport {
 }
 
 const eligible: EligibleUser[] = [
-  { userId: "u1", plan: "max" },
-  { userId: "u2", plan: "max" },
+  { userId: "u1" },
+  { userId: "u2" },
 ];
 
 type RunFilterOpts = {
@@ -37,6 +46,8 @@ describe("runServerDiscovery", () => {
   let mark: ReturnType<typeof vi.fn>;
   let prepareResumes: ReturnType<typeof vi.fn>;
   beforeEach(() => {
+    readEntitlementsMock.mockReset();
+    readEntitlementsMock.mockResolvedValue(MAX);
     mark = vi.fn(async () => {});
     prepareResumes = vi.fn(async () => ({ attempted: 0, prepared: 0, failed: 0 }));
   });
@@ -165,5 +176,24 @@ describe("runServerDiscovery", () => {
 
     expect(mark).toHaveBeenCalledTimes(1);
     expect(mark).toHaveBeenCalledWith(expect.anything(), ["u1", "u2"]);
+  });
+  it("مزایای هر کاربر به گیت پاس می‌شود و سقفِ روزانه از آن می‌آید (رایگان ⇒ ۱۰۰، نامحدود ⇒ MAX_SAFE_INTEGER)", async () => {
+    const runFilter = vi.fn(async (_opts: RunFilterOpts) => report(0));
+    const assertAllowed = vi.fn(async () => ({ minScore: 0 }));
+    const free = testEntitlements();
+    const summary = await runServerDiscovery({
+      listEligible: async () => eligible,
+      readEntitlements: async (userId) => (userId === "u1" ? MAX : free),
+      assertAllowed,
+      canUsePaidAi: async () => undefined,
+      runFilter,
+      prepareResumes,
+      markAttempted: mark,
+    });
+    expect(summary.processed).toBe(2);
+    expect(assertAllowed).toHaveBeenCalledWith("u1", MAX);
+    expect(assertAllowed).toHaveBeenCalledWith("u2", free);
+    expect(runFilter.mock.calls[0]?.[0].dailyCap).toBe(Number.MAX_SAFE_INTEGER);
+    expect(runFilter.mock.calls[1]?.[0].dailyCap).toBe(100);
   });
 });

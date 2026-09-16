@@ -57,3 +57,6 @@ logs/
 .tmp-*/
 worker/tmp-*/
 .superpowers/
+
+# local data snapshots (contain user emails)
+/backups/

@@ -207,7 +207,7 @@ function JobsFilters({ state }: { state: ParsedJobsQuery }) {
             <option value="all">همه</option>
             <option value="applied">اپلای‌شده</option>
           </select>
-          <button className="focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground transition-transform hover:-translate-y-0.5 active:translate-y-px">
+          <button className="focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-bold text-brand-foreground transition-transform active:translate-y-px">
             <IconSearch className="h-4 w-4" />
             جست‌وجو
           </button>
@@ -217,7 +217,7 @@ function JobsFilters({ state }: { state: ParsedJobsQuery }) {
           <select
             name="status"
             defaultValue={state.status ?? ""}
-            className="h-9 rounded-full border border-border bg-surface px-3 text-xs outline-none"
+            className="h-9 border border-border bg-surface px-3 text-xs outline-none"
           >
             <option value="">همه‌ی تطبیق‌ها</option>
             {JOB_MATCH_STATUSES.map((status) => (
@@ -229,7 +229,7 @@ function JobsFilters({ state }: { state: ParsedJobsQuery }) {
           <select
             name="sort"
             defaultValue={state.sort}
-            className="h-9 rounded-full border border-border bg-surface px-3 text-xs outline-none"
+            className="h-9 border border-border bg-surface px-3 text-xs outline-none"
           >
             {JOB_SORTS.map((sort) => (
               <option key={sort} value={sort}>
@@ -240,7 +240,7 @@ function JobsFilters({ state }: { state: ParsedJobsQuery }) {
           <select
             name="dir"
             defaultValue={state.dir}
-            className="h-9 rounded-full border border-border bg-surface px-3 text-xs outline-none"
+            className="h-9 border border-border bg-surface px-3 text-xs outline-none"
           >
             <option value="desc">نزولی</option>
             <option value="asc">صعودی</option>
@@ -248,7 +248,7 @@ function JobsFilters({ state }: { state: ParsedJobsQuery }) {
           <input type="hidden" name="pageSize" value={state.pageSize} />
           <Link
             href="/dashboard/jobs"
-            className="focus-ring inline-flex h-9 items-center rounded-full px-3 text-xs font-semibold text-muted hover:bg-foreground/5 hover:text-foreground"
+            className="focus-ring inline-flex h-9 items-center px-3 text-xs font-semibold text-muted hover:bg-foreground/5 hover:text-foreground"
           >
             حذف فیلترها
           </Link>
@@ -302,7 +302,7 @@ function JobRow({ job, currentHref }: { job: UnifiedJobRow; currentHref: string 
               <form action={queueJobApplyAction}>
                 <input type="hidden" name="listingId" value={job.id} />
                 <input type="hidden" name="returnTo" value={currentHref} />
-                <button className="focus-ring inline-flex items-center justify-center gap-2 rounded-full bg-brand px-4 py-2 text-sm font-bold text-brand-foreground transition-transform hover:-translate-y-0.5 active:translate-y-px">
+                <button className="focus-ring inline-flex items-center justify-center gap-2 bg-brand px-4 py-2 text-sm font-bold text-brand-foreground transition-transform active:translate-y-px">
                   <IconSend className="h-4 w-4" />
                   اپلای با کارجو
                 </button>
@@ -314,7 +314,7 @@ function JobRow({ job, currentHref }: { job: UnifiedJobRow; currentHref: string 
               href={job.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="focus-ring inline-flex items-center justify-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:border-foreground/20 hover:bg-foreground/5"
+              className="focus-ring inline-flex items-center justify-center gap-2 border border-border bg-card px-4 py-2 text-sm font-semibold text-foreground transition-colors hover:border-foreground/20 hover:bg-foreground/5"
             >
               <SquareArrowOutUpRight className="h-4 w-4" strokeWidth={1.75} aria-hidden />
               سایت اصلی
@@ -329,14 +329,14 @@ function JobRow({ job, currentHref }: { job: UnifiedJobRow; currentHref: string 
 function DisabledAction({ job }: { job: UnifiedJobRow }) {
   if (job.alreadyApplied) {
     return (
-      <span className="inline-flex items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+      <span className="inline-flex items-center justify-center border border-jade/20 bg-jade/10 px-4 py-2 text-sm font-semibold text-jade">
         قبلاً اپلای شده
       </span>
     );
   }
   if (job.providerWorkflowState !== "live") {
     return (
-      <span className="inline-flex items-center justify-center rounded-full border border-border bg-foreground/5 px-4 py-2 text-sm font-semibold text-muted">
+      <span className="inline-flex items-center justify-center border border-border bg-foreground/5 px-4 py-2 text-sm font-semibold text-muted">
         در حال تکمیل
       </span>
     );
@@ -350,7 +350,7 @@ function DisabledAction({ job }: { job: UnifiedJobRow }) {
     );
   }
   return (
-    <span className="inline-flex items-center justify-center rounded-full border border-border bg-foreground/5 px-4 py-2 text-sm font-semibold text-muted">
+    <span className="inline-flex items-center justify-center border border-border bg-foreground/5 px-4 py-2 text-sm font-semibold text-muted">
       آماده نیست
     </span>
   );

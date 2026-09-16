@@ -28,8 +28,8 @@ import { findJobsBodySchema } from "@/lib/api/find-jobs-schemas";
 import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { readApplyFilters } from "@/lib/apply/filters";
 import { runFilterApply } from "@/lib/apply/orchestrator";
-import { readUserPlan } from "@/lib/billing/apply-quota-guard";
-import { applyQuotaFor } from "@/lib/billing/plans";
+import { readUserEntitlements } from "@/lib/billing/apply-quota-guard";
+import { applyQuotaOf } from "@/lib/billing/entitlements";
 import { assertCanUsePaidAi } from "@/lib/billing/entitlement";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
 
@@ -111,8 +111,8 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     // ۶) سقفِ روزانه از پلنِ کاربر (Free=۱۰۰، پولی=نامحدود → MAX_SAFE_INTEGER).
-    const plan = await readUserPlan(user.id);
-    const dailyCap = applyQuotaFor(plan) ?? Number.MAX_SAFE_INTEGER;
+    const entitlements = await readUserEntitlements(user.id);
+    const dailyCap = applyQuotaOf(entitlements) ?? Number.MAX_SAFE_INTEGER;
 
     // ۷) اجرای فیلترمود: scrape → enqueue همه (یا در aiFilter، بالای آستانه).
     const report = await runFilterApply({ userId: user.id, aiFilter, dailyCap });

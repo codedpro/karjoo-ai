@@ -3,7 +3,7 @@
  *
  * نشستِ وب (getCurrentUser) و هسته‌ی Foundation (getServerAutoApplySettings/
  * setServerAutoApplyEnabled/recordAutoApplyAudit) کاملاً mock می‌شوند — هیچ DB/شبکه‌ی زنده.
- * plans.ts (workerIpLimitFor/planFor) واقعی می‌ماند (خالص، بدونِ I/O).
+ * مزایای اشتراکِ 1xai (readEntitlements) mock می‌شود؛ entitlements.ts واقعی می‌ماند (خالص).
  *
  * تمرکزِ بحرانی (سطحِ سرور، مستقل از افزونه):
  *   • بدونِ نشست → ۴۰۱ (هیچ خواندن/نوشتنی).
@@ -17,6 +17,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
 vi.mock("@/lib/fleet/assign", () => ({ autoAssignNodeForUser: vi.fn() }));
+vi.mock("@/lib/billing/subscription", () => ({ readEntitlements: vi.fn() }));
 vi.mock("@/lib/apply/auto-apply", () => ({
   getServerAutoApplySettings: vi.fn(),
   setServerAutoApplyEnabled: vi.fn(),
@@ -25,6 +26,8 @@ vi.mock("@/lib/apply/auto-apply", () => ({
 
 import { getCurrentUser } from "@/lib/auth/http";
 import { autoAssignNodeForUser } from "@/lib/fleet/assign";
+import { readEntitlements } from "@/lib/billing/subscription";
+import { testEntitlements, type Entitlements } from "@/lib/billing/entitlements";
 import {
   getServerAutoApplySettings,
   recordAutoApplyAudit,
@@ -38,10 +41,32 @@ const getSettingsMock = vi.mocked(getServerAutoApplySettings);
 const setEnabledMock = vi.mocked(setServerAutoApplyEnabled);
 const recordAuditMock = vi.mocked(recordAutoApplyAudit);
 const autoAssignMock = vi.mocked(autoAssignNodeForUser);
+const readEntitlementsMock = vi.mocked(readEntitlements);
 
-/** کاربرِ mock با پلنِ دلخواه (فقط فیلدهایی که route لمس می‌کند). */
-function userWithPlan(plan: string) {
-  return { id: "user-1", plan, isActive: true } as never;
+/** نگاشتِ پلن‌های قدیمی به مزایای 1xai (planKey همان نام می‌ماند). */
+const PLANS: Record<string, Entitlements> = {
+  free: testEntitlements(),
+  pro: testEntitlements({ planKey: "pro", planNameFa: "پرو", unlimitedApplies: true }),
+  max: testEntitlements({
+    planKey: "max",
+    planNameFa: "مکس",
+    status: "active",
+    unlimitedApplies: true,
+    workerIpLimit: 1,
+  }),
+  maxplus: testEntitlements({
+    planKey: "maxplus",
+    planNameFa: "مکس‌پلاس",
+    status: "active",
+    unlimitedApplies: true,
+    workerIpLimit: 5,
+  }),
+};
+
+/** کاربرِ mock با اشتراکِ دلخواه — مزایای آن از readEntitlements برمی‌گردد. */
+function userWithPlan(plan: keyof typeof PLANS) {
+  readEntitlementsMock.mockResolvedValue(PLANS[plan]);
+  return { id: "user-1", isActive: true } as never;
 }
 
 function putReq(body: unknown) {
@@ -77,7 +102,9 @@ describe("GET /api/server-auto-apply", () => {
     expect(body.minScore).toBe(0.8);
     expect(body.eligible).toBe(true);
     expect(body.plan).toBe("max");
+    expect(body.planLabel).toBe("مکس");
     expect(body.workerIpLimit).toBe(1);
+    expect(readEntitlementsMock).toHaveBeenCalledWith("user-1");
     expect(getSettingsMock).toHaveBeenCalledWith("user-1");
   });
 
@@ -178,7 +205,7 @@ describe("PUT /api/server-auto-apply — پلن‌گِیت + ممیزی", () => 
     // روشن‌کردنِ تاگل باید نود تخصیص دهد، وگرنه صف هرگز تخلیه نمی‌شود.
     expect(autoAssignMock).toHaveBeenCalledTimes(1);
     expect(autoAssignMock.mock.calls[0]?.[0]).toBe("user-1");
-    expect(autoAssignMock.mock.calls[0]?.[1]).toBe("max");
+    expect(autoAssignMock.mock.calls[0]?.[1]).toBe(PLANS.max);
 
     expect(setEnabledMock).toHaveBeenCalledTimes(1);
     expect(setEnabledMock.mock.calls[0][0]).toBe("user-1");

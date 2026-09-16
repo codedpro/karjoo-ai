@@ -6,27 +6,7 @@
  * برچسبِ امن برمی‌گردد، چون یک enum جدید در دیتابیس نباید صفحه‌ی مدیریت را بشکند.
  */
 
-/* ─────────────────────────────────  پلن  ────────────────────────────────── */
-
-const PLAN_LABELS: Record<string, string> = {
-  free: "رایگان",
-  pro: "حرفه‌ای",
-  max: "مکس",
-  maxplus: "مکس پلاس",
-  // مقادیرِ تاریخی که هنوز ممکن است در ردیف‌های قدیمی باشند.
-  payg: "اعتباری (قدیمی)",
-  premium: "ویژه (قدیمی)",
-};
-
-/** نامِ فارسیِ پلن — مقدارِ ناشناخته همان‌طور که هست برمی‌گردد. */
-export function planLabel(plan: string): string {
-  return PLAN_LABELS[plan] ?? plan;
-}
-
-/** پلن‌هایی که ادمین می‌تواند دستی ست کند (هم‌راستا با اسکیمای اکشن). */
-export const ASSIGNABLE_PLANS = ["free", "pro", "max", "maxplus"] as const;
-
-/* ───────────────────────────  وضعیتِ اپلای/پرداخت  ───────────────────────── */
+/* ───────────────────────────  وضعیتِ اپلای  ───────────────────────── */
 
 const APPLICATION_STATUS_LABELS: Record<string, string> = {
   draft: "در انتظارِ ارسال",
@@ -42,24 +22,6 @@ export function applicationStatusLabel(status: string): string {
   return APPLICATION_STATUS_LABELS[status] ?? status;
 }
 
-const PAYMENT_STATUS_LABELS: Record<string, string> = {
-  pending: "در انتظارِ بررسی",
-  approved: "تأیید شد",
-  rejected: "رد شد",
-};
-
-export function paymentStatusLabel(status: string): string {
-  return PAYMENT_STATUS_LABELS[status] ?? status;
-}
-
-const PAYMENT_KIND_LABELS: Record<string, string> = {
-  topup: "شارژِ اعتبار",
-  plan: "خریدِ اشتراک",
-};
-
-export function paymentKindLabel(kind: string): string {
-  return PAYMENT_KIND_LABELS[kind] ?? kind;
-}
 
 /* ────────────────────────────────  زمان  ───────────────────────────────── */
 

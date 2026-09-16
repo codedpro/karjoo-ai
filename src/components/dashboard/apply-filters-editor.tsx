@@ -271,7 +271,7 @@ export function ApplyFiltersEditor({
         </p>
         <div className="flex items-center gap-3">
           {error ? (
-            <span role="alert" className="text-sm text-rose-500">
+            <span role="alert" className="text-sm text-rose">
               {error}
             </span>
           ) : null}
@@ -306,12 +306,12 @@ export function ApplyFiltersEditor({
               onClick={() => apply({ ...state, paused: !state.paused })}
               className={cn(
                 "focus-ring relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors",
-                state.paused ? "bg-rose-500" : "bg-foreground/15",
+                state.paused ? "bg-rose" : "bg-foreground/15",
               )}
             >
               <span
                 className={cn(
-                  "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                  "inline-block h-5 w-5 transform rounded-full bg-bone shadow transition-transform",
                   state.paused ? "-translate-x-6" : "-translate-x-1",
                 )}
               />
@@ -355,7 +355,7 @@ export function ApplyFiltersEditor({
         }
       >
         {categoriesPartial ? (
-          <p className="mb-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs leading-6 text-amber-600 dark:text-amber-400">
+          <p className="mb-3 rounded-xl border border-amber/25 bg-amber/10 px-3 py-2 text-xs leading-6 text-amber">
             فهرستِ دسته‌ها به‌طورِ کامل بارگیری نشد؛ ممکن است بخشی از دسته‌ها این‌جا نباشد.
           </p>
         ) : null}
@@ -390,7 +390,7 @@ export function ApplyFiltersEditor({
                     onClick={() => toggleCat(cat.slug)}
                     aria-pressed={on}
                     className={cn(
-                      "focus-ring inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-2 text-sm font-medium transition-[background-color,border-color,color,transform] active:translate-y-px",
+                      "focus-ring inline-flex items-center gap-1.5 whitespace-nowrap border px-3.5 py-2 text-sm font-medium transition-[background-color,border-color,color,transform] active:translate-y-px",
                       on
                         ? "border-brand/50 bg-brand/10 text-brand"
                         : "border-border bg-card text-muted hover:border-foreground/20 hover:text-foreground",
@@ -476,7 +476,7 @@ export function ApplyFiltersEditor({
                 onClick={() => toggleType(opt.value)}
                 aria-pressed={on}
                 className={cn(
-                  "focus-ring inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-[background-color,border-color,color,transform] active:translate-y-px",
+                  "focus-ring inline-flex items-center gap-1.5 whitespace-nowrap border px-4 py-2 text-sm font-medium transition-[background-color,border-color,color,transform] active:translate-y-px",
                   on
                     ? "border-brand/50 bg-brand/10 text-brand"
                     : "border-border bg-card text-muted hover:border-foreground/20 hover:text-foreground",
@@ -508,7 +508,7 @@ export function ApplyFiltersEditor({
           >
             <span
               className={cn(
-                "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                "inline-block h-5 w-5 transform rounded-full bg-bone shadow transition-transform",
                 state.remoteOnly ? "-translate-x-6" : "-translate-x-1",
               )}
             />
@@ -546,7 +546,7 @@ export function ApplyFiltersEditor({
             </span>
           </div>
           {state.minSalary ? (
-            <span className="ltr-nums whitespace-nowrap rounded-full bg-brand/10 px-3 py-1 text-sm font-bold text-brand">
+            <span className="ltr-nums whitespace-nowrap bg-brand/10 px-3 py-1 text-sm font-bold text-brand">
               {toFaDigits(state.minSalary.toLocaleString("en-US"))} تومان
             </span>
           ) : null}
@@ -711,7 +711,7 @@ function TargetPreview({
               {chips.map((c) => (
                 <span
                   key={c}
-                  className="inline-flex items-center whitespace-nowrap rounded-full bg-card px-2.5 py-0.5 text-xs font-medium text-muted ring-1 ring-inset ring-border"
+                  className="inline-flex items-center whitespace-nowrap bg-card px-2.5 py-0.5 text-xs font-medium text-muted ring-1 ring-inset ring-border"
                 >
                   {c}
                 </span>

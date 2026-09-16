@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { getTableName } from "drizzle-orm";
 
+import * as schema from "@/db/schema";
 import {
   applicationStatusEnum,
   aiModelCatalog,
@@ -23,7 +24,6 @@ import {
   jobListings,
   ledgerKindEnum,
   matches,
-  planEnum,
   profileImportStatusEnum,
   profileImports,
   rawListings,
@@ -131,15 +131,6 @@ describe("schema داربست کارجو", () => {
 
   it("enumهای بیلینگ با مقادیر درست تعریف شده‌اند", () => {
     expect(aiProviderEnum.enumValues).toEqual(["openai", "anthropic", "google"]);
-    // WF3: لایه‌های قیمت‌گذاری به enum افزوده شدند (legacy payg/premium حفظ شده).
-    expect(planEnum.enumValues).toEqual([
-      "free",
-      "payg",
-      "premium",
-      "pro",
-      "max",
-      "maxplus",
-    ]);
     expect(ledgerKindEnum.enumValues).toEqual(["topup", "charge", "refund", "grant"]);
     expect(usageKindEnum.enumValues).toEqual([
       "match",
@@ -147,8 +138,12 @@ describe("schema داربست کارجو", () => {
       "resume_parse",
       "resume_tailor",
     ]);
-    // users.plan افزوده شده (پیش‌فرض free در WF3).
-    expect(users.plan).toBeDefined();
+    // پلنِ محلی حذف شد (0029_drop_local_plans): اشتراک فقط در 1xai است.
+    expect(users).not.toHaveProperty("plan");
+    expect(users).not.toHaveProperty("planExpiresAt");
+    expect(schema).not.toHaveProperty("planEnum");
+    expect(schema).not.toHaveProperty("paymentRequests");
+    expect(schema).not.toHaveProperty("planPurchases");
   });
 
   it("جدول‌های گاردریلِ WF3 (بودجه + تنظیمات) را صادر می‌کند", () => {

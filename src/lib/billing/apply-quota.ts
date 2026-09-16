@@ -3,8 +3,8 @@ import "server-only";
 /**
  * سهمیه‌ی اپلای روزانه (server-only) — WF3 بخش D.
  *
- * قاعده: کاربرِ پلنِ Free حداکثر ۱۰۰ اپلای در روز دارد (شمارشِ اپلای‌های امروزِ همان
- * کاربر). پلن‌های پولی سقف ندارند (applyQuotaPerDay = null در plans.ts). این گارد در
+ * قاعده: کاربری که اشتراکِ 1xaiاش «اپلای نامحدود» ندارد حداکثر ۱۰۰ اپلای در روز دارد
+ * (شمارشِ اپلای‌های امروزِ همان کاربر). مزایا از `entitlements.ts` می‌آیند. این گارد در
  * نقطه‌ی *ثبتِ یک اپلای* اعمال می‌شود (مسیرِ نتیجه‌ی صفِ اپلای) تا یک کاربر نتواند با
  * چند اجرا از سقف عبور کند.
  *
@@ -16,8 +16,8 @@ import "server-only";
 import { and, eq, gte, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
-import { applications, type Plan } from "@/db/schema";
-import { applyQuotaFor } from "@/lib/billing/plans";
+import { applications } from "@/db/schema";
+import { applyQuotaOf, type Entitlements } from "@/lib/billing/entitlements";
 import { ApplyQuotaError } from "@/lib/billing/errors";
 
 /** هندلِ کمینه‌ی DB که این لایه نیاز دارد (شمارشِ اپلای‌های امروز). */
@@ -65,15 +65,15 @@ export interface ApplyQuotaStatus {
  * هیچ کوئریِ شمارشی نمی‌زنند (مسیرِ ارزان برای کاربرانِ پولی).
  *
  * @param userId کاربری که اپلای برایش ثبت می‌شود.
- * @param plan   پلنِ کاربر (از users.plan) — سقف از plans.ts گرفته می‌شود.
+ * @param entitlements مزایای کاربر از اشتراکِ 1xai.
  * @returns وضعیتِ سهمیه در صورتِ مجاز بودن.
  */
 export async function assertApplyQuota(
   userId: string,
-  plan: Plan,
+  entitlements: Entitlements,
   deps: ApplyQuotaDeps = {},
 ): Promise<ApplyQuotaStatus> {
-  const limit = applyQuotaFor(plan);
+  const limit = applyQuotaOf(entitlements);
   // پلنِ نامحدود → بدونِ شمارش، بدونِ سقف.
   if (limit === null) {
     return { limit: null, usedToday: 0, remaining: null };

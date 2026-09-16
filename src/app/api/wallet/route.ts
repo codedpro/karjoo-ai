@@ -17,7 +17,8 @@ import "server-only";
 import { desc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
-import { users, walletLedger } from "@/db/schema";
+import { readEntitlements } from "@/lib/billing/subscription";
+import { walletLedger } from "@/db/schema";
 import { errorJson, json, parseSearchParams, withErrorHandling } from "@/lib/api/http";
 import { walletQuerySchema } from "@/lib/api/billing-schemas";
 import { getCurrentUser } from "@/lib/auth/http";
@@ -51,13 +52,8 @@ export async function GET(request: Request): Promise<Response> {
       throw err;
     }
 
-    // ۴) پلنِ کاربر (محلی — پلن استحقاقِ کارجوست، نه پول).
-    const planRow = await db
-      .select({ plan: users.plan })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1);
-    const plan = planRow[0]?.plan ?? "payg";
+    // ۴) اشتراکِ کاربر (از 1xai — همان منبعِ مزایای کارجو).
+    const plan = (await readEntitlements(user.id)).planKey;
 
     // ۵) آخرین ردیف‌های دفترِ محلی (تاریخچه) — فقط-خواندنی، مقید به userIdِ نشست (قاعده‌ی ۴).
     const ledger = await db

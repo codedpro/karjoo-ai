@@ -51,7 +51,7 @@ export default async function ArticlePage({ params }: Params) {
       <SiteHeader />
       <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-16">
         <article>
-          <h1 className="text-3xl font-extrabold leading-[1.4] sm:text-4xl">{article.title}</h1>
+          <h1 className="display-fa text-3xl leading-[1.4] text-bone sm:text-4xl">{article.title}</h1>
           {(article.description || article.excerpt) && (
             <p className="mt-4 text-lg leading-9 text-muted">
               {article.description || article.excerpt}

@@ -16,15 +16,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/auth/http", () => ({ getCurrentUserOrBearer: vi.fn() }));
 vi.mock("@/lib/apply/filters", () => ({ readApplyFilters: vi.fn() }));
 vi.mock("@/lib/apply/orchestrator", () => ({ runFilterApply: vi.fn() }));
-vi.mock("@/lib/billing/apply-quota-guard", () => ({ readUserPlan: vi.fn() }));
-vi.mock("@/lib/billing/plans", () => ({ applyQuotaFor: vi.fn() }));
+vi.mock("@/lib/billing/apply-quota-guard", () => ({ readUserEntitlements: vi.fn() }));
 vi.mock("@/lib/billing/entitlement", () => ({ assertCanUsePaidAi: vi.fn() }));
 
 import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { readApplyFilters } from "@/lib/apply/filters";
 import { runFilterApply } from "@/lib/apply/orchestrator";
-import { readUserPlan } from "@/lib/billing/apply-quota-guard";
-import { applyQuotaFor } from "@/lib/billing/plans";
+import { readUserEntitlements } from "@/lib/billing/apply-quota-guard";
+import { testEntitlements } from "@/lib/billing/entitlements";
 import { assertCanUsePaidAi } from "@/lib/billing/entitlement";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
 
@@ -34,8 +33,7 @@ import { resetRateLimits } from "@/lib/api/rate-limit";
 const getCurrentUserMock = vi.mocked(getCurrentUserOrBearer);
 const readFiltersMock = vi.mocked(readApplyFilters);
 const runFilterApplyMock = vi.mocked(runFilterApply);
-const readUserPlanMock = vi.mocked(readUserPlan);
-const applyQuotaForMock = vi.mocked(applyQuotaFor);
+const readEntitlementsMock = vi.mocked(readUserEntitlements);
 const assertAiMock = vi.mocked(assertCanUsePaidAi);
 
 const USER = { id: "user-1", email: "u@x.ir", isActive: true } as never;
@@ -83,10 +81,9 @@ beforeEach(() => {
   resetRateLimits(); // گاردِ نرخ per-user حالتش ماژول‌سطحی است — بین تست‌ها پاک شود.
   getCurrentUserMock.mockResolvedValue(USER);
   readFiltersMock.mockResolvedValue(filtersWith());
-  readUserPlanMock.mockResolvedValue("free");
-  applyQuotaForMock.mockReturnValue(100);
+  readEntitlementsMock.mockResolvedValue(testEntitlements()); // سقفِ ۱۰۰/روز
   runFilterApplyMock.mockResolvedValue(report());
-  assertAiMock.mockResolvedValue({ plan: "free", balanceToman: 5000 } as never);
+  assertAiMock.mockResolvedValue({ plan: "رایگان", balanceToman: 5000 });
 });
 
 describe("POST /api/apply/find-jobs", () => {
@@ -138,9 +135,10 @@ describe("POST /api/apply/find-jobs", () => {
     expect(assertAiMock).not.toHaveBeenCalled();
   });
 
-  it("پلنِ نامحدود (applyQuotaFor=null) → dailyCap = MAX_SAFE_INTEGER", async () => {
-    readUserPlanMock.mockResolvedValue("max");
-    applyQuotaForMock.mockReturnValue(null);
+  it("اشتراکِ «اپلای نامحدود» → dailyCap = MAX_SAFE_INTEGER", async () => {
+    readEntitlementsMock.mockResolvedValue(
+      testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" }),
+    );
     await POST(req());
     expect(runFilterApplyMock).toHaveBeenCalledWith({
       userId: "user-1",
@@ -169,7 +167,7 @@ describe("POST /api/apply/find-jobs", () => {
     readFiltersMock.mockResolvedValue(filtersWith({ aiFilterEnabled: true }));
     // فقط «موجودیِ ناکافیِ» typed به مسیرِ پایه برمی‌گردد — AI هرگز اجباری نیست.
     assertAiMock.mockRejectedValue(
-      new InsufficientBalanceError({ balanceToman: 0, plan: "free" }),
+      new InsufficientBalanceError({ balanceToman: 0, plan: "رایگان" }),
     );
 
     const res = await POST(req());

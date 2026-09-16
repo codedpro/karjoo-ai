@@ -21,7 +21,6 @@ import "server-only";
  *
  * وابستگی‌ها تزریق‌پذیرند تا تستِ بدونِ DB/کیف‌پول ممکن باشد.
  */
-import type { Plan } from "@/db/schema";
 import { assertCanUsePaidAi } from "@/lib/billing/entitlement";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
 import { readApplyFilters, type FiltersDb } from "@/lib/apply/filters";
@@ -31,7 +30,7 @@ export interface PaidAiEntitlement {
   /** آیا کاربر می‌تواند از AI پولی استفاده کند (موجودی > ۰)؟ */
   entitled: boolean;
   /** پلنِ کاربر (برای پیام/نمایش). */
-  plan: Plan;
+  plan: string;
   /** موجودیِ فعلیِ کیف‌پول به تومان (برای پیام/نمایش). */
   balanceToman: number;
 }
@@ -55,7 +54,7 @@ export interface AiFilterGateState {
   /** نتیجه‌ی مؤثر: فقط وقتی هم روشن است هم واجدِ استحقاق. */
   aiFilter: boolean;
   /** پلنِ کاربر. */
-  plan: Plan;
+  plan: string;
   /** موجودیِ فعلیِ کیف‌پول (تومان). */
   balanceToman: number;
 }

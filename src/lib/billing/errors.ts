@@ -5,7 +5,6 @@
  * این فایل عمداً «server-only» نیست: فقط تعریفِ کلاسِ خطاست (بدونِ راز یا I/O)، تا هم
  * در سرور و هم در تستِ واحد بدونِ اصطکاک قابلِ استفاده باشد.
  */
-import type { Plan } from "@/db/schema";
 
 /** کدهای پایدارِ خطای بیلینگ — برای مدیریتِ دقیق در فراخواننده. */
 export type BillingErrorCode =
@@ -35,12 +34,12 @@ export class BillingError extends Error {
 export class InsufficientBalanceError extends BillingError {
   /** موجودیِ فعلیِ کاربر به تومان (برای نمایش/تصمیمِ UI). */
   readonly balanceToman: number;
-  /** پلنِ کاربر — برای پیامِ درست (هر پلنی با موجودیِ ≤ ۰ بلاک می‌شود). */
-  readonly plan: Plan;
+  /** نامِ اشتراکِ 1xaiِ کاربر (فقط نمایشی). */
+  readonly plan: string;
 
   constructor(args: {
     balanceToman: number;
-    plan: Plan;
+    plan: string;
     message?: string;
   }) {
     super(

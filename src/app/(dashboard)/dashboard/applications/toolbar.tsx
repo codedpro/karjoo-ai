@@ -92,7 +92,7 @@ export function StatusFilter({
             href={buildUrl(state, { status: c.key })}
             aria-current={active ? "true" : undefined}
             className={cn(
-              "focus-ring inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition",
+              "focus-ring inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs transition",
               active
                 ? "border-brand bg-brand/10 font-bold text-brand"
                 : "border-foreground/10 text-muted hover:border-foreground/25 hover:text-foreground",

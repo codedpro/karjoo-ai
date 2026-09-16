@@ -9,11 +9,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EMPTY_APPLY_FILTERS } from "@/lib/apply/filters";
+import { testEntitlements } from "@/lib/billing/entitlements";
 
 const readApplyFilters = vi.fn<(...a: unknown[]) => Promise<unknown>>();
 const claimUserApplyItems = vi.fn<(...a: unknown[]) => Promise<unknown[]>>(() => Promise.resolve([]));
 const assertServerAutoApplyAllowed = vi.fn<(...a: unknown[]) => Promise<{ minScore: number }>>();
-const readUserPlan = vi.fn(async () => "max");
+const readUserEntitlements = vi.fn(async () =>
+  testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" }),
+);
 const readSessionBlob = vi.fn<(...a: unknown[]) => Promise<Record<string, unknown> | null>>(
   async () => null,
 );
@@ -40,7 +43,9 @@ vi.mock("@/lib/apply/auto-apply", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/apply/auto-apply")>();
   return { ...actual, assertServerAutoApplyAllowed: (...a: unknown[]) => assertServerAutoApplyAllowed(...a) };
 });
-vi.mock("@/lib/billing/apply-quota-guard", () => ({ readUserPlan: () => readUserPlan() }));
+vi.mock("@/lib/billing/apply-quota-guard", () => ({
+  readUserEntitlements: () => readUserEntitlements(),
+}));
 vi.mock("@/lib/vault/store", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/vault/store")>();
   return { ...actual, readSessionBlob: (...a: unknown[]) => readSessionBlob(...a) };

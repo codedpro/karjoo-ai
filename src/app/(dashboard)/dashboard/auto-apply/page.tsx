@@ -229,7 +229,7 @@ function LevelHeading({
 }) {
   return (
     <div className="max-w-2xl">
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
+      <span className="inline-flex items-center gap-1.5 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
         <IconServer className="h-3.5 w-3.5" />
         {eyebrow}
       </span>

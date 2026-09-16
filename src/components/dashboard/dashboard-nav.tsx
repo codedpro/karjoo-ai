@@ -28,7 +28,6 @@ import { useEffect, useState } from "react";
 
 import {
   IconBolt,
-  IconCard,
   IconChevronEnd,
   IconClose,
   IconDoc,
@@ -41,6 +40,7 @@ import {
   type IconComponent,
 } from "./icons";
 import { cn } from "./ui";
+import { ThemeSwitch } from "@/components/theme";
 
 /* ─────────────────────────────  فهرستِ ناوبری  ────────────────────────────── */
 
@@ -129,12 +129,6 @@ export const ADMIN_ITEMS: NavItem[] = [
     icon: IconUsers,
   },
   {
-    href: "/dashboard/admin/payments",
-    label: "پرداخت‌ها",
-    hint: "تأیید یا ردِ کارت‌به‌کارت‌های در انتظار",
-    icon: IconCard,
-  },
-  {
     href: "/dashboard/fleet",
     label: "سرورها",
     hint: "سلامت و تخصیصِ نودهای اپلای",
@@ -184,7 +178,7 @@ export function NavGroup({
   const pathname = usePathname();
   return (
     <div>
-      <h2 className="px-3 pb-1.5 pt-4 text-[0.7rem] font-bold uppercase tracking-wide text-muted/70">
+      <h2 className="tracker-fa px-3 pb-1.5 pt-4 text-whisper">
         {title}
       </h2>
       <ul className="space-y-0.5">
@@ -198,24 +192,25 @@ export function NavGroup({
                 onClick={onNavigate}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "focus-ring group relative flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors",
+                  // آیتمِ فعال به سبکِ ستونِ کناریِ 1xAi: تهِ‌رنگ + لبه‌ی persimmon + متنِ bone.
+                  "focus-ring group relative flex items-start gap-3 border px-3 py-2.5 transition-colors",
                   active
-                    ? "bg-brand/10 text-brand"
-                    : "text-muted hover:bg-foreground/5 hover:text-foreground",
+                    ? "border-persimmon/30 bg-persimmon/8 text-bone"
+                    : "border-transparent text-bone-soft hover:bg-bone/5 hover:text-bone",
                 )}
               >
-                {/* نشانگرِ لبه‌ی فعال (سمتِ راست در RTL) */}
+                {/* نقطه‌ی فعال در لبه‌ی آغازین (سمتِ راست در RTL) */}
                 <span
                   className={cn(
-                    "absolute inset-y-2 end-0 w-1 rounded-full bg-brand transition-opacity",
+                    "absolute start-0 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-persimmon transition-opacity",
                     active ? "opacity-100" : "opacity-0",
                   )}
                   aria-hidden
                 />
                 <Icon
                   className={cn(
-                    "mt-0.5 h-5 w-5 transition-transform group-hover:scale-105",
-                    active ? "text-brand" : "text-muted group-hover:text-foreground",
+                    "mt-0.5 h-4 w-4 shrink-0",
+                    active ? "text-persimmon" : "text-bone-dim group-hover:text-bone",
                   )}
                 />
                 <span className="min-w-0">
@@ -226,7 +221,7 @@ export function NavGroup({
                   <span
                     className={cn(
                       "mt-0.5 hidden text-pretty text-xs leading-5 xl:block",
-                      active ? "text-brand/70" : "text-muted/70",
+                      active ? "text-bone-dim" : "text-whisper",
                     )}
                   >
                     {item.hint}
@@ -247,12 +242,18 @@ export function NavGroup({
  */
 export function SidebarNav({ children }: { children?: React.ReactNode }) {
   return (
-    <nav aria-label="ناوبریِ داشبورد" className="sticky top-20 pb-8">
-      {NAV_GROUPS.map((group) => (
-        <NavGroup key={group.title} title={group.title} items={group.items} />
-      ))}
-      {children}
-    </nav>
+    <div className="sticky top-20 pb-8">
+      <nav aria-label="ناوبریِ داشبورد">
+        {NAV_GROUPS.map((group) => (
+          <NavGroup key={group.title} title={group.title} items={group.items} />
+        ))}
+        {children}
+      </nav>
+      {/* پای ستون: سوییچِ تمِ تیره/روشن (همان کنترلِ 1xAi) */}
+      <div className="mt-6 border-t border-hairline-soft px-3 pt-4">
+        <ThemeSwitch variant="row" />
+      </div>
+    </div>
   );
 }
 
@@ -306,10 +307,10 @@ export function MobileNav({ children }: { children?: React.ReactNode }) {
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "focus-ring flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors",
+                "focus-ring press flex shrink-0 items-center gap-2 border px-3.5 py-2 text-sm transition-colors",
                 active
-                  ? "border-brand/40 bg-brand/10 text-brand"
-                  : "border-border bg-card text-muted hover:text-foreground",
+                  ? "border-persimmon/40 bg-persimmon/8 text-bone"
+                  : "border-hairline-strong text-bone-soft hover:text-bone",
               )}
             >
               <Icon className="h-4 w-4" />
@@ -322,7 +323,7 @@ export function MobileNav({ children }: { children?: React.ReactNode }) {
           type="button"
           onClick={() => setOpenedOn(pathname)}
           aria-expanded={open}
-          className="focus-ring flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:text-foreground"
+          className="focus-ring press flex shrink-0 items-center gap-1.5 border border-hairline-strong px-3.5 py-2 text-sm text-bone-soft transition-colors hover:text-bone"
         >
           <span className="whitespace-nowrap">همه‌ی بخش‌ها</span>
           <IconChevronEnd className="h-4 w-4" />
@@ -335,15 +336,15 @@ export function MobileNav({ children }: { children?: React.ReactNode }) {
             type="button"
             aria-label="بستنِ فهرست"
             onClick={close}
-            className="absolute inset-0 bg-background/70 backdrop-blur-sm"
+            className="scrim absolute inset-0 backdrop-blur-sm"
           />
-          <div className="absolute inset-y-0 end-0 flex w-[min(20rem,88vw)] flex-col border-s border-border bg-card shadow-lg">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <span className="text-sm font-bold">همه‌ی بخش‌ها</span>
+          <div className="absolute inset-y-0 end-0 flex w-[min(20rem,88vw)] flex-col border-s border-hairline-soft bg-night-900 shadow-lg">
+            <div className="flex items-center justify-between border-b border-hairline-soft px-4 py-3">
+              <span className="tracker-fa text-whisper">همه‌ی بخش‌ها</span>
               <button
                 type="button"
                 onClick={close}
-                className="focus-ring rounded-full p-1.5 text-muted hover:bg-foreground/5 hover:text-foreground"
+                className="focus-ring inline-flex h-8 w-8 items-center justify-center text-bone-soft hover:text-persimmon"
                 aria-label="بستن"
               >
                 <IconClose className="h-5 w-5" />
@@ -359,6 +360,9 @@ export function MobileNav({ children }: { children?: React.ReactNode }) {
                 />
               ))}
               {children}
+            </div>
+            <div className="shrink-0 border-t border-hairline-soft px-4 py-3">
+              <ThemeSwitch variant="row" />
             </div>
           </div>
         </div>

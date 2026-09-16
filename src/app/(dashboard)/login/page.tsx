@@ -48,14 +48,14 @@ export default async function LoginPage({
         {/* لوگو */}
         <Link
           href="/"
-          className="focus-ring mx-auto flex w-fit items-center rounded-lg"
+          className="focus-ring mx-auto flex w-fit items-center"
           aria-label="کارجو — خانه"
         >
-          <Logo size={40} title="کارجو" className="text-foreground" />
+          <Logo size={40} title="کارجو" className="text-bone" />
         </Link>
 
-        <div className="mt-8 rounded-3xl border border-border bg-card p-7 shadow-sm sm:p-8">
-          <h1 className="text-xl font-extrabold">ورود به داشبورد</h1>
+        <div className="mt-8 rounded-3xl border border-hairline-soft bg-night-800 p-7 shadow-sm sm:p-8">
+          <h1 className="display-fa text-2xl text-bone">ورود به داشبورد</h1>
           <p className="mt-1.5 text-sm text-muted">
             با حساب گوگل یا ایمیل/گذرواژه‌ی 1xai وارد شوید؛ اگر حساب ندارید، همین‌جا
             ساخته می‌شود.
@@ -64,7 +64,7 @@ export default async function LoginPage({
           {errorMessage ? (
             <div
               role="alert"
-              className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400"
+              className="mt-5 border-s-2 border-rose bg-rose/5 py-2.5 ps-4 pe-3 text-sm text-rose"
             >
               {errorMessage}
             </div>
@@ -73,7 +73,7 @@ export default async function LoginPage({
           {/* دکمه‌ی ورود با گوگل — لینکِ سرور-رندرشده، بدونِ JSِ کلاینت. */}
           <a
             href={GOOGLE_START_PATH}
-            className="mt-6 flex w-full items-center justify-center gap-3 rounded-full border border-border bg-card px-6 py-3 text-base font-bold shadow-sm transition-colors hover:bg-foreground/5"
+            className="focus-ring press mt-6 flex w-full items-center justify-center gap-3 border border-hairline-strong px-6 py-3 text-base font-medium text-bone transition-colors hover:border-persimmon/50 hover:bg-bone/5"
           >
             <GoogleGlyph />
             ورود با گوگل
@@ -84,9 +84,9 @@ export default async function LoginPage({
             aria-hidden="true"
             className="mt-6 flex items-center gap-3 text-xs font-bold text-muted"
           >
-            <span className="h-px flex-1 bg-border" />
+            <span className="h-px flex-1 bg-hairline" />
             یا
-            <span className="h-px flex-1 bg-border" />
+            <span className="h-px flex-1 bg-hairline" />
           </div>
 
           {/* فرمِ ایمیل/گذرواژه — همان حسابِ استخرِ مشترکِ 1xai (جزیره‌ی کلاینتی). */}
@@ -100,7 +100,7 @@ export default async function LoginPage({
               href="https://1xai.ir/register"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-muted hover:text-foreground"
+              className="text-bone-dim hover:text-persimmon"
             >
               ساختِ حساب در 1xai ↗
             </a>
@@ -108,7 +108,7 @@ export default async function LoginPage({
               href="https://1xai.ir/forgot"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-muted hover:text-foreground"
+              className="text-bone-dim hover:text-persimmon"
             >
               فراموشیِ گذرواژه ↗
             </a>

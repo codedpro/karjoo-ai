@@ -176,7 +176,7 @@ export function ResumeWorkspace({
       {notice ? (
         <div
           aria-live="polite"
-          className="text-pretty rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm leading-6 text-emerald-700 dark:text-emerald-400"
+          className="text-pretty rounded-xl border border-jade/30 bg-jade/10 px-4 py-3 text-sm leading-6 text-jade"
         >
           {notice}
         </div>
@@ -210,7 +210,7 @@ export function ResumeWorkspace({
             <div
               role="alert"
               aria-live="polite"
-              className="mb-5 text-pretty rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm leading-6 text-rose-600 dark:text-rose-400"
+              className="mb-5 text-pretty rounded-xl border border-rose/30 bg-rose/10 px-4 py-3 text-sm leading-6 text-rose"
             >
               {formError}
             </div>
@@ -265,7 +265,7 @@ function TabButton({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "focus-ring inline-flex flex-1 items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition-colors [&>svg]:h-4 [&>svg]:w-4",
+        "focus-ring inline-flex flex-1 items-center justify-center gap-2 border px-4 py-2.5 text-sm font-medium transition-colors [&>svg]:h-4 [&>svg]:w-4",
         active
           ? "border-brand bg-brand/10 text-brand"
           : "border-border text-muted hover:text-foreground",

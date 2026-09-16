@@ -71,23 +71,23 @@ export function AiMaintenanceBanner({
   return (
     <div
       role="alert"
-      className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 shadow-xs"
+      className="rounded-2xl border border-amber/30 bg-amber/10 p-5 shadow-xs"
     >
       <div className="flex items-start gap-3">
         <span
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber/15 text-amber"
           aria-hidden
         >
           <Wrench strokeWidth={1.75} className="h-5 w-5 shrink-0" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <h4 className="text-balance text-sm font-bold text-amber-800 dark:text-amber-300">
+          <h4 className="text-balance text-sm font-bold text-amber">
             سرویسِ هوش مصنوعی موقتاً در دسترس نیست
           </h4>
-          <p className="mt-1 text-pretty text-sm leading-7 text-amber-700/90 dark:text-amber-200/80">
+          <p className="mt-1 text-pretty text-sm leading-7 text-amber/90">
             {maintenanceMessage(status.reason)}
           </p>
-          <p className="mt-1 text-pretty text-xs leading-6 text-amber-700/80 dark:text-amber-200/70">
+          <p className="mt-1 text-pretty text-xs leading-6 text-amber/80">
             بقیه‌ی قابلیت‌ها (آپلودِ رزومه، اپلای، ایمپورت و داشبورد) عادی کار می‌کنند.
             کنش‌های هوش مصنوعی به‌محضِ رفعِ محدودیت دوباره فعال می‌شوند.
           </p>

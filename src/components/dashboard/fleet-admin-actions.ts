@@ -21,9 +21,10 @@ import { z } from "zod";
 
 import { assignNodeToUser, unassignNodeFromUser, WorkerIpLimitError } from "@/lib/fleet/assign";
 import { issueCommand } from "@/lib/fleet/commands";
-import type { Plan, WorkerCommand } from "@/db/schema";
+import type { WorkerCommand } from "@/db/schema";
+import { readEntitlements } from "@/lib/billing/subscription";
 import { isDashboardAdmin } from "./admin-guard";
-import { readUserPlan } from "./fleet-admin-data";
+import { userExists } from "./fleet-admin-data";
 
 /** مسیرِ صفحه‌ی ادمینِ ناوگان — برای revalidate پس از هر تغییر. */
 const ADMIN_FLEET_PATH = "/dashboard/fleet";
@@ -52,7 +53,7 @@ async function requireAdmin(): Promise<FleetActionResult | null> {
 
 /**
  * یک نود را به یک کاربر تخصیص می‌دهد (سقفِ IPِ پلن توسطِ Foundation اعمال می‌شود).
- * پلنِ کاربر سمتِ سرور خوانده می‌شود (نه از کلاینت) تا سقف درست اعمال شود.
+ * اشتراکِ کاربر سمتِ سرور از 1xai خوانده می‌شود (نه از کلاینت) تا سقف درست اعمال شود.
  */
 export async function assignNodeAction(
   nodeId: string,
@@ -66,13 +67,16 @@ export async function assignNodeAction(
     return { ok: false, message: "شناسه‌ی نود یا کاربر نامعتبر است." };
   }
 
-  const plan = await readUserPlan(parsed.data.userId);
-  if (plan === null) {
+  if (!(await userExists(parsed.data.userId))) {
     return { ok: false, message: "کاربر یافت نشد." };
   }
 
   try {
-    await assignNodeToUser(parsed.data.userId, parsed.data.nodeId, plan as Plan);
+    await assignNodeToUser(
+      parsed.data.userId,
+      parsed.data.nodeId,
+      await readEntitlements(parsed.data.userId, { fresh: true }),
+    );
     revalidatePath(ADMIN_FLEET_PATH);
     return { ok: true, message: "نود با موفقیت به کاربر تخصیص یافت." };
   } catch (err) {

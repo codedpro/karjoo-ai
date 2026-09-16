@@ -21,6 +21,10 @@ import {
   DashboardUserChip,
   DashboardUserChipSkeleton,
 } from "@/components/dashboard/dashboard-user-chip";
+import {
+  DashboardWalletChip,
+  DashboardWalletChipSkeleton,
+} from "@/components/dashboard/dashboard-wallet-chip";
 import { MobileNav, SidebarNav } from "@/components/dashboard/dashboard-nav";
 import { JobinjaAutoSync } from "@/components/dashboard/jobinja-sync-button";
 import { signOut } from "@/components/dashboard/actions";
@@ -32,31 +36,36 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-dvh bg-surface">
+    // پس‌زمینه از body (night-900) — همان صفحه‌ی 1xAi، تا دانه‌ی کاغذ رویش دیده شود.
+    <div className="min-h-dvh">
       <JobinjaAutoSync />
-      {/* ───────────────────── هدرِ چسبانِ استاتیک ───────────────────── */}
-      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
-        <div className="dash-container flex h-16 items-center justify-between gap-4">
+      {/* ───────────────────── هدرِ چسبانِ استاتیک (topbarِ 1xAi) ───────────────────── */}
+      <header className="sticky top-0 z-40 border-b border-hairline-soft bg-night-900/85 backdrop-blur-xl supports-backdrop-filter:bg-night-900/70">
+        <div className="dash-container flex h-14 items-center justify-between gap-4">
           {/* برند */}
           <Link
             href="/dashboard"
-            className="focus-ring flex items-center gap-2.5 rounded-lg"
+            className="group focus-ring flex items-center gap-2.5"
             aria-label="کارجو — داشبورد"
           >
             {/* روی موبایل فقط نشان؛ روی sm به‌بالا قفلِ کامل. */}
             <span className="sm:hidden">
-              <Logo variant="mark" size={36} title="" className="text-foreground" />
+              <Logo variant="mark" size={32} title="" className="text-bone" />
             </span>
             <span className="hidden sm:inline-flex">
-              <Logo size={32} title="" className="text-foreground" />
+              <Logo size={30} title="" className="text-bone transition-colors group-hover:text-persimmon" />
             </span>
-            <span className="hidden rounded-full bg-foreground/5 px-2 py-0.5 text-xs font-medium text-muted md:inline">
+            <span className="hidden items-center gap-1.5 border-s border-hairline ps-2.5 text-xs text-bone-dim md:inline-flex">
+              <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-persimmon" />
               داشبورد
             </span>
           </Link>
 
           {/* چیپِ کاربر (استریم) + خروج */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Suspense fallback={<DashboardWalletChipSkeleton />}>
+              <DashboardWalletChip />
+            </Suspense>
             <Suspense fallback={<DashboardUserChipSkeleton />}>
               <DashboardUserChip />
             </Suspense>
@@ -64,7 +73,7 @@ export default function DashboardLayout({
             <form action={signOut}>
               <button
                 type="submit"
-                className="focus-ring rounded-full border border-border bg-card px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:border-foreground/20 hover:text-foreground"
+                className="focus-ring press inline-flex h-9 items-center border border-hairline-strong px-3 text-sm text-bone-soft transition-colors hover:border-persimmon/40 hover:text-bone"
               >
                 خروج
               </button>

@@ -1,20 +1,23 @@
-import type { Metadata } from "next";
-import { Vazirmatn } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 
 import { headTagsFromConfig, type HeadTags } from "@itmaster/sdk/next";
 
 import { AnalyticsProvider } from "@/components/providers/analytics-provider";
+import { ThemeProvider } from "@/components/theme";
 import { itmaster, toKarjooHost } from "@/lib/itmaster";
 import { site } from "@/lib/site";
 import "./globals.css";
 
-// فونت رسمی فارسی — وزیرمتن (Variable)، بهینه‌شده توسط Next.
-const vazir = Vazirmatn({
-  variable: "--font-vazir",
-  subsets: ["arabic", "latin"],
-  display: "swap",
-});
+// فونت: هیچ وب‌فونتی بارگذاری نمی‌شود (مثلِ 1xAi) — پشته‌ی فونتِ سیستمی در globals.css
+// (`--font-sans`؛ اگر وزیرمتن روی دستگاه نصب باشد همان اول انتخاب می‌شود).
+
+// رنگِ نوارِ وضعیت: پیش‌فرضِ تیره. برای تمِ روشن، ThemeMeta (components/theme.tsx) آن را
+// پیش از رنگ‌آمیزی اصلاح می‌کند. "dark light": تیره ترجیح است، ولی سند نسخه‌ی روشن هم دارد.
+export const viewport: Viewport = {
+  themeColor: "#0d0a07", // --color-night-900 (هم‌گام با THEME_COLOR.dark در components/theme.tsx)
+  colorScheme: "dark light",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
@@ -55,7 +58,9 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="fa" dir="rtl" className={`dark ${vazir.variable} h-full antialiased`}>
+    // `dark` فقط مقدارِ پیش‌فرضِ سرور است؛ next-themes پیش از hydrate آن را با تمِ ذخیره‌شده
+    // (dark/light) عوض می‌کند — suppressHydrationWarning فقط همین یک اختلافِ کلاس را می‌پوشاند.
+    <html lang="fa" dir="rtl" className="dark h-full antialiased" suppressHydrationWarning>
       <head>
         {head?.metaTags.map((m, i) =>
           m.name ? <meta key={`m${i}`} name={m.name} content={m.content} /> : null,
@@ -65,7 +70,9 @@ export default async function RootLayout({
         ))}
       </head>
       <body className="min-h-full flex flex-col">
-        <AnalyticsProvider>{children}</AnalyticsProvider>
+        <ThemeProvider>
+          <AnalyticsProvider>{children}</AnalyticsProvider>
+        </ThemeProvider>
         {head?.scripts.map((s, i) =>
           s.src ? (
             <Script key={`s${i}`} src={s.src} strategy={(s.strategy as Strategy) ?? "afterInteractive"} />

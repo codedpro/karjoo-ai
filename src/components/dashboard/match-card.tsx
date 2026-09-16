@@ -37,7 +37,7 @@ export function MatchCard({ match }: { match: DashboardMatch }) {
     >
       {/* نوارِ لبه‌ی برند در حاشیه‌ی آغازین — امضای بصریِ ظریف در RTL */}
       <span
-        className="pointer-events-none absolute inset-y-0 inset-s-0 w-1 bg-linear-to-b from-brand/70 to-brand-2/40 opacity-0 transition-opacity duration-200 group-hover/card:opacity-100"
+        className="pointer-events-none absolute inset-y-0 inset-s-0 w-1 bg-persimmon opacity-0 transition-opacity duration-200 group-hover/card:opacity-100"
         aria-hidden
       />
 

@@ -53,7 +53,7 @@ export function PasswordLoginForm() {
   return (
     <form onSubmit={onSubmit} className="mt-5 space-y-3" noValidate>
       <label className="block">
-        <span className="mb-1.5 block text-xs font-bold text-muted">ایمیل</span>
+        <span className="mb-1.5 block text-xs text-whisper">ایمیل</span>
         <input
           type="email"
           name="email"
@@ -64,12 +64,12 @@ export function PasswordLoginForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
-          className="focus-ring w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm placeholder:text-muted/60"
+          className="focus-ring w-full border border-hairline-strong bg-night-900 px-3 py-2.5 text-sm text-bone placeholder:text-whisper"
         />
       </label>
 
       <label className="block">
-        <span className="mb-1.5 block text-xs font-bold text-muted">گذرواژه</span>
+        <span className="mb-1.5 block text-xs text-whisper">گذرواژه</span>
         <input
           type="password"
           name="password"
@@ -78,12 +78,12 @@ export function PasswordLoginForm() {
           autoComplete="current-password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="focus-ring w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm"
+          className="focus-ring w-full border border-hairline-strong bg-night-900 px-3 py-2.5 text-sm text-bone"
         />
       </label>
 
       {error ? (
-        <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
+        <p role="alert" className="text-sm text-rose">
           {error}
         </p>
       ) : null}
@@ -91,7 +91,7 @@ export function PasswordLoginForm() {
       <button
         type="submit"
         disabled={pending || !email.trim() || !password}
-        className="focus-ring mt-1 w-full rounded-full bg-brand px-6 py-3 text-base font-bold text-brand-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+        className="focus-ring mt-1 w-full press bg-persimmon px-6 py-3 text-base font-medium text-night-950 transition-colors hover:bg-persimmon-soft disabled:cursor-not-allowed disabled:opacity-60"
       >
         {pending ? "در حال ورود…" : "ورود با گذرواژه"}
       </button>

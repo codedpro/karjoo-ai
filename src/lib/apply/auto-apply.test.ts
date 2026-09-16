@@ -18,6 +18,13 @@ import {
   ServerAutoApplyNotAllowedError,
 } from "@/lib/apply/auto-apply";
 import type { UserAutoApplyRow, UserServerAutoApplyRow } from "@/db/schema";
+import { testEntitlements } from "@/lib/billing/entitlements";
+
+// نگاشتِ پلن‌های قدیمی به مزایای 1xai (برای خوانایی تست‌ها).
+const FREE = testEntitlements();
+const PRO = testEntitlements({ unlimitedApplies: true });
+const MAX = testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" });
+const MAXPLUS = testEntitlements({ unlimitedApplies: true, workerIpLimit: 5, status: "active" });
 
 function row(overrides: Partial<UserAutoApplyRow> = {}): UserAutoApplyRow {
   return {
@@ -70,7 +77,7 @@ describe("getAutoApplySettings — پیش‌فرضِ محتاطانه", () => {
 describe("assertAutoApplyAllowed — گاردهای قاعده‌ی ۱", () => {
   it("تاگل خاموش ⇒ AutoApplyNotAllowedError('disabled') — و سهمیه اصلاً چک نمی‌شود", async () => {
     let counted = false;
-    const err = await assertAutoApplyAllowed("u1", "free", {
+    const err = await assertAutoApplyAllowed("u1", FREE, {
       readRow: async () => row({ enabled: false }),
       readCountToday: async () => {
         counted = true;
@@ -83,7 +90,7 @@ describe("assertAutoApplyAllowed — گاردهای قاعده‌ی ۱", () => {
   });
 
   it("تاگل روشن + زیرِ سقف (free) ⇒ مجاز با آستانه‌ی مؤثر", async () => {
-    const out = await assertAutoApplyAllowed("u1", "free", {
+    const out = await assertAutoApplyAllowed("u1", FREE, {
       readRow: async () => row({ enabled: true, minScore: 0.75 }),
       readCountToday: async () => 10,
     });
@@ -92,7 +99,7 @@ describe("assertAutoApplyAllowed — گاردهای قاعده‌ی ۱", () => {
   });
 
   it("تاگل روشن ولی سقفِ روزانه پر (free=100) ⇒ AutoApplyNotAllowedError('quota_exceeded')", async () => {
-    const err = await assertAutoApplyAllowed("u1", "free", {
+    const err = await assertAutoApplyAllowed("u1", FREE, {
       readRow: async () => row({ enabled: true }),
       readCountToday: async () => 100,
     }).catch((e) => e);
@@ -105,7 +112,7 @@ describe("assertAutoApplyAllowed — گاردهای قاعده‌ی ۱", () => {
 
   it("پلنِ پولی (pro) با تاگل روشن ⇒ مجاز، بدونِ سقف و بدونِ شمارش", async () => {
     let counted = false;
-    const out = await assertAutoApplyAllowed("u1", "pro", {
+    const out = await assertAutoApplyAllowed("u1", PRO, {
       readRow: async () => row({ enabled: true, minScore: 0.6 }),
       readCountToday: async () => {
         counted = true;
@@ -142,7 +149,7 @@ describe("getServerAutoApplySettings — سطحِ سرور، پیش‌فرضِ �
 describe("assertServerAutoApplyAllowed — پلن‌گِیت + تاگلِ سرور", () => {
   it("پلنِ بدونِ ورکر (free) ⇒ not_entitled — حتی اگر تاگل روشن باشد، تاگل خوانده نمی‌شود", async () => {
     let readRowCalled = false;
-    const err = await assertServerAutoApplyAllowed("u1", "free", {
+    const err = await assertServerAutoApplyAllowed("u1", FREE, {
       readRow: async () => {
         readRowCalled = true;
         return serverRow({ enabled: true });
@@ -156,7 +163,7 @@ describe("assertServerAutoApplyAllowed — پلن‌گِیت + تاگلِ سرو
   });
 
   it("پلنِ pro هم ورکر ندارد ⇒ not_entitled", async () => {
-    const err = await assertServerAutoApplyAllowed("u1", "pro", {
+    const err = await assertServerAutoApplyAllowed("u1", PRO, {
       readRow: async () => serverRow({ enabled: true }),
     }).catch((e) => e);
     expect(err).toBeInstanceOf(ServerAutoApplyNotAllowedError);
@@ -164,7 +171,7 @@ describe("assertServerAutoApplyAllowed — پلن‌گِیت + تاگلِ سرو
   });
 
   it("پلنِ max با تاگلِ خاموش ⇒ disabled", async () => {
-    const err = await assertServerAutoApplyAllowed("u1", "max", {
+    const err = await assertServerAutoApplyAllowed("u1", MAX, {
       readRow: async () => serverRow({ enabled: false }),
     }).catch((e) => e);
     expect(err).toBeInstanceOf(ServerAutoApplyNotAllowedError);
@@ -173,7 +180,7 @@ describe("assertServerAutoApplyAllowed — پلن‌گِیت + تاگلِ سرو
 
   it("پلنِ max با تاگلِ روشن ⇒ مجاز، بدونِ سقف (پلنِ پولی) و بدونِ شمارش", async () => {
     let counted = false;
-    const out = await assertServerAutoApplyAllowed("u1", "max", {
+    const out = await assertServerAutoApplyAllowed("u1", MAX, {
       readRow: async () => serverRow({ enabled: true, minScore: 0.82 }),
       readCountToday: async () => {
         counted = true;
@@ -186,7 +193,7 @@ describe("assertServerAutoApplyAllowed — پلن‌گِیت + تاگلِ سرو
   });
 
   it("پلنِ maxplus با تاگلِ روشن ⇒ مجاز", async () => {
-    const out = await assertServerAutoApplyAllowed("u1", "maxplus", {
+    const out = await assertServerAutoApplyAllowed("u1", MAXPLUS, {
       readRow: async () => serverRow({ enabled: true, minScore: 0.7 }),
     });
     expect(out.minScore).toBe(0.7);

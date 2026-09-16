@@ -16,12 +16,11 @@ import { cache } from "react";
 import { desc, eq } from "drizzle-orm";
 
 import { db } from "@/db";
+import { readEntitlements } from "@/lib/billing/subscription";
 import {
-  users,
   usageRecords,
   walletLedger,
   type LedgerKind,
-  type Plan,
   type UsageKind,
 } from "@/db/schema";
 
@@ -38,7 +37,8 @@ export interface DashboardLedgerEntry {
 
 /** خلاصه‌ی کیف‌پول: پلن + آخرین ردیف‌های دفترِ محلی (تاریخچه). */
 export interface DashboardWallet {
-  plan: Plan;
+  /** نامِ اشتراکِ 1xai. */
+  plan: string;
   ledger: DashboardLedgerEntry[];
 }
 
@@ -49,12 +49,8 @@ export interface DashboardWallet {
  */
 export const getWalletForUser = cache(
   async (userId: string, ledgerLimit = 10): Promise<DashboardWallet> => {
-    const [planRow, ledger] = await Promise.all([
-      db
-        .select({ plan: users.plan })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1),
+    const [entitlements, ledger] = await Promise.all([
+      readEntitlements(userId),
       db
         .select({
           id: walletLedger.id,
@@ -72,7 +68,7 @@ export const getWalletForUser = cache(
     ]);
 
     return {
-      plan: planRow[0]?.plan ?? "payg",
+      plan: entitlements.planNameFa,
       ledger,
     };
   },

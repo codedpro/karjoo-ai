@@ -30,7 +30,8 @@ import {
   recordAutoApplyAudit,
   setServerAutoApplyEnabled,
 } from "@/lib/apply/auto-apply";
-import { planFor, workerIpLimitFor } from "@/lib/billing/plans";
+import { workerIpLimitOf } from "@/lib/billing/entitlements";
+import { readEntitlements } from "@/lib/billing/subscription";
 import { autoAssignNodeForUser } from "@/lib/fleet/assign";
 
 // به DB و node API (cookies) دست می‌زند → اجرای Node و رندرِ پویا (وابسته به کوکی).
@@ -45,16 +46,19 @@ export async function GET(): Promise<Response> {
     if (!user) return errorJson("احراز هویت لازم است", 401);
 
     // تنظیماتِ مؤثرِ سطحِ سرور — نبودِ ردیف → پیش‌فرضِ محتاطانه { enabled:false, minScore:0.7 }.
-    const settings = await getServerAutoApplySettings(user.id);
-    const workerIpLimit = workerIpLimitFor(user.plan);
+    const [settings, entitlements] = await Promise.all([
+      getServerAutoApplySettings(user.id),
+      readEntitlements(user.id),
+    ]);
+    const workerIpLimit = workerIpLimitOf(entitlements);
 
     return json({
       enabled: settings.enabled,
       minScore: settings.minScore,
-      // واجدِ شرایطِ سطحِ سرور فقط پلن‌های دارای ورکر (Max/Max+) هستند.
+      // واجدِ شرایطِ سطحِ سرور فقط اشتراک‌های 1xai با ورکرِ کارجو هستند.
       eligible: workerIpLimit > 0,
-      plan: planFor(user.plan).key,
-      planLabel: planFor(user.plan).labelFa,
+      plan: entitlements.planKey,
+      planLabel: entitlements.planNameFa,
       workerIpLimit,
     });
   });
@@ -70,7 +74,8 @@ export async function PUT(request: Request): Promise<Response> {
     // اعتبارسنجیِ بدنه — { enabled?, minScore? }، دستِ‌کم یکی حاضر (۴۰۰ در غیرِ این صورت).
     const body = await parseJsonBody(request, updateServerAutoApplyBodySchema);
 
-    const workerIpLimit = workerIpLimitFor(user.plan);
+    const entitlements = await readEntitlements(user.id);
+    const workerIpLimit = workerIpLimitOf(entitlements);
     const eligible = workerIpLimit > 0;
 
     // پلن‌گِیتِ سخت: پلنِ بدونِ ورکر (Free/Pro) *نمی‌تواند روشن کند*. هر تلاش برای روشن‌کردن
@@ -82,12 +87,12 @@ export async function PUT(request: Request): Promise<Response> {
 
     if (!eligible && (wantsEnable || wantsThresholdOnly)) {
       return errorJson(
-        "اپلای خودکارِ سرور نیازمندِ پلنِ Max یا Max+ است. برای فعال‌سازی، پلنِ خود را ارتقا دهید.",
+        "اپلای خودکارِ سرور نیازمندِ اشتراکِ 1xAi با ورکرِ کارجو است. اشتراک را در 1xai.ir ارتقا دهید.",
         403,
         {
           code: "not_entitled",
-          plan: planFor(user.plan).key,
-          planLabel: planFor(user.plan).labelFa,
+          plan: entitlements.planKey,
+          planLabel: entitlements.planNameFa,
           workerIpLimit,
         },
       );
@@ -122,7 +127,7 @@ export async function PUT(request: Request): Promise<Response> {
     let workerAssigned: boolean | undefined;
     if (updated.enabled) {
       try {
-        workerAssigned = (await autoAssignNodeForUser(user.id, user.plan)) !== null;
+        workerAssigned = (await autoAssignNodeForUser(user.id, entitlements)) !== null;
       } catch {
         workerAssigned = false;
       }

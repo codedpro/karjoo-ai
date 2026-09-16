@@ -19,6 +19,9 @@ import {
   assertAutoApplyAllowed,
 } from "@/lib/apply/auto-apply";
 import { claimFleetJobs } from "@/lib/fleet/dispatch";
+import { testEntitlements } from "@/lib/billing/entitlements";
+
+const MAX = testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" });
 
 const serverGateMock = vi.mocked(assertServerAutoApplyAllowed);
 const extensionGateMock = vi.mocked(assertAutoApplyAllowed);
@@ -37,15 +40,15 @@ describe("claimFleetJobs — گیتِ پیش‌فرض = سطحِ سرور", () =
     await claimFleetJobs("node-1", 3, {
       // فقط deps لازم برای رسیدن به گیت تزریق می‌شود؛ assertAllowed تزریق *نمی‌شود*.
       readAssignedUserIds: async () => ["u1"],
-      readPlan: async () => "max",
+      readEntitlements: async () => MAX,
       claimItems: async () => [], // پس از گیت، آیتمی برنمی‌گردد (کافی برای این تست).
       loadSession: async () => "S",
     });
 
-    // گیتِ سرور با (userId, plan) صدا خورد.
+    // گیتِ سرور با (userId, entitlements) صدا خورد.
     expect(serverGateMock).toHaveBeenCalledTimes(1);
     expect(serverGateMock.mock.calls[0][0]).toBe("u1");
-    expect(serverGateMock.mock.calls[0][1]).toBe("max");
+    expect(serverGateMock.mock.calls[0][1]).toBe(MAX);
     // گیتِ افزونه هرگز در مسیرِ ناوگان صدا نمی‌خورد.
     expect(extensionGateMock).not.toHaveBeenCalled();
   });

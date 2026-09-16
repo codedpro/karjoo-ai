@@ -14,7 +14,7 @@ import "server-only";
 import { cache } from "react";
 
 import { getServerAutoApplySettings, type AutoApplySettings } from "@/lib/apply/auto-apply";
-import { getUserPlanStatus } from "@/components/dashboard/plan-data";
+import { readEntitlements } from "@/lib/billing/subscription";
 import {
   planFleetCapability,
   type PlanFleetCapability,
@@ -33,9 +33,8 @@ export interface ServerAutoApplyCardData {
  * پلن‌های بی‌ورکر تنظیماتِ سرور را کوئری نمی‌کنند (پیش‌فرضِ خاموش کافی است).
  */
 export const getServerAutoApplyCardData = cache(
-  async (userId: string, now: number = Date.now()): Promise<ServerAutoApplyCardData> => {
-    const planStatus = await getUserPlanStatus(userId, now);
-    const capability = planFleetCapability(planStatus.rawPlan);
+  async (userId: string): Promise<ServerAutoApplyCardData> => {
+    const capability = planFleetCapability(await readEntitlements(userId));
 
     if (!capability.hasWorkerAutoApply) {
       // Free/Pro — واجدِ شرایط نیستند؛ تاگل رندر نمی‌شود، پس تنظیماتِ سرور را نمی‌خوانیم.

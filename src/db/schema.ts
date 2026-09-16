@@ -204,23 +204,6 @@ export const aiProviderEnum = pgEnum("ai_provider", [
 ]);
 
 /**
- * پلنِ اشتراکِ کاربر (نسخه‌ی WF3 — لایه‌های قیمت‌گذاری):
- *   • free    — رایگان (بدونِ اعتبارِ هوش مصنوعی؛ ۱۰۰ اپلای در روز؛ همه‌ی قابلیت‌های غیر-AI).
- *   • pro/max/maxplus — پلن‌های پولی با اعتبارِ ماهانه‌ی هوش مصنوعی و اپلای نامحدود.
- *   • payg/premium — مقادیرِ تاریخی (legacy) که هنوز در enum می‌مانند تا داده‌ی موجود
- *     نشکند؛ مهاجرت به‌صورت دفاعی payg→free و premium→pro می‌کند. مرجعِ تعریفِ پلن‌ها
- *     src/lib/billing/plans.ts است (PLAN_DEFINITIONS).
- */
-export const planEnum = pgEnum("plan", [
-  "free",
-  "payg",
-  "premium",
-  "pro",
-  "max",
-  "maxplus",
-]);
-
-/**
  * نوعِ رویدادِ دفترِ کیف‌پول (wallet_ledger):
  *   • topup  — شارژِ کیف‌پول توسطِ کاربر (مثبت).
  *   • charge — کسرِ بابتِ یک فراخوانیِ پولیِ هوش مصنوعی (منفی).
@@ -278,18 +261,6 @@ export const users = pgTable(
      */
     phone: text("phone"),
     fullName: text("full_name"),
-    /** پلنِ اشتراکِ کاربر — پیش‌فرض رایگان (free). */
-    plan: planEnum("plan").notNull().default("free"),
-    /**
-     * پایانِ دوره‌ی پلنِ پولی (UTC). `null` یعنی بی‌انقضا — پلنِ رایگان، یا کاربرانی که
-     * پیش از افزودنِ این ستون ارتقا داده‌اند (سازگاریِ عقب‌رو: قدیمی‌ها downgrade نمی‌شوند).
-     *
-     * چرا لازم است: پلن‌ها «ماهانه» قیمت‌گذاری و فروخته می‌شوند ولی هیچ انقضا/تمدیدی
-     * وجود نداشت — یک پرداخت = آن رده برای همیشه (نشتِ مستقیمِ درآمد). خریدِ موفق این
-     * را روی now+۳۰ روز می‌گذارد و کارِ روزانه‌ی `expireLapsedPlans` کاربرانِ گذشته از
-     * مهلت را به free برمی‌گرداند.
-     */
-    planExpiresAt: timestamp("plan_expires_at", { withTimezone: true }),
     /**
      * شناسه‌ی همین کاربر در استخرِ مشترکِ 1xai (users.id آن‌جا) — هویت و کیف‌پولِ
      * واحدِ خانواده. nullable: در اولین ورود/نیازِ پولی از طریقِ /svc resolve و
@@ -1443,115 +1414,8 @@ export type NewUserInterest = typeof userInterests.$inferInsert;
 export type ProfileImport = typeof profileImports.$inferSelect;
 export type NewProfileImport = typeof profileImports.$inferInsert;
 
-/* ─────────────────────────  کارت‌به‌کارت (billing)  ──────────────────────── */
-
-/** نوعِ درخواستِ پرداختِ کارت‌به‌کارت: شارژِ کیف‌پول یا ارتقای پلن. */
-export const paymentKindEnum = pgEnum("payment_kind", ["topup", "plan"]);
-/** وضعیتِ بررسیِ ادمین. */
-export const paymentStatusEnum = pgEnum("payment_status", ["pending", "approved", "rejected"]);
-
-/**
- * درخواست‌های پرداختِ کارت‌به‌کارت. کاربر مبلغ را به کارتِ مقصد منتقل و کدِ پیگیری را
- * ثبت می‌کند؛ سپس ادمین *تأیید* می‌کند و تنها آن‌وقت کیف‌پول credit یا پلن ارتقا می‌یابد.
- * هیچ اعتباری بدونِ تأییدِ انسانی داده نمی‌شود (جایگزینِ استابِ خودشارژِ توسعه).
- */
-export const paymentRequests = pgTable(
-  "payment_requests",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    kind: paymentKindEnum("kind").notNull(),
-    /** مبلغِ ادعاشده‌ی کارت‌به‌کارت به تومان. */
-    amountToman: bigint("amount_toman", { mode: "number" }).notNull(),
-    /** فقط برای kind='plan': پلنِ مقصد. */
-    targetPlan: planEnum("target_plan"),
-    /** کدِ پیگیری/رهگیریِ تراکنشِ کارت‌به‌کارت (از اپِ بانکِ کاربر). */
-    referenceCode: text("reference_code"),
-    /** ۴ رقمِ آخرِ کارتِ پرداخت‌کننده (اختیاری — برای تطبیق). */
-    payerCardLast4: text("payer_card_last4"),
-    /** یادداشتِ کاربر. */
-    note: text("note"),
-    status: paymentStatusEnum("status").notNull().default("pending"),
-    /** برچسبِ ادمینی که بررسی کرد. */
-    reviewedBy: text("reviewed_by"),
-    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
-    rejectionReason: text("rejection_reason"),
-    /** ردیفِ دفترِ کیف‌پول که هنگامِ تأییدِ topup ساخته شد. */
-    ledgerId: text("ledger_id"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    index("payment_requests_user_created_idx").on(t.userId, t.createdAt),
-    index("payment_requests_status_idx").on(t.status),
-  ],
-);
-
-export type PaymentRequest = typeof paymentRequests.$inferSelect;
-export type NewPaymentRequest = typeof paymentRequests.$inferInsert;
-export type PaymentKind = (typeof paymentKindEnum.enumValues)[number];
-export type PaymentStatus = (typeof paymentStatusEnum.enumValues)[number];
-
-/* ─────────────────────  خریدِ پلن (کیف‌پولِ واحدِ 1xai)  ─────────────────────── */
-
-/**
- * وضعیتِ خریدِ پلن:
- *   pending   → ردیف ساخته شده؛ debit شاید هنوز/شاید در راه (ابهامِ کرش را reference حل می‌کند).
- *   debited   → debit قطعاً سمتِ 1xai نشسته؛ ثبتِ پلن مانده.
- *   completed → پول کسر و پلن ست شد.
- *   abandoned → بدونِ اثرِ مالیِ خالص کنار گذاشته شد (یا هرگز debit نشد یا refund شد).
- */
-export const planPurchaseStatusEnum = pgEnum("plan_purchase_status", [
-  "pending",
-  "debited",
-  "completed",
-  "abandoned",
-]);
-
-/**
- * دفترِ خریدِ پلن — رفعِ ریشه‌ایِ لبه‌ی «رفتِ ماه» در ارتقا: referenceِ کسر (پسوندِ
- * `plan:<rowId>`) *یک‌بار با خودِ ردیف* ساخته می‌شود و هیچ مؤلفه‌ی زمانی ندارد؛ پس
- * retry پس از هر کرشی (حتی پس از رفتنِ ماهِ UTC) به همان reference می‌رسد و ایندکسِ
- * یکتای سمتِ 1xai دوباره‌کسر را ساختاری ناممکن می‌کند. ایندکسِ یکتایِ جزئی «یک خریدِ
- * بازِ هم‌زمان به‌ازای هر کاربر» دوکلیکِ هم‌زمان را هم سریالایز می‌کند.
- */
-export const planPurchases = pgTable(
-  "plan_purchases",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    /** پلنِ مقصدِ این خرید. */
-    plan: planEnum("plan").notNull(),
-    /** قیمتِ لحظه‌ی خرید (تومان). */
-    amountToman: bigint("amount_toman", { mode: "number" }).notNull(),
-    /** پسوندِ referenceِ کسر (بدونِ پیشوندِ karjoo:) — پایدار، بدونِ زمان. */
-    reference: text("reference").notNull(),
-    status: planPurchaseStatusEnum("status").notNull().default("pending"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-  },
-  (t) => [
-    index("plan_purchases_user_idx").on(t.userId, t.createdAt),
-    uniqueIndex("plan_purchases_reference_uq").on(t.reference),
-    // حداکثر یک خریدِ باز (pending/debited) به‌ازای هر کاربر — دوکلیک سریالایز می‌شود.
-    uniqueIndex("plan_purchases_open_user_uq")
-      .on(t.userId)
-      .where(sql`status IN ('pending', 'debited')`),
-  ],
-);
-
-export type PlanPurchase = typeof planPurchases.$inferSelect;
-export type NewPlanPurchase = typeof planPurchases.$inferInsert;
-export type PlanPurchaseStatus = (typeof planPurchaseStatusEnum.enumValues)[number];
-
 /** مقادیرِ enumهای بیلینگ به‌صورتِ unionِ نوع‌دار (برای امضای توابعِ لایه‌ی billing). */
 export type AiProvider = (typeof aiProviderEnum.enumValues)[number];
-export type Plan = (typeof planEnum.enumValues)[number];
 export type LedgerKind = (typeof ledgerKindEnum.enumValues)[number];
 export type UsageKind = (typeof usageKindEnum.enumValues)[number];
 

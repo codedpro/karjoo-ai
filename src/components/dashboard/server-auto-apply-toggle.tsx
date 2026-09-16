@@ -138,7 +138,7 @@ export function ServerAutoApplyToggle({
           {/* در RTL، حالتِ روشن دایره را به چپ می‌برد. */}
           <span
             className={cn(
-              "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+              "inline-block h-5 w-5 transform rounded-full bg-bone shadow transition-transform",
               enabled ? "-translate-x-6" : "-translate-x-1",
             )}
           />
@@ -149,16 +149,16 @@ export function ServerAutoApplyToggle({
       <div className="mt-4">
         <span
           className={cn(
-            "inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset",
+            "inline-flex items-center gap-2 whitespace-nowrap px-3 py-1 text-xs font-medium ring-1 ring-inset",
             enabled
-              ? "bg-emerald-500/12 text-emerald-600 ring-emerald-500/15 dark:text-emerald-400"
+              ? "bg-jade/12 text-jade ring-jade/15"
               : "bg-foreground/5 text-muted ring-foreground/10",
           )}
         >
           <span
             className={cn(
               "h-2 w-2 rounded-full",
-              enabled ? "bg-emerald-500" : "bg-muted/60",
+              enabled ? "bg-jade" : "bg-muted/60",
             )}
             aria-hidden
           />
@@ -178,7 +178,7 @@ export function ServerAutoApplyToggle({
             <IconTarget className="h-4 w-4 text-muted" />
             آستانه‌ی امتیازِ تطبیق (سرور)
           </label>
-          <span className="ltr-nums whitespace-nowrap rounded-full bg-brand/10 px-2.5 py-0.5 text-sm font-bold text-brand">
+          <span className="ltr-nums whitespace-nowrap bg-brand/10 px-2.5 py-0.5 text-sm font-bold text-brand">
             {toFaDigits(scorePct)}٪
           </span>
         </div>
@@ -216,13 +216,13 @@ export function ServerAutoApplyToggle({
       {error ? (
         <p
           role="alert"
-          className="mt-4 text-pretty rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400"
+          className="mt-4 text-pretty rounded-xl border border-rose/30 bg-rose/10 px-4 py-3 text-sm text-rose"
         >
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p className="mt-4 text-pretty rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
+        <p className="mt-4 text-pretty rounded-xl border border-jade/30 bg-jade/10 px-4 py-3 text-sm text-jade">
           {notice}
         </p>
       ) : null}

@@ -255,7 +255,7 @@ export function ResumeSettingsEditor({
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-5">
           <Button type="submit" disabled={busy}>{busy ? "در حال ذخیره…" : "ذخیره تنظیم‌ها"}</Button>
           {message ? (
-            <span className={cn("text-sm", message.tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>{message.text}</span>
+            <span className={cn("text-sm", message.tone === "ok" ? "text-jade" : "text-rose")}>{message.text}</span>
           ) : null}
         </div>
       </form>

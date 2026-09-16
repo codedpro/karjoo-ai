@@ -18,7 +18,7 @@ export default async function BlogIndex() {
       <SiteHeader />
       <main className="mx-auto w-full max-w-4xl flex-1 px-5 py-16">
         <header className="mb-10 text-center">
-          <h1 className="text-4xl font-extrabold">وبلاگ کارجو</h1>
+          <h1 className="display-fa text-4xl">وبلاگ کارجو</h1>
           <p className="mt-3 text-muted">راهنمای کاریابی، نگارش رزومه و موفقیت در مصاحبه.</p>
         </header>
 
@@ -35,7 +35,7 @@ export default async function BlogIndex() {
               <Link
                 key={p.slug}
                 href={`/blog/${p.slug}`}
-                className="group flex flex-col rounded-2xl border border-border bg-card p-6 transition-all hover:-translate-y-1 hover:border-brand/40 hover:shadow-lg hover:shadow-brand/5"
+                className="group flex flex-col rounded-2xl border border-border bg-card p-6 transition-colors hover:border-persimmon/40 hover:bg-night-700"
               >
                 <h2 className="text-lg font-bold leading-7 group-hover:text-brand">{p.title}</h2>
                 {(p.description || p.excerpt) && (

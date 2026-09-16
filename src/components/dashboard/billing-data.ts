@@ -16,10 +16,8 @@ import "server-only";
  * throw، `null` برمی‌گردد تا UI بی‌سروصدا تخمین را حذف کند (کنش همچنان کار می‌کند؛
  * گیتِ واقعی سمتِ سرور در metering هسته است).
  */
-import { eq } from "drizzle-orm";
-
 import { db } from "@/db";
-import { users, type Plan } from "@/db/schema";
+import { readEntitlements } from "@/lib/billing/subscription";
 import { getUnifiedBalance } from "@/lib/billing/unified";
 import { priceFor } from "@/lib/billing/pricing";
 import { resolveUserModel } from "@/lib/billing/metering";
@@ -32,7 +30,8 @@ import {
 
 /** زمینه‌ی هزینه‌ی AIِ کاربر — برای نمایش در صفحه‌های کنشِ پولی. */
 export interface UserAiCostContext {
-  plan: Plan;
+  /** نامِ اشتراکِ 1xai. */
+  plan: string;
   balanceToman: number;
   /** آیا کاربر اجازه‌ی فراخوانیِ پولی دارد؟ (پلنِ free هرگز؛ payg/premium اگر موجودی>۰). */
   canUsePaidAi: boolean;
@@ -42,14 +41,9 @@ export interface UserAiCostContext {
   marginPct: number;
 }
 
-/** پلنِ کاربر را می‌خواند (پیش‌فرضِ محتاطانه free اگر یافت نشد). */
-async function readPlan(userId: string): Promise<Plan> {
-  const [row] = await db
-    .select({ plan: users.plan })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return row?.plan ?? "free";
+/** نامِ اشتراکِ 1xaiِ کاربر (نمایشی). */
+async function readPlan(userId: string): Promise<string> {
+  return (await readEntitlements(userId)).planNameFa;
 }
 
 /**

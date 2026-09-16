@@ -25,10 +25,10 @@ import {
   gte,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   max,
   or,
-  sql,
 } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -37,11 +37,11 @@ import {
   authSessions,
   boardAccounts,
   matches,
-  paymentRequests,
   resumes,
   userServerAutoApply,
   users,
 } from "@/db/schema";
+import { readEntitlements } from "@/lib/billing/subscription";
 import { getUnifiedBalance } from "@/lib/billing/unified";
 
 /* ────────────────────────────────  انواع  ──────────────────────────────── */
@@ -53,8 +53,13 @@ export interface AdminUserRow {
   name: string | null;
   fullName: string | null;
   avatarUrl: string | null;
+  /** نامِ اشتراکِ 1xai (منبعِ مزایای کارجو). */
   plan: string;
+  /** آیا اشتراکِ پولی/هدیه‌ی معتبر دارد؟ */
+  hasSubscription: boolean;
   planExpiresAt: Date | null;
+  /** شناسه‌ی کاربر در 1xai — برای لینک به پنلِ مدیریتِ اشتراک. */
+  onexaiUserId: number | null;
   isActive: boolean;
   createdAt: Date;
   /** تعدادِ اپلای‌های ثبت‌شده (هر وضعیتی). */
@@ -75,8 +80,6 @@ export interface AdminUsersPage {
 export interface AdminUsersQuery {
   /** جست‌وجو روی ایمیل/نام/نامِ پروفایل (بخشی، بدونِ حساسیت به حروف). */
   q: string;
-  /** فقط یک پلنِ خاص، یا خالی برای همه. */
-  plan: string;
   /** `active` | `suspended` | خالی برای همه. */
   status: string;
   page: number;
@@ -101,7 +104,6 @@ export function parseAdminUsersQuery(
 
   return {
     q: first("q").slice(0, 120),
-    plan: first("plan"),
     status: first("status"),
     page: Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1,
     pageSize:
@@ -135,10 +137,6 @@ export async function listAdminUsers(
       ),
     );
   }
-  if (query.plan) {
-    // پلن یک enum است؛ مقدارِ نامعتبر را به‌جای throw، نادیده می‌گیریم.
-    filters.push(sql`${users.plan}::text = ${query.plan}`);
-  }
   if (query.status === "active") filters.push(eq(users.isActive, true));
   if (query.status === "suspended") filters.push(eq(users.isActive, false));
 
@@ -159,8 +157,7 @@ export async function listAdminUsers(
       name: users.name,
       fullName: users.fullName,
       avatarUrl: users.avatarUrl,
-      plan: users.plan,
-      planExpiresAt: users.planExpiresAt,
+      onexaiUserId: users.onexaiUserId,
       isActive: users.isActive,
       createdAt: users.createdAt,
     })
@@ -171,14 +168,16 @@ export async function listAdminUsers(
     .offset((page - 1) * query.pageSize);
 
   const ids = rows.map((r) => r.id);
-  const [applyCounts, lastSeen] = await Promise.all([
+  const [applyCounts, lastSeen, subs] = await Promise.all([
     countApplicationsFor(ids),
     lastSeenFor(ids),
+    subscriptionsFor(rows),
   ]);
 
   return {
     rows: rows.map((r) => ({
       ...r,
+      ...subs.get(r.id)!,
       applicationCount: applyCounts.get(r.id) ?? 0,
       lastSeenAt: lastSeen.get(r.id) ?? null,
     })),
@@ -187,6 +186,29 @@ export async function listAdminUsers(
     pageSize: query.pageSize,
     pageCount,
   };
+}
+
+/** اشتراکِ 1xaiِ هر کاربر (کاربرِ بدونِ حسابِ 1xai → رایگان، بدونِ تماسِ شبکه). */
+async function subscriptionsFor(
+  rows: Array<{ id: string; onexaiUserId: number | null }>,
+): Promise<Map<string, Pick<AdminUserRow, "plan" | "hasSubscription" | "planExpiresAt">>> {
+  const entries = await Promise.all(
+    rows.map(async (r) => {
+      if (r.onexaiUserId === null) {
+        return [r.id, { plan: "رایگان", hasSubscription: false, planExpiresAt: null }] as const;
+      }
+      const e = await readEntitlements(r.id);
+      return [
+        r.id,
+        {
+          plan: e.unavailable ? "نامعلوم" : e.planNameFa,
+          hasSubscription: e.status === "active",
+          planExpiresAt: e.periodEnd,
+        },
+      ] as const;
+    }),
+  );
+  return new Map(entries);
 }
 
 async function countApplicationsFor(ids: string[]): Promise<Map<string, number>> {
@@ -231,16 +253,6 @@ export interface AdminUserActivityRow {
   submittedAt: Date | null;
 }
 
-export interface AdminPaymentRow {
-  id: string;
-  kind: string;
-  amountToman: number;
-  targetPlan: string | null;
-  status: string;
-  createdAt: Date;
-  reviewedBy: string | null;
-}
-
 export interface AdminUserDetail {
   user: AdminUserRow;
   /** موجودیِ کیفِ پولِ واحد به تومان — `null` یعنی 1xai در دسترس نبود. */
@@ -254,7 +266,6 @@ export interface AdminUserDetail {
   /** بردهای متصل — فقط نامِ برد و وضعیت، بدونِ هیچ نشستی. */
   boards: Array<{ board: string; status: string }>;
   recentApplications: AdminUserActivityRow[];
-  payments: AdminPaymentRow[];
 }
 
 /** جزئیاتِ یک کاربر برای صفحه‌ی مدیریت، یا `null` اگر کاربر وجود ندارد. */
@@ -268,8 +279,7 @@ export async function getAdminUserDetail(
       name: users.name,
       fullName: users.fullName,
       avatarUrl: users.avatarUrl,
-      plan: users.plan,
-      planExpiresAt: users.planExpiresAt,
+      onexaiUserId: users.onexaiUserId,
       isActive: users.isActive,
       createdAt: users.createdAt,
     })
@@ -289,7 +299,7 @@ export async function getAdminUserDetail(
     autoApplyRows,
     boardRows,
     recentApplications,
-    payments,
+    subs,
     balanceToman,
   ] = await Promise.all([
     countApplicationsFor([userId]),
@@ -330,20 +340,7 @@ export async function getAdminUserDetail(
       .where(eq(applications.userId, userId))
       .orderBy(desc(applications.createdAt))
       .limit(20),
-    db
-      .select({
-        id: paymentRequests.id,
-        kind: paymentRequests.kind,
-        amountToman: paymentRequests.amountToman,
-        targetPlan: paymentRequests.targetPlan,
-        status: paymentRequests.status,
-        createdAt: paymentRequests.createdAt,
-        reviewedBy: paymentRequests.reviewedBy,
-      })
-      .from(paymentRequests)
-      .where(eq(paymentRequests.userId, userId))
-      .orderBy(desc(paymentRequests.createdAt))
-      .limit(10),
+    subscriptionsFor([row]),
     // موجودی از 1xai می‌آید (شبکه). اگر در دسترس نبود، صفحه نباید بشکند.
     // `availableToman` (موجودی منهای بلوکه‌شده) همان عددی است که کاربر هم می‌بیند.
     getUnifiedBalance(userId)
@@ -354,6 +351,7 @@ export async function getAdminUserDetail(
   return {
     user: {
       ...row,
+      ...subs.get(userId)!,
       applicationCount: applyCounts.get(userId) ?? 0,
       lastSeenAt: lastSeen.get(userId) ?? null,
     },
@@ -364,7 +362,6 @@ export async function getAdminUserDetail(
     serverAutoApply: autoApplyRows[0]?.enabled ?? false,
     boards: boardRows,
     recentApplications,
-    payments,
   };
 }
 
@@ -407,7 +404,7 @@ export interface AdminUserStats {
   suspended: number;
   /** کاربرانی که در ۳۰ روز گذشته ثبت‌نام کرده‌اند. */
   newLast30d: number;
-  /** کاربرانی که پلنی غیر از رایگان دارند. */
+  /** کاربرانی که اشتراکِ فعالِ 1xai دارند. */
   paying: number;
 }
 
@@ -423,15 +420,17 @@ export async function getAdminUserStats(): Promise<AdminUserStats> {
       // `gte` و نه templateِ خام — همان دلیلِ بالا (Date باید از mapperِ ستون رد شود).
       .where(gte(users.createdAt, since)),
     db
-      .select({ n: count() })
+      .select({ id: users.id, onexaiUserId: users.onexaiUserId })
       .from(users)
-      .where(sql`${users.plan}::text <> 'free'`),
+      .where(isNotNull(users.onexaiUserId)),
   ]);
+  // اشتراک در 1xai است؛ فقط کاربرانِ متصل ممکن است اشتراک داشته باشند (نتیجه ۶۰ ثانیه کش می‌شود).
+  const subs = await subscriptionsFor(payingRows);
 
   return {
     total: Number(totalRows[0]?.n ?? 0),
     suspended: Number(suspendedRows[0]?.n ?? 0),
     newLast30d: Number(newRows[0]?.n ?? 0),
-    paying: Number(payingRows[0]?.n ?? 0),
+    paying: [...subs.values()].filter((v) => v.hasSubscription).length,
   };
 }

@@ -34,7 +34,7 @@ export function CostHint({
   if (!estimate) return null;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400 ${className}`}
+      className={`inline-flex items-center gap-1 bg-amber/12 px-2.5 py-0.5 text-xs font-medium text-amber ${className}`}
       title={`تخمین بر اساس مدلِ ${estimate.displayName} — هزینه‌ی واقعی پس از پردازش از مصرفِ واقعی محاسبه می‌شود.`}
     >
       <IconWallet className="h-3.5 w-3.5" />
@@ -47,7 +47,7 @@ export function CostHint({
 export function FreeBadge({ className = "" }: { className?: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 ${className}`}
+      className={`inline-flex items-center gap-1 bg-jade/12 px-2.5 py-0.5 text-xs font-medium text-jade ${className}`}
     >
       <IconCheck className="h-3.5 w-3.5" />
       رایگان
@@ -78,24 +78,24 @@ export function TopupPrompt({
   return (
     <div
       role="alert"
-      className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"
+      className="rounded-2xl border border-amber/30 bg-amber/10 p-5"
     >
       <div className="flex items-start gap-3">
         <span
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber/15 text-amber"
           aria-hidden
         >
           <IconWallet className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h4 className="text-sm font-bold text-amber-800 dark:text-amber-300">
+          <h4 className="text-sm font-bold text-amber">
             شارژِ حساب لازم است
           </h4>
-          <p className="mt-1 text-sm leading-7 text-amber-700/90 dark:text-amber-200/80">
+          <p className="mt-1 text-sm leading-7 text-amber/90">
             {topup.message}
           </p>
           {typeof balanceToman === "number" ? (
-            <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-200/70">
+            <p className="mt-1 text-xs text-amber/80">
               موجودیِ فعلی:{" "}
               <span className="ltr-nums font-medium">{formatToman(balanceToman)}</span>
             </p>
@@ -107,7 +107,7 @@ export function TopupPrompt({
               <button
                 type="button"
                 onClick={onDismiss}
-                className="rounded-full px-4 py-2 text-sm font-medium text-amber-700/80 transition-colors hover:text-amber-800 dark:text-amber-200/70"
+                className=" px-4 py-2 text-sm font-medium text-amber/80 transition-colors hover:text-amber"
               >
                 بستن
               </button>
@@ -128,7 +128,7 @@ function TopupButton({
   topupHref?: string;
 }): ReactNode {
   const cls =
-    "rounded-full bg-brand px-5 py-2 text-sm font-bold text-brand-foreground shadow-xs transition-transform hover:-translate-y-0.5 hover:brightness-110";
+    " bg-brand px-5 py-2 text-sm font-bold text-brand-foreground shadow-xs transition-transform hover:bg-persimmon-soft";
   if (topupHref) {
     return (
       <a href={topupHref} className={cls}>
@@ -161,7 +161,7 @@ export function PaidActionNote({
         {description ?? "این کنش از هوش مصنوعی استفاده می‌کند و پولی است."}
       </span>
       {estimate ? (
-        <span className="text-amber-700 dark:text-amber-400">
+        <span className="text-amber">
           ({formatCostHint(estimate)})
         </span>
       ) : null}

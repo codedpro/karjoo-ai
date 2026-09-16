@@ -14,6 +14,7 @@ import {
   WorkerIpLimitError,
   type FleetAssignDb,
 } from "@/lib/fleet/assign";
+import { testEntitlements } from "@/lib/billing/entitlements";
 
 /**
  * یک tx جعلی می‌سازد که دو شکلِ SELECT را تفکیک می‌کند:
@@ -57,6 +58,11 @@ function makeTx(opts: {
   return { tx, insertValues };
 }
 
+const FREE = testEntitlements();
+const PRO = testEntitlements({ unlimitedApplies: true });
+const MAX = testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" });
+const MAXPLUS = testEntitlements({ unlimitedApplies: true, workerIpLimit: 5, status: "active" });
+
 /** db جعلی که transaction(fn) را با یک tx از پیش‌ساخته اجرا می‌کند. */
 function makeDb(tx: unknown): FleetAssignDb {
   return {
@@ -67,7 +73,7 @@ function makeDb(tx: unknown): FleetAssignDb {
 describe("assignNodeToUser — سقفِ IPِ پلن (قاعده‌ی ۲)", () => {
   it("پلنِ free (سقف ۰) ⇒ WorkerIpLimitError، بدونِ درج", async () => {
     const { tx, insertValues } = makeTx({ existing: undefined });
-    const err = await assignNodeToUser("u1", "n1", "free", makeDb(tx)).catch((e) => e);
+    const err = await assignNodeToUser("u1", "n1", FREE, makeDb(tx)).catch((e) => e);
     expect(err).toBeInstanceOf(WorkerIpLimitError);
     expect((err as WorkerIpLimitError).limit).toBe(0);
     expect(insertValues).not.toHaveBeenCalled();
@@ -75,7 +81,7 @@ describe("assignNodeToUser — سقفِ IPِ پلن (قاعده‌ی ۲)", () =>
 
   it("پلنِ pro (سقف ۰) ⇒ WorkerIpLimitError", async () => {
     const { tx } = makeTx({ existing: undefined });
-    const err = await assignNodeToUser("u1", "n1", "pro", makeDb(tx)).catch((e) => e);
+    const err = await assignNodeToUser("u1", "n1", PRO, makeDb(tx)).catch((e) => e);
     expect(err).toBeInstanceOf(WorkerIpLimitError);
     expect((err as WorkerIpLimitError).limit).toBe(0);
   });
@@ -83,14 +89,14 @@ describe("assignNodeToUser — سقفِ IPِ پلن (قاعده‌ی ۲)", () =>
   it("پلنِ max، زیرِ سقف (۰ از ۱) ⇒ درج می‌شود", async () => {
     const inserted = { id: "a1", userId: "u1", nodeId: "n1" };
     const { tx, insertValues } = makeTx({ existing: undefined, count: 0, inserted });
-    const out = await assignNodeToUser("u1", "n1", "max", makeDb(tx));
+    const out = await assignNodeToUser("u1", "n1", MAX, makeDb(tx));
     expect(out).toEqual(inserted);
     expect(insertValues).toHaveBeenCalledTimes(1);
   });
 
   it("پلنِ max، سقف پر (۱ از ۱) ⇒ WorkerIpLimitError، بدونِ درج", async () => {
     const { tx, insertValues } = makeTx({ existing: undefined, count: 1 });
-    const err = await assignNodeToUser("u1", "n2", "max", makeDb(tx)).catch((e) => e);
+    const err = await assignNodeToUser("u1", "n2", MAX, makeDb(tx)).catch((e) => e);
     expect(err).toBeInstanceOf(WorkerIpLimitError);
     const e = err as WorkerIpLimitError;
     expect(e.limit).toBe(1);
@@ -101,7 +107,7 @@ describe("assignNodeToUser — سقفِ IPِ پلن (قاعده‌ی ۲)", () =>
   it("پلنِ maxplus، زیرِ سقف (۴ از ۵) ⇒ درج می‌شود", async () => {
     const inserted = { id: "a5", userId: "u1", nodeId: "n5" };
     const { tx } = makeTx({ existing: undefined, count: 4, inserted });
-    const out = await assignNodeToUser("u1", "n5", "maxplus", makeDb(tx));
+    const out = await assignNodeToUser("u1", "n5", MAXPLUS, makeDb(tx));
     expect(out).toEqual(inserted);
   });
 
@@ -109,7 +115,7 @@ describe("assignNodeToUser — سقفِ IPِ پلن (قاعده‌ی ۲)", () =>
     const existing = { id: "a1", userId: "u1", nodeId: "n1" };
     // حتی اگر سقف ۰ باشد (free)، چون از قبل تخصیص یافته، نباید خطا بدهد.
     const { tx, insertValues } = makeTx({ existing });
-    const out = await assignNodeToUser("u1", "n1", "free", makeDb(tx));
+    const out = await assignNodeToUser("u1", "n1", FREE, makeDb(tx));
     expect(out).toEqual(existing);
     expect(insertValues).not.toHaveBeenCalled();
   });

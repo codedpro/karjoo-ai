@@ -1,6 +1,6 @@
 /**
- * تصویرِ Open Graph (اشتراکِ اجتماعی) — نشانِ KafSpark + وردمارکِ «کارجو» روی گرادیانِ
- * برند، تولیدشده با next/og (Satori). این فایلْ کانونشنِ متادیتای Next است: خودش تگ‌های
+ * تصویرِ Open Graph (اشتراکِ اجتماعی) — نشانِ K + وردمارکِ «کارجو» روی سطحِ night با
+ * تأکیدِ persimmon (پالتِ 1xAi)، تولیدشده با next/og (Satori). این فایلْ کانونشنِ متادیتای Next است: خودش تگ‌های
  * og:image / twitter:image را با اندازه و نوعِ درست به <head> اضافه می‌کند.
  *
  * فونتِ فارسی: Satori فونتِ سیستمی ندارد و فقط TTF/OTF می‌فهمد (نه woff2). برای رندرِ
@@ -51,27 +51,21 @@ async function loadVazirmatn(): Promise<ArrayBuffer | null> {
   }
 }
 
-/** نشانِ K به‌صورتِ SVGِ درون‌خطی — بَجِ سفید + Kِ گرادیانی (روی زمینه‌ی گرادیانِ برند). */
+/** نشانِ K به‌صورتِ SVGِ درون‌خطی — بَجِ persimmon + Kِ night (همان Logo در brand/logo.tsx). */
 function MarkSvg({ dim }: { dim: number }) {
   return (
     <svg width={dim} height={dim} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="og-k" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#5b3df5" />
-          <stop offset="1" stopColor="#8b5cf6" />
-        </linearGradient>
-      </defs>
-      <rect x="4" y="4" width="56" height="56" rx="18" fill="#ffffff" />
-      <path d="M23 15V49" stroke="url(#og-k)" strokeWidth="6.5" strokeLinecap="round" />
+      <rect x="4" y="4" width="56" height="56" rx="18" fill="#ff6b35" />
+      <path d="M23 15V49" stroke="#0d0a07" strokeWidth="6.5" strokeLinecap="round" />
       <path
         d="M43.5 15 27.5 32 43.5 49"
         fill="none"
-        stroke="url(#og-k)"
+        stroke="#0d0a07"
         strokeWidth="6.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <circle cx="45.5" cy="13.5" r="4.6" fill="#06b6d4" />
+      <circle cx="45.5" cy="13.5" r="4.6" fill="#0d0a07" />
     </svg>
   );
 }
@@ -92,11 +86,12 @@ export default async function OpengraphImage() {
           alignItems: "center",
           justifyContent: "center",
           gap: 40,
-          // گرادیانِ برند (هم‌راستا با توکن‌های --brand/--brand-2/--accent).
+          // پالتِ 1xAi: صفحه‌ی night-900، متنِ bone، یک هاله‌ی ملایمِ persimmon (--mesh-1).
           background:
-            "radial-gradient(1200px 600px at 78% -10%, #06b6d4 0%, transparent 55%), linear-gradient(135deg, #5b3df5 0%, #7c3aed 55%, #8b5cf6 100%)",
+            "radial-gradient(900px 500px at 78% -10%, rgba(255, 107, 53, 0.22) 0%, transparent 60%), #0d0a07",
+          borderBottom: "8px solid #ff6b35",
           direction: "rtl",
-          color: "#ffffff",
+          color: "#f4ede0",
           fontFamily: hasFa ? "Vazirmatn" : "sans-serif",
         }}
       >
@@ -110,8 +105,8 @@ export default async function OpengraphImage() {
               style={{
                 fontSize: 34,
                 fontWeight: 700,
-                letterSpacing: 2,
-                opacity: 0.9,
+                letterSpacing: 6,
+                color: "#ff6b35",
                 direction: "ltr",
                 alignSelf: "flex-end",
               }}
@@ -120,7 +115,7 @@ export default async function OpengraphImage() {
             </div>
           </div>
         </div>
-        <div style={{ fontSize: 40, opacity: 0.95, maxWidth: 900, textAlign: "center" }}>
+        <div style={{ fontSize: 40, color: "#c4b8a3", maxWidth: 900, textAlign: "center" }}>
           {hasFa ? site.tagline : "AI-powered job auto-apply for Iran"}
         </div>
       </div>

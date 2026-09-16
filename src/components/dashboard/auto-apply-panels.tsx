@@ -117,19 +117,19 @@ export function ApplyUsagePanel({ apply }: { apply: ApplyUsageStatus }) {
             <div
               className={cn(
                 "h-full rounded-full transition-all duration-500",
-                atCap ? "bg-rose-500" : "bg-linear-to-l from-brand to-brand-2",
+                atCap ? "bg-rose" : "bg-persimmon",
               )}
               style={{ width: `${Math.max(pct, apply.usedToday > 0 ? 6 : 0)}%` }}
             />
           </div>
         ) : (
-          <p className="mt-3 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+          <p className="mt-3 text-xs font-medium text-jade">
             اشتراکِ تو سقفِ روزانه ندارد.
           </p>
         )}
 
         {atCap ? (
-          <p className="mt-3 text-pretty rounded-xl bg-rose-500/10 px-3.5 py-2.5 text-xs leading-6 text-rose-600 dark:text-rose-400">
+          <p className="mt-3 text-pretty rounded-xl bg-rose/10 px-3.5 py-2.5 text-xs leading-6 text-rose">
             سقفِ امروز پر شد؛ ارسالِ بعدی فردا انجام می‌شود.
           </p>
         ) : null}
@@ -300,9 +300,9 @@ export function AutoApplyAuditPanel({ audit }: { audit: AutoApplyAuditRow[] }) {
 const AUDIT_ICON_TONES = {
   brand: "bg-brand/10 text-brand",
   accent: "bg-accent/10 text-accent",
-  green: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
-  amber: "bg-amber-500/12 text-amber-600 dark:text-amber-400",
-  rose: "bg-rose-500/12 text-rose-600 dark:text-rose-400",
+  green: "bg-jade/12 text-jade",
+  amber: "bg-amber/12 text-amber",
+  rose: "bg-rose/12 text-rose",
   muted: "bg-foreground/5 text-muted",
 } as const;
 

@@ -17,7 +17,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { boardAccounts, sessionBlobs } from "@/db/schema";
 import { listAssignments } from "@/lib/fleet/assign";
-import { getUserPlanStatus } from "@/components/dashboard/plan-data";
+import { readEntitlements } from "@/lib/billing/subscription";
 import {
   planFleetCapability,
   summarizeSessionFreshness,
@@ -86,8 +86,7 @@ export async function getFleetStatusData(
   userId: string,
   now: number = Date.now(),
 ): Promise<FleetStatusData> {
-  const planStatus = await getUserPlanStatus(userId, now);
-  const capability = planFleetCapability(planStatus.rawPlan);
+  const capability = planFleetCapability(await readEntitlements(userId));
 
   // پلن‌های بدونِ ورکر (Free/Pro): تخصیص و تازگیِ نشست را اصلاً کوئری نمی‌کنیم (مسیرِ ارزان).
   if (!capability.hasWorkerAutoApply) {

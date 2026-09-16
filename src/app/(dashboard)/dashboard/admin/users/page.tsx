@@ -21,10 +21,8 @@ import { Suspense } from "react";
 
 import { isDashboardAdmin } from "@/components/dashboard/admin-guard";
 import {
-  ASSIGNABLE_PLANS,
   absoluteDateFa,
   displayName,
-  planLabel,
   relativeTimeFa,
 } from "@/components/dashboard/admin-labels";
 import {
@@ -98,7 +96,7 @@ export default async function AdminUsersPage({
 
 /** کلیدِ Suspense — با هر تغییرِ فیلتر، اسکلتِ تازه نشان داده شود. */
 function filterKey(q: AdminUsersQuery): string {
-  return `${q.q}|${q.plan}|${q.status}|${q.page}|${q.pageSize}`;
+  return `${q.q}|${q.status}|${q.page}|${q.pageSize}`;
 }
 
 /* ────────────────────────────────  آمار  ───────────────────────────────── */
@@ -177,25 +175,6 @@ function FilterBar({ query }: { query: AdminUsersQuery }) {
       </div>
 
       <div>
-        <label htmlFor="admin-user-plan" className="sr-only">
-          فیلترِ اشتراک
-        </label>
-        <select
-          id="admin-user-plan"
-          name="plan"
-          defaultValue={query.plan}
-          className={inputClass}
-        >
-          <option value="">همه‌ی اشتراک‌ها</option>
-          {ASSIGNABLE_PLANS.map((plan) => (
-            <option key={plan} value={plan}>
-              {planLabel(plan)}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
         <label htmlFor="admin-user-status" className="sr-only">
           فیلترِ دسترسی
         </label>
@@ -227,7 +206,7 @@ async function UsersSection({ query }: { query: AdminUsersQuery }) {
   const { rows, total, page, pageCount } = await listAdminUsers(query);
 
   if (rows.length === 0) {
-    const filtered = Boolean(query.q || query.plan || query.status);
+    const filtered = Boolean(query.q || query.status);
     return (
       <EmptyState
         icon={<IconUsers />}
@@ -295,9 +274,7 @@ async function UsersSection({ query }: { query: AdminUsersQuery }) {
                   </Link>
                 </td>
                 <td className="px-4 py-3">
-                  <Badge tone={row.plan === "free" ? "muted" : "brand"}>
-                    {planLabel(row.plan)}
-                  </Badge>
+                  <Badge tone={row.hasSubscription ? "brand" : "muted"}>{row.plan}</Badge>
                 </td>
                 <td className="px-4 py-3">
                   <Badge tone={row.isActive ? "green" : "rose"}>
@@ -345,7 +322,6 @@ function Pagination({
   const href = (target: number) => {
     const params = new URLSearchParams();
     if (query.q) params.set("q", query.q);
-    if (query.plan) params.set("plan", query.plan);
     if (query.status) params.set("status", query.status);
     if (target > 1) params.set("page", String(target));
     const qs = params.toString();

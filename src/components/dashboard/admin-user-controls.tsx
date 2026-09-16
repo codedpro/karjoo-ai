@@ -19,16 +19,15 @@ import { useActionState, useId } from "react";
 import {
   adjustUserCreditAction,
   setUserAccessAction,
-  setUserPlanAction,
   type AdminActionResult,
 } from "./admin-users-actions";
-import { ASSIGNABLE_PLANS, planLabel, tomanFa } from "./admin-labels";
+import { tomanFa } from "./admin-labels";
 import { Button, Card, cn } from "./ui";
 
 const IDLE: AdminActionResult | null = null;
 
 const INPUT_CLASS =
-  "focus-ring w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted/70";
+  "focus-ring w-full border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted/70";
 const LABEL_CLASS = "block text-xs font-semibold text-muted";
 
 /* ─────────────────────────────  پیامِ نتیجه  ─────────────────────────────── */
@@ -39,10 +38,10 @@ function Notice({ result }: { result: AdminActionResult | null }) {
     <p
       role="status"
       className={cn(
-        "text-pretty rounded-xl border px-3.5 py-2.5 text-sm",
+        "text-pretty border px-3.5 py-2.5 text-sm",
         result.ok
-          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-          : "border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+          ? "border-jade/30 bg-jade/10 text-jade"
+          : "border-rose/30 bg-rose/10 text-rose",
       )}
     >
       {result.message}
@@ -52,72 +51,40 @@ function Notice({ result }: { result: AdminActionResult | null }) {
 
 /* ────────────────────────────────  اشتراک  ─────────────────────────────── */
 
+/**
+ * اشتراک در 1xai مدیریت می‌شود (همان اشتراک مزایای کارجو را می‌دهد)؛ این کارت فقط وضعیت
+ * را نشان می‌دهد و به صفحه‌ی همان کاربر در پنلِ مدیریتِ 1xai لینک می‌دهد.
+ */
 export function PlanControl({
-  userId,
-  currentPlan,
+  planName,
+  onexaiUserId,
 }: {
-  userId: string;
-  currentPlan: string;
+  planName: string;
+  onexaiUserId: number | null;
 }) {
-  const [result, action, pending] = useActionState(
-    async (_prev: AdminActionResult | null, formData: FormData) =>
-      setUserPlanAction(formData),
-    IDLE,
-  );
-  const planId = useId();
-  const renewId = useId();
-
   return (
     <Card padded className="space-y-4">
       <div>
         <h3 className="text-base font-bold">اشتراک</h3>
         <p className="mt-1 text-sm text-muted">
-          تغییرِ دستیِ اشتراک — پولی جابه‌جا نمی‌کند. برای پرداختِ واقعی، درخواستِ
-          کارت‌به‌کارت را در بخشِ «پرداخت‌ها» تأیید کن.
+          اشتراکِ کارجو و 1xAi یکی است و در پنلِ مدیریتِ 1xAi تغییر می‌کند.
         </p>
       </div>
-
-      <form action={action} className="space-y-3">
-        <input type="hidden" name="userId" value={userId} />
-
-        <div>
-          <label htmlFor={planId} className={LABEL_CLASS}>
-            اشتراکِ جدید
-          </label>
-          <select
-            id={planId}
-            name="plan"
-            defaultValue={ASSIGNABLE_PLANS.includes(
-              currentPlan as (typeof ASSIGNABLE_PLANS)[number],
-            )
-              ? currentPlan
-              : "free"}
-            className={cn(INPUT_CLASS, "mt-1.5")}
-          >
-            {ASSIGNABLE_PLANS.map((plan) => (
-              <option key={plan} value={plan}>
-                {planLabel(plan)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <label htmlFor={renewId} className="flex items-center gap-2 text-sm">
-          <input
-            id={renewId}
-            type="checkbox"
-            name="renew"
-            className="focus-ring h-4 w-4 rounded border-border"
-          />
-          <span>دوره‌ی ۳۰ روزه از امروز تمدید شود</span>
-        </label>
-
-        <Button type="submit" size="sm" disabled={pending}>
-          {pending ? "در حالِ ثبت…" : "ثبتِ اشتراک"}
-        </Button>
-      </form>
-
-      <Notice result={result} />
+      <p className="text-sm">
+        اشتراکِ فعلی: <span className="font-bold">{planName}</span>
+      </p>
+      {onexaiUserId === null ? (
+        <p className="text-sm text-muted">این کاربر هنوز به حسابِ 1xAi متصل نشده است.</p>
+      ) : (
+        <a
+          href={`https://1xai.ir/admin/users/${onexaiUserId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="focus-ring inline-flex border border-border px-3 py-1.5 text-sm hover:border-brand/50"
+        >
+          مدیریتِ اشتراک در 1xAi ↗
+        </a>
+      )}
     </Card>
   );
 }

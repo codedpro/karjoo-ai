@@ -23,9 +23,6 @@ import {
   absoluteDateFa,
   applicationStatusLabel,
   displayName,
-  paymentKindLabel,
-  paymentStatusLabel,
-  planLabel,
   relativeTimeFa,
   tomanFa,
 } from "@/components/dashboard/admin-labels";
@@ -107,9 +104,7 @@ async function DetailSection({ userId }: { userId: string }) {
         subtitle={user.email ?? "این حساب ایمیلِ ثبت‌شده ندارد."}
         actions={
           <>
-            <Badge tone={user.plan === "free" ? "muted" : "brand"}>
-              {planLabel(user.plan)}
-            </Badge>
+            <Badge tone={user.hasSubscription ? "brand" : "muted"}>{user.plan}</Badge>
             <Badge tone={user.isActive ? "green" : "rose"}>
               {user.isActive ? "دسترسیِ باز" : "دسترسیِ بسته"}
             </Badge>
@@ -177,7 +172,7 @@ async function DetailSection({ userId }: { userId: string }) {
         </Card>
 
         <div className="grid gap-6 sm:grid-cols-2 xl:col-span-2 xl:grid-cols-1 2xl:grid-cols-2">
-          <PlanControl userId={user.id} currentPlan={user.plan} />
+          <PlanControl planName={user.plan} onexaiUserId={user.onexaiUserId} />
           <CreditControl userId={user.id} balanceToman={detail.balanceToman} />
           <AccessControl userId={user.id} isActive={user.isActive} />
         </div>
@@ -248,70 +243,6 @@ async function DetailSection({ userId }: { userId: string }) {
         )}
       </section>
 
-      {/* درخواست‌های پرداخت */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-bold">درخواست‌های پرداخت</h2>
-        {detail.payments.length === 0 ? (
-          <p className="text-sm text-muted">این کاربر درخواستِ پرداختی ثبت نکرده است.</p>
-        ) : (
-          <TableFrame minWidth="32rem">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border bg-surface/60 text-xs text-muted">
-                  <th scope="col" className="px-4 py-3 text-start font-semibold">
-                    نوع
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-start font-semibold">
-                    مبلغ
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-start font-semibold">
-                    وضعیت
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-start font-semibold">
-                    زمان
-                  </th>
-                  <th scope="col" className="hidden px-4 py-3 text-start font-semibold lg:table-cell">
-                    بررسی‌کننده
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {detail.payments.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3">
-                      {paymentKindLabel(row.kind)}
-                      {row.targetPlan ? ` — ${planLabel(row.targetPlan)}` : ""}
-                    </td>
-                    <td className="ltr-nums px-4 py-3">{tomanFa(row.amountToman)}</td>
-                    <td className="px-4 py-3">
-                      <Badge
-                        tone={
-                          row.status === "approved"
-                            ? "green"
-                            : row.status === "rejected"
-                              ? "rose"
-                              : "amber"
-                        }
-                      >
-                        {paymentStatusLabel(row.status)}
-                      </Badge>
-                    </td>
-                    <td
-                      className="px-4 py-3 text-muted"
-                      title={absoluteDateFa(row.createdAt)}
-                    >
-                      {relativeTimeFa(row.createdAt)}
-                    </td>
-                    <td className="ltr-nums hidden px-4 py-3 text-muted lg:table-cell">
-                      {row.reviewedBy ?? "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </TableFrame>
-        )}
-      </section>
     </div>
   );
 }

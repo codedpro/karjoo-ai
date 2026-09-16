@@ -20,9 +20,7 @@ import { useTransition } from "react";
 
 import { IconRefresh, IconWallet } from "./icons";
 import { Badge, Button, ButtonLink, Card, cn, toFaDigits } from "./ui";
-import { PLAN_BADGE } from "./wallet-labels";
 import { formatToman } from "./wallet-format";
-import type { Plan } from "@/db/schema";
 
 /** نشانیِ یکتای شارژِ کیف‌پولِ واحد (خانواده‌ی 1xAi). */
 const ONEXAI_TOPUP_URL = "https://1xai.ir/topup";
@@ -40,13 +38,13 @@ export function WalletPanel({
   unavailable = false,
 }: {
   initialBalanceToman: number;
-  plan: Plan;
+  /** نامِ اشتراکِ 1xai. */
+  plan: string;
   /** موجودیِ واحد خوانده نشد (svc در دسترس نیست) → حالتِ تنزل‌یافته. */
   unavailable?: boolean;
 }) {
   const router = useRouter();
   const [refreshing, startRefresh] = useTransition();
-  const planBadge = PLAN_BADGE[plan] ?? PLAN_BADGE.payg;
   const lowBalance = !unavailable && initialBalanceToman <= 0;
 
   return (
@@ -70,7 +68,7 @@ export function WalletPanel({
               <span
                 className={cn(
                   "ltr-nums text-3xl font-extrabold tracking-tight",
-                  lowBalance ? "text-rose-500" : "text-foreground",
+                  lowBalance ? "text-rose" : "text-foreground",
                 )}
               >
                 {toFaDigits(formatToman(initialBalanceToman))}
@@ -79,21 +77,21 @@ export function WalletPanel({
             </div>
           )}
         </div>
-        <Badge tone={planBadge.tone} title={planBadge.title}>
-          {planBadge.label}
+        <Badge tone="brand" title="اشتراکِ واحدِ 1xAi و کارجو">
+          {plan}
         </Badge>
       </div>
 
       {unavailable ? (
         <p
           role="status"
-          className="mt-4 text-pretty rounded-xl border border-amber-500/30 bg-amber-500/5 px-3.5 py-2.5 text-xs leading-6 text-amber-700 dark:text-amber-400"
+          className="mt-4 text-pretty border border-amber/30 bg-amber/5 px-3.5 py-2.5 text-xs leading-6 text-amber"
         >
           کیف‌پول موقتاً در دسترس نیست. موجودیِ شما دست‌نخورده در 1xai محفوظ است؛ کمی
           بعد دوباره تلاش کنید.
         </p>
       ) : lowBalance ? (
-        <p className="mt-4 text-pretty rounded-xl border border-rose-500/30 bg-rose-500/5 px-3.5 py-2.5 text-xs leading-6 text-rose-600 dark:text-rose-400">
+        <p className="mt-4 text-pretty border border-rose/30 bg-rose/5 px-3.5 py-2.5 text-xs leading-6 text-rose">
           موجودی صفر است — تا شارژ نشود، تطبیق، انگیزه‌نامه و رزومه‌ی سفارشی کار نمی‌کنند.
         </p>
       ) : null}

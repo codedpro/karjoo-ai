@@ -1,141 +1,55 @@
 import "server-only";
 
 /**
- * خواندنِ «وضعیتِ پلنِ کاربر» برای داشبورد و مسیرِ `GET /api/me/plan` (server-side).
+ * خواندنِ «وضعیتِ اشتراکِ کاربر» برای داشبورد و مسیرِ `GET /api/me/plan` (server-side).
  *
- * یک منبعِ مشترکِ فقط-خواندنی است تا هم RSCِ صفحه‌ی پلن‌ها و هم route handler یکسان
- * عمل کنند و قاعده‌ی ۴ (دادهٔ هر کاربر فقط برای همان کاربر) یک‌جا رعایت شود. این لایه:
- *   • پلنِ فعلیِ کاربر را از جدولِ users می‌خواند،
- *   • موجودی را از کیف‌پولِ *واحدِ 1xai* (`getUnifiedBalance` → availableToman) می‌گیرد —
- *     چون این لایه *فقط نمایشی* است، در دسترس‌نبودنِ svc به ۰ تنزل می‌کند (نه fail-closed؛
- *     گیت‌های پولی جای دیگری هستند و هرگز موجودیِ مثبتِ جعلی نمی‌سازیم)،
- *   • وضعیتِ گرنتِ ماهِ جاری را *بدونِ نوشتن* بررسی می‌کند (آیا ردیفِ گرنتِ این ماه هست؟)،
- *   • و تعدادِ اپلای‌های امروز را نسبت به سهمیه‌ی پلن می‌سنجد (Free=۱۰۰، بقیه نامحدود).
+ * کارجو پلنِ محلی ندارد: اشتراک و کیف‌پول هر دو در 1xai هستند. این لایه:
+ *   • مزایای کاربر را از اشتراکِ 1xai می‌خواند (`readEntitlements`)،
+ *   • موجودی را از کیف‌پولِ واحد می‌گیرد — چون فقط نمایشی است، در دسترس‌نبودنِ 1xai به ۰
+ *     تنزل می‌کند (گیت‌های پولی جای دیگری هستند و هرگز موجودیِ مثبتِ جعلی نمی‌سازیم)،
+ *   • و تعدادِ اپلای‌های امروز را نسبت به سهمیه می‌سنجد.
  *
- * هیچ debit/credit/گرنتی اینجا انجام نمی‌شود؛ صرفاً نمایش. نوشتنِ گرنت فقط در مسیرِ
- * POST (هنگامِ ارتقا) از طریقِ grantMonthlyCredits رخ می‌دهد.
+ * هیچ debit/credit‌ای اینجا انجام نمی‌شود؛ صرفاً نمایش.
  */
-import { and, eq } from "drizzle-orm";
-
-import { db } from "@/db";
-import { users, walletLedger, type Plan } from "@/db/schema";
-import { getUnifiedBalance } from "@/lib/billing/unified";
 import { countAppliesToday } from "@/lib/billing/apply-quota";
-import { periodMonthOf } from "@/lib/billing/ai-budget";
-import { grantRefId } from "@/lib/billing/grants";
-import {
-  applyQuotaFor,
-  monthlyCreditFor,
-  normalizePlanKey,
-  planFor,
-  type PlanKey,
-} from "@/lib/billing/plans";
-
-/** وضعیتِ گرنتِ ماهِ جاریِ کاربر (بدونِ نوشتن). */
-export interface MonthlyGrantStatus {
-  /** ماهِ هدف (YYYY-MM). */
-  period: string;
-  /** آیا گرنتِ این ماه قبلاً اعمال شده؟ */
-  granted: boolean;
-  /** مبلغِ اعتبارِ ماهانه‌ی پلن به تومان (۰ برای Free). */
-  amountToman: number;
-}
+import { applyQuotaOf, type Entitlements } from "@/lib/billing/entitlements";
+import { readEntitlements } from "@/lib/billing/subscription";
+import { getUnifiedBalance } from "@/lib/billing/unified";
 
 /** وضعیتِ سهمیه‌ی اپلای امروزِ کاربر. */
 export interface ApplyUsageStatus {
-  /** سقفِ روزانه — null برای پلن‌های نامحدود. */
+  /** سقفِ روزانه — null برای اشتراک‌های نامحدود. */
   limit: number | null;
   usedToday: number;
   /** باقی‌مانده — null اگر نامحدود. */
   remaining: number | null;
 }
 
-/** وضعیتِ کاملِ پلنِ کاربر — مصرفِ مشترکِ route و داشبورد. */
+/** وضعیتِ کاملِ اشتراکِ کاربر — مصرفِ مشترکِ route و داشبورد. */
 export interface UserPlanStatus {
-  /** کلیدِ پلنِ فعالِ نرمال‌شده (payg→free، premium→pro). */
-  planKey: PlanKey;
-  /** مقدارِ خامِ users.plan (برای سازگاری/لاگ). */
-  rawPlan: Plan;
+  entitlements: Entitlements;
   balanceToman: number;
-  grant: MonthlyGrantStatus;
   apply: ApplyUsageStatus;
 }
 
-/** پلنِ خامِ کاربر را از جدولِ users می‌خواند (پیش‌فرضِ محتاطانه free). */
-async function readRawPlan(userId: string): Promise<Plan> {
-  const [row] = await db
-    .select({ plan: users.plan })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return row?.plan ?? "free";
-}
+export async function getUserPlanStatus(userId: string): Promise<UserPlanStatus> {
+  const entitlements = await readEntitlements(userId);
+  const limit = applyQuotaOf(entitlements);
 
-/**
- * آیا گرنتِ ماهِ مشخص برای این کاربر قبلاً ثبت شده؟ همان شرطِ ایدمپوتنسیِ grants.ts
- * (kind='grant' + refId=`grant:<userId>:<period>`) را *فقط می‌خواند* (بدونِ نوشتن).
- */
-async function readGrantApplied(
-  userId: string,
-  period: string,
-): Promise<boolean> {
-  const refId = grantRefId(userId, period);
-  const [row] = await db
-    .select({ id: walletLedger.id })
-    .from(walletLedger)
-    .where(
-      and(
-        eq(walletLedger.userId, userId),
-        eq(walletLedger.kind, "grant"),
-        eq(walletLedger.refId, refId),
-      ),
-    )
-    .limit(1);
-  return Boolean(row);
-}
-
-/**
- * وضعیتِ کاملِ پلنِ کاربر را می‌سازد: پلن، موجودی، وضعیتِ گرنتِ ماهِ جاری و سهمیه‌ی
- * اپلای امروز. مقید به userId (قاعده‌ی ۴). هیچ چیزی نمی‌نویسد.
- *
- * @param now زمانِ مرجع برای تعیینِ ماه — تزریقی برای تستِ قطعی.
- */
-export async function getUserPlanStatus(
-  userId: string,
-  now: number = Date.now(),
-): Promise<UserPlanStatus> {
-  const rawPlan = await readRawPlan(userId);
-  const planKey = normalizePlanKey(rawPlan);
-  const period = periodMonthOf(now);
-  const limit = applyQuotaFor(planKey);
-
-  // موجودی (واحد؛ نمایشی → svc در دسترس نبود = ۰)، وضعیتِ گرنت و شمارشِ اپلای — موازی.
-  const [balanceToman, grantApplied, usedToday] = await Promise.all([
+  const [balanceToman, usedToday] = await Promise.all([
     getUnifiedBalance(userId)
       .then((b) => b.availableToman)
       .catch(() => 0),
-    readGrantApplied(userId, period),
     limit === null ? Promise.resolve(0) : countAppliesToday(userId),
   ]);
 
   return {
-    planKey,
-    rawPlan,
+    entitlements,
     balanceToman,
-    grant: {
-      period,
-      granted: grantApplied,
-      amountToman: monthlyCreditFor(planKey),
-    },
     apply: {
       limit,
       usedToday: limit === null ? 0 : usedToday,
       remaining: limit === null ? null : Math.max(0, limit - usedToday),
     },
   };
-}
-
-/** تعریفِ پلنِ فعلیِ کاربر (برای نمایش — برچسب/قیمت/قابلیت‌ها). */
-export function currentPlanDefinition(status: UserPlanStatus) {
-  return planFor(status.planKey);
 }

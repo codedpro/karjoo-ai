@@ -7,7 +7,7 @@
  * قواعدِ مشترکِ همه‌ی اکشن‌های این فایل:
  *   • *اولین* کارِ هر اکشن `actingAdmin()` است — قبل از هر خواندن/نوشتن. پنهان‌بودنِ
  *     دکمه در UI هیچ‌وقت به‌عنوان کنترلِ دسترسی حساب نمی‌شود.
- *   • ورودی‌ها با zod اعتبارسنجی می‌شوند (شناسه‌ی UUID، مبلغِ مثبتِ سقف‌دار، پلنِ مجاز)؛
+ *   • ورودی‌ها با zod اعتبارسنجی می‌شوند (شناسه‌ی UUID، مبلغِ مثبتِ سقف‌دار)؛
  *     `formData` هرگز مستقیم به DB نمی‌رود.
  *   • نتیجه به‌صورتِ `{ok, message}` برمی‌گردد (نه throw) تا فرم بتواند پیامِ فارسیِ
  *     قابل‌فهم نشان دهد؛ استثناها فقط برای خطای غیرمنتظره‌اند.
@@ -25,7 +25,6 @@ import { z } from "zod";
 import { db } from "@/db";
 import { auditEvents, authSessions, users } from "@/db/schema";
 import { creditUnified, debitUnified } from "@/lib/billing/unified";
-import { normalizePlanKey, planPeriodEnd } from "@/lib/billing/plans";
 
 import { adminLabel, getAdminUser, type AdminUser } from "./admin-guard";
 
@@ -57,68 +56,6 @@ const uuid = z.string().uuid("شناسه‌ی کاربر معتبر نیست.");
 
 /** سقفِ یک تغییرِ اعتبارِ دستی — محافظ در برابرِ صفرِ اضافه‌ی تایپی. */
 const MAX_ADJUSTMENT_TOMAN = 100_000_000;
-
-/* ────────────────────────────────  پلن  ─────────────────────────────────── */
-
-const planSchema = z.object({
-  userId: uuid,
-  plan: z.enum(["free", "pro", "max", "maxplus"], {
-    message: "پلنِ انتخابی معتبر نیست.",
-  }),
-  /** «تمدید» یعنی پایانِ دوره از امروز ۳۰ روز جلو برود. */
-  renew: z.boolean(),
-});
-
-/**
- * پلنِ یک کاربر را دستی تغییر می‌دهد (پشتیبانی/جبرانِ خطا).
- *
- * توجه: این مسیر *پول جابه‌جا نمی‌کند*. اگر کاربر پرداختِ کارت‌به‌کارت کرده، مسیرِ
- * درست «تأییدِ درخواستِ پرداخت» است که هم پلن را ست می‌کند هم رسیدِ مالی می‌سازد.
- */
-export async function setUserPlanAction(
-  formData: FormData,
-): Promise<AdminActionResult> {
-  const admin = await actingAdmin();
-  if (!admin) return DENIED;
-
-  const parsed = planSchema.safeParse({
-    userId: formData.get("userId"),
-    plan: formData.get("plan"),
-    renew: formData.get("renew") === "on",
-  });
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "ورودی نامعتبر." };
-  }
-
-  const { userId, plan, renew } = parsed.data;
-  const [before] = await db
-    .select({ plan: users.plan })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!before) return { ok: false, message: "کاربر پیدا نشد." };
-
-  await db
-    .update(users)
-    .set({
-      plan,
-      // رایگان انقضا ندارد؛ پلنِ پولی یا تمدید می‌شود یا انقضای فعلی‌اش می‌ماند.
-      planExpiresAt:
-        plan === "free" ? null : renew ? planPeriodEnd() : undefined,
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, userId));
-
-  await recordAdminEvent(userId, "admin_plan_changed", {
-    admin: adminLabel(admin),
-    from: normalizePlanKey(before.plan),
-    to: plan,
-    renewed: renew,
-  });
-
-  revalidateAdmin(userId);
-  return { ok: true, message: "پلنِ کاربر به‌روزرسانی شد." };
-}
 
 /* ──────────────────────────────  اعتبار  ────────────────────────────────── */
 

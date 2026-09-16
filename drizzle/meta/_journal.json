@@ -204,6 +204,13 @@
       "when": 1788608957977,
       "tag": "0028_giant_bloodstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1789553051569,
+      "tag": "0029_drop_local_plans",
+      "breakpoints": true
     }
   ]
 }

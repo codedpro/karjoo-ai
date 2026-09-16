@@ -104,7 +104,7 @@ export function AiFilterToggle({ initialEnabled }: { initialEnabled: boolean }) 
           {/* در RTL، حالتِ روشن دایره را به چپ می‌برد. */}
           <span
             className={cn(
-              "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+              "inline-block h-5 w-5 transform rounded-full bg-bone shadow transition-transform",
               enabled ? "-translate-x-6" : "-translate-x-1",
             )}
           />
@@ -115,7 +115,7 @@ export function AiFilterToggle({ initialEnabled }: { initialEnabled: boolean }) 
       <div className="mt-4">
         <span
           className={cn(
-            "inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-1 text-xs font-medium ring-1 ring-inset",
+            "inline-flex items-center gap-2 whitespace-nowrap px-3 py-1 text-xs font-medium ring-1 ring-inset",
             enabled
               ? "bg-brand/12 text-brand ring-brand/15"
               : "bg-foreground/5 text-muted ring-foreground/10",
@@ -145,13 +145,13 @@ export function AiFilterToggle({ initialEnabled }: { initialEnabled: boolean }) 
       {error ? (
         <p
           role="alert"
-          className="mt-4 text-pretty rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400"
+          className="mt-4 text-pretty rounded-xl border border-rose/30 bg-rose/10 px-4 py-3 text-sm text-rose"
         >
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p className="mt-4 text-pretty rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-600 dark:text-emerald-400">
+        <p className="mt-4 text-pretty rounded-xl border border-jade/30 bg-jade/10 px-4 py-3 text-sm text-jade">
           {notice}
         </p>
       ) : null}

@@ -150,7 +150,7 @@ export async function OnboardingChecklist({ userId }: { userId: string }) {
   const nextIndex = steps.findIndex((s) => !s.done);
 
   return (
-    <Card padded className="border-brand/25 bg-gradient-to-b from-brand/[0.04] to-transparent">
+    <Card padded className="border-persimmon/30 bg-persimmon/5">
       {/* سرتیتر + خطِ پیشرفت (ارقامِ فارسی) */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-bold">شروعِ کار</h2>

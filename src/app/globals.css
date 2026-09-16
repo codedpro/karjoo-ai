@@ -1,46 +1,211 @@
 @import "tailwindcss";
 
-/* پوسته‌ی «کنسولِ شیفت‌شب» — کلِ اپ (فرود + داشبورد) روی همین یک پالتِ تیره سوار است تا
-   دقیقاً مثلِ صفحه‌ی فرود دیده شود. حالتِ dark کلاس‌محور است (روی <html>) و همیشه روشن،
-   تا utilityهای `dark:` هم مثلِ توکن‌های CSS همیشه اعمال شوند و اپ هرگز به تمِ روشن نیفتد. */
+/*
+ * پوسته‌ی کارجو = پوسته‌ی 1xAi (web/app/globals.css).
+ *
+ * کلِ اپ (فرود + داشبورد + وبلاگ) روی همان پالتِ «روزنامه‌ی شب» سوار است: سطوحِ night،
+ * متنِ bone، تأکیدِ persimmon، خطوطِ مویی، دانه‌ی کاغذ و گوشه‌های تیز روی دسکتاپ.
+ *
+ * دو تم: تیره (پیش‌فرض، همان چیزی که سرور می‌فرستد) و روشن (انتخابی). next-themes
+ * (src/components/theme.tsx) پیش از اولین رنگ‌آمیزی کلاسِ `dark` یا `light` را روی
+ * <html> می‌گذارد. رنگ‌ها فقط این‌جا تعریف می‌شوند: `html.light` همه‌ی توکن‌های پالت را
+ * بازتعریف می‌کند، پس هر `bg-night-800` / `text-bone` / `bg-card` / `text-muted` بدونِ
+ * دست‌خوردن جابه‌جا می‌شود.
+ *
+ * تایپوگرافی: هیچ وب‌فونتی بارگذاری نمی‌شود (مثلِ 1xAi) — پشته‌ی فونتِ سیستمی. هویتِ
+ * بصری با وزن + فاصله‌ی حروف + اندازه ساخته می‌شود، نه با خودِ حروف‌نما.
+ */
+
+/* `dark:` فقط وقتی اعمال می‌شود که <html> کلاسِ `dark` داشته باشد (تمِ تیره)؛ در تمِ
+   روشن next-themes آن را با `light` عوض می‌کند و `dark:`ها خاموش می‌شوند. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* `static`: همه‌ی توکن‌های پالت همیشه صادر می‌شوند (حتی اگر هنوز کلاسی از آن‌ها استفاده نکند)،
+   چون `html.light` و CSSِ خام مستقیماً به آن‌ها ارجاع می‌دهند. */
+@theme static {
+  /* ---- تایپوگرافی (پشته‌ی سیستمیِ 1xAi) ---- */
+  --font-sans: "Vazirmatn", -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", "Roboto", "Tahoma", "Iranian Sans", system-ui, sans-serif;
+  --font-display: ui-serif, "New York", "Iowan Old Style", "Apple Garamond", Georgia, "Times New Roman", Times, serif;
+  --font-mono: ui-monospace, "SF Mono", "Menlo", "Monaco", "Cascadia Code", "Consolas", "Liberation Mono", "Courier New", monospace;
+
+  --breakpoint-xs: 26rem;
+
+  /* ---- پالتِ ویراستاری (دقیقاً همان 1xAi) ---- */
+  /* سطوح: فرورفته ← صفحه ← کارت ← هاور ← خط */
+  --color-night-950: #07050a;
+  --color-night-900: #0d0a07;
+  --color-night-800: #1e1812;
+  --color-night-700: #261e17;
+  --color-night-600: #2a231d;
+  --color-night-500: #3d342a;
+
+  /* نردبانِ متن: اصلی ← دوم ← کم‌رنگ ← سوم */
+  --color-bone: #f4ede0;
+  --color-bone-soft: #c4b8a3;
+  --color-bone-dim: #a89b80;
+  --color-whisper: #aca083;
+
+  /* جفتِ وارونه (پنلِ کاغذی) */
+  --color-paper: #f4ede0;
+  --color-paper-deep: #ebe2d0;
+  --color-paper-rule: #d8cbb1;
+  --color-ink: #1a1108;
+  --color-ink-soft: #5c4a36;
+
+  /* تأکیدِ امضا */
+  --color-persimmon: #ff6b35;
+  --color-persimmon-deep: #c2410c;
+  --color-persimmon-soft: #ffa07a;
+
+  --color-saffron: #f5a524;
+  --color-teal: #0e7c7b;
+  --color-teal-soft: #14b8b6;
+
+  /* رنگ‌های وضعیت (موفق/خطر/هشدار) */
+  --color-jade: #84a96f;
+  --color-rose: #d62828;
+  --color-amber: #e8a317;
+
+  /* شعاع‌های موبایل — دسکتاپ گوشه‌تیز می‌ماند (پایین‌تر) */
+  --radius-tile: 0.75rem;
+  --radius-sheet: 1.125rem;
+
+  --ease-app: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-press: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   توکن‌های ترکیبی + نام‌های معنایی کارجو (تمِ تیره، پیش‌فرض)
+   ══════════════════════════════════════════════════════════════════════ */
 :root {
   color-scheme: dark;
 
-  /* سطوح — ink پس‌زمینه، پنل کارت، hairline خط‌جداکننده (هم‌ارزِ صفحه‌ی فرود) */
-  --background: #0c0d10; /* ink */
-  --foreground: #e8e9ec; /* متن */
+  /* خطوطِ مویی (bone با آلفای کم) */
+  --hairline-soft: rgba(244, 237, 224, 0.1);
+  --hairline: rgba(244, 237, 224, 0.14);
+  --hairline-strong: rgba(244, 237, 224, 0.28);
 
-  /* سیگنالِ برند — کهربایی (تنها رنگِ تأکید) + متنِ رویش (ink، برای کنتراستِ بالا) */
-  --brand: #ffb020;
-  --brand-2: #f59e0b;
-  --brand-foreground: #0c0d10;
-  --accent: #37c08a; /* تیکِ سبز-فیروزه‌ای — موفقیت/AI */
-  --muted: #8a9099;
-  --card: #14161b; /* پنل */
-  --border: #242832; /* hairline */
+  --edge-lit: rgba(244, 237, 224, 0.06);
 
-  /* سطحِ فرورفته (رَنگِ زمینه‌ی پشتِ کارت‌ها/ناوبری) — بینِ ink و پنل */
-  --surface: #0f1116;
+  /* سایه‌ها — گرم، نه سیاهِ خنثی */
+  --shadow-1: 0 1px 2px rgba(4, 2, 0, 0.5), 0 6px 16px -6px rgba(4, 2, 0, 0.45);
+  --shadow-2: 0 2px 4px rgba(4, 2, 0, 0.5), 0 14px 30px -12px rgba(4, 2, 0, 0.55);
+  --shadow-accent: 0 6px 22px -8px rgba(255, 107, 53, 0.2);
+  --shadow-sheet: 0 -24px 60px -18px rgba(0, 0, 0, 0.78);
 
-  /* ── توکن‌های شعاعِ گوشه (یک مقیاسِ منسجم) ── */
-  --radius-sm: 0.5rem; /* نشان/چیپ */
-  --radius-md: 0.75rem; /* دکمه/آیکن‌باکس */
-  --radius-lg: 1rem; /* کارتِ کوچک */
-  --radius-xl: 1.25rem; /* کارتِ اصلی */
-  --radius-2xl: 1.5rem; /* پنلِ بزرگ */
+  --scrim: rgba(7, 5, 10, 0.68);
 
-  /* ── سایه‌ها — تیره و ملایم روی ink؛ بدونِ هیچ glow (شامل brand) ── */
-  --shadow-xs: 0 1px 2px -1px rgba(0, 0, 0, 0.5);
-  --shadow-sm: 0 2px 10px -3px rgba(0, 0, 0, 0.55);
-  --shadow-md: 0 16px 40px -14px rgba(0, 0, 0, 0.7);
-  --shadow-brand: 0 16px 40px -16px rgba(0, 0, 0, 0.75);
+  /* دانه‌ی کاغذِ روزنامه */
+  --grain-a: rgba(244, 237, 224, 0.018);
+  --grain-b: rgba(255, 107, 53, 0.014);
+  --grain-blend: screen;
 
-  /* حلقه‌ی تمرکز (a11y) — همه‌جا یکسان */
-  --ring: color-mix(in oklab, var(--brand) 55%, transparent);
+  --mesh-1: rgba(255, 107, 53, 0.2);
+  --mesh-2: rgba(245, 165, 36, 0.12);
+  --mesh-3: rgba(14, 124, 123, 0.1);
+
+  /* ── نام‌های معنایی کارجو → نقش‌های 1xAi ──
+     چون این‌ها به `--color-*` ارجاع می‌دهند و روی همان <html> تعریف شده‌اند، با
+     بازتعریفِ پالت در `html.light` خودبه‌خود جابه‌جا می‌شوند. */
+  --background: var(--color-night-900);
+  --foreground: var(--color-bone);
+  --brand: var(--color-persimmon);
+  --brand-2: var(--color-persimmon-deep);
+  --brand-foreground: var(--color-night-900);
+  --accent: var(--color-jade);
+  --muted: var(--color-bone-dim);
+  --card: var(--color-night-800);
+  --border: var(--hairline);
+  --surface: var(--color-night-950);
+
+  /* ── شعاع‌ها: روی موبایل کاشی‌های گرد، روی دسکتاپ صفر (پایین‌تر) ── */
+  --radius-xs: 0;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0.5rem;
+  --radius-xl: var(--radius-tile);
+  --radius-2xl: var(--radius-tile);
+  --radius-3xl: var(--radius-sheet);
+
+  /* ── سایه‌ها با نام‌های قدیمیِ کارجو ── */
+  --shadow-xs: var(--shadow-1);
+  --shadow-sm: var(--shadow-1);
+  --shadow-md: var(--shadow-2);
+  --shadow-brand: var(--shadow-accent);
+
+  /* حلقه‌ی تمرکز (a11y) */
+  --ring: var(--color-persimmon);
 }
 
+/* ویراستاریِ دسکتاپ: گوشه‌ها تیز. `rounded-full` (نقطه‌ها، سوییچ‌ها) دست‌نخورده می‌ماند. */
+@media (width >= 48rem) {
+  :root {
+    --radius-lg: 0;
+    --radius-xl: 0;
+    --radius-2xl: 0;
+    --radius-3xl: 0;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   تمِ روشن — همان روزنامه، روی کاغذ (کپیِ html.light در 1xAi)
+   رمپ‌ها وارونه می‌شوند؛ تأکیدها تیره می‌شوند تا برچسبِ نزدیک‌به‌سفید رویشان
+   خوانا بماند (≈۵:۱).
+   ══════════════════════════════════════════════════════════════════════ */
+html.light {
+  color-scheme: light;
+
+  --color-night-950: #efe8db;
+  --color-night-900: #faf6ee;
+  --color-night-800: #ffffff;
+  --color-night-700: #f0e9dc;
+  --color-night-600: #ddd2bd;
+  --color-night-500: #c2b299;
+
+  --color-bone: #1a1108;
+  --color-bone-soft: #4f4132;
+  --color-bone-dim: #6b5c47;
+  --color-whisper: #7a6a52;
+
+  --color-paper: #1e1812;
+  --color-paper-deep: #14100b;
+  --color-paper-rule: #3d342a;
+  --color-ink: #f4ede0;
+  --color-ink-soft: #c4b8a3;
+
+  --color-persimmon: #c2410c;
+  --color-persimmon-soft: #9a3412;
+  --color-persimmon-deep: #7c2d12;
+  --color-saffron: #a16207;
+  --color-teal: #0f766e;
+  --color-teal-soft: #0e7c7b;
+  --color-jade: #4a7a3a;
+  --color-rose: #b91c1c;
+  --color-amber: #b45309;
+
+  --hairline-soft: rgba(26, 17, 8, 0.1);
+  --hairline: rgba(26, 17, 8, 0.14);
+  --hairline-strong: rgba(26, 17, 8, 0.26);
+
+  --edge-lit: transparent;
+
+  --shadow-1: 0 1px 2px rgba(92, 74, 54, 0.09), 0 6px 16px -6px rgba(92, 74, 54, 0.16);
+  --shadow-2: 0 2px 4px rgba(92, 74, 54, 0.1), 0 14px 30px -12px rgba(92, 74, 54, 0.2);
+  --shadow-accent: 0 6px 22px -8px rgba(194, 65, 12, 0.28);
+  --shadow-sheet: 0 -24px 60px -18px rgba(26, 17, 8, 0.26);
+
+  --scrim: rgba(26, 17, 8, 0.5);
+
+  --grain-a: rgba(26, 17, 8, 0.02);
+  --grain-b: rgba(194, 65, 12, 0.016);
+  --grain-blend: multiply;
+
+  --mesh-1: rgba(255, 107, 53, 0.13);
+  --mesh-2: rgba(245, 165, 36, 0.1);
+  --mesh-3: rgba(14, 124, 123, 0.07);
+}
+
+/* نگاشتِ نام‌های معنایی به کلاس‌های Tailwind (bg-card، text-muted، border-border، …) */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -52,22 +217,29 @@
   --color-card: var(--card);
   --color-border: var(--border);
   --color-surface: var(--surface);
-  --font-sans: var(--font-vazir);
-  --font-display: var(--font-vazir);
 
+  /* خطوطِ مویی به‌عنوانِ رنگ: border-hairline، divide-hairline-soft، … */
+  --color-hairline: var(--hairline);
+  --color-hairline-soft: var(--hairline-soft);
+  --color-hairline-strong: var(--hairline-strong);
+
+  --radius: var(--radius-sm);
+  --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
   --radius-2xl: var(--radius-2xl);
+  --radius-3xl: var(--radius-3xl);
 
   --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-2);
   --shadow-brand: var(--shadow-brand);
 }
 
-/* حالتِ روشن حذف شد: اپ همیشه «کنسولِ شیفت‌شب» است تا با صفحه‌ی فرود یکدست بماند. */
+/* ---------------- پایه ---------------- */
 
 * {
   border-color: var(--border);
@@ -75,15 +247,53 @@
 
 html {
   scroll-behavior: smooth;
+  font-feature-settings: "ss02", "kern";
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-vazir), Tahoma, "Segoe UI", system-ui, sans-serif;
-  /* اعداد فارسی برای حس بومی */
-  font-feature-settings: "ss01";
+  background: var(--color-night-900);
+  color: var(--color-bone);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* دانه‌ی ریزِ کاغذ روی کلِ سطح */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    radial-gradient(var(--grain-a) 1px, transparent 1px),
+    radial-gradient(var(--grain-b) 1px, transparent 1px);
+  background-size: 5px 5px, 13px 13px;
+  background-position: 0 0, 2px 2px;
+  opacity: 0.7;
+  mix-blend-mode: var(--grain-blend);
+}
+
+::selection {
+  background: var(--color-persimmon);
+  color: var(--color-night-900);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-night-900);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-night-600);
+  border-radius: 0;
+  border: 2px solid var(--color-night-900);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-persimmon-deep);
 }
 
 /* در RTL، اعداد لاتین داخل متن فارسی باید چپ‌به‌راست بمانند */
@@ -91,17 +301,148 @@ body {
   direction: ltr;
   unicode-bidi: isolate;
 }
+.ltr {
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: isolate;
+}
+.display-en,
+.font-mono {
+  unicode-bidi: isolate;
+}
+
+/* ---------------- پرایمیتیوهای تایپوگرافیِ ویراستاری (1xAi) ----------------
+   در `@layer components` تا utilityها (مثلاً `text-persimmon`) رویشان غالب شوند. */
+@layer components {
+  /* تیترِ کوچکِ مونو (فقط برای لاتین — برای فارسی از tracker-fa استفاده کن) */
+  .tracker {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-bone-dim);
+    direction: ltr;
+  }
+  .tracker-lg {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--color-bone-dim);
+    direction: ltr;
+  }
+  /* هم‌نقشِ فارسیِ tracker — بدونِ فاصله‌ی حروف (خطِ پیوسته را از هم می‌پاشد) */
+  .tracker-fa {
+    font-size: 0.6875rem;
+    line-height: 1.6;
+    letter-spacing: 0;
+    color: var(--color-bone-dim);
+  }
+  .display-fa {
+    font-family: var(--font-sans);
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .display-en {
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-style: italic;
+    letter-spacing: -0.01em;
+    line-height: 1;
+  }
+  .numeral {
+    font-family: var(--font-sans);
+    font-weight: 200;
+    font-feature-settings: "tnum", "ss02";
+    letter-spacing: -0.04em;
+    line-height: 0.9;
+  }
+  .mono-label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .foot-index {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.1em;
+    color: var(--color-persimmon);
+    direction: ltr;
+  }
+  .surface-paper {
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+  .dot-live {
+    width: 6px;
+    height: 6px;
+    background: var(--color-persimmon);
+    border-radius: 999px;
+    animation: pulse-soft 2.4s ease-in-out infinite;
+  }
+  .scrim {
+    background: var(--scrim);
+  }
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+/* خطوطِ مویی — به‌صورتِ utility تا با واریانت‌ها (hover:…) ترکیب شوند */
+@utility rule {
+  border-color: var(--hairline);
+}
+@utility rule-soft {
+  border-color: var(--hairline-soft);
+}
+@utility rule-strong {
+  border-color: var(--hairline-strong);
+}
+
+/* قابِ محتوای صفحه‌های عمومی (همان page-grow در 1xAi) */
+@utility page-grow {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 72rem;
+  @media (min-width: 96rem) {
+    max-width: 80rem;
+  }
+}
+
+/* بازخوردِ لمسی — فقط موبایل */
+@utility press {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  @media (width < 48rem) {
+    transition:
+      transform 120ms var(--ease-press),
+      background-color 120ms var(--ease-press),
+      opacity 120ms var(--ease-press);
+    &:active {
+      transform: scale(0.975);
+    }
+  }
+}
 
 /* ── کمک‌کننده‌های مشترکِ داشبورد (توکن‌محور) ── */
 
 /*
  * قابِ عرضِ داشبورد — «سیال، نه قفل‌شده».
- *
- * پیش‌تر داشبورد روی `max-w-6xl` (۷۲rem) قفل بود؛ روی نمایشگرِ بزرگ دو نوارِ خالیِ
- * پهن می‌ماند و جدول‌ها بی‌دلیل افقی اسکرول می‌شدند. حالا محتوا با عرضِ صفحه رشد
- * می‌کند و فقط روی نمایشگرهای خیلی پهن سقف می‌خورد (۱۸۰۰px) تا خطِ متن آن‌قدر
- * بلند نشود که خواندنش سخت شود. بالشتکِ کناری هم با اندازه‌ی صفحه بزرگ می‌شود.
- *
+ * محتوا با عرضِ صفحه رشد می‌کند و فقط روی نمایشگرهای خیلی پهن سقف می‌خورد (۱۸۰۰px).
  * همه‌ی صفحه‌های داشبورد از قابِ layout ارث می‌برند؛ هیچ صفحه‌ای نباید قابِ خودش را
  * دوباره بسازد (وگرنه بالشتکِ دوتایی می‌گیرد).
  */
@@ -127,19 +468,17 @@ body {
   }
 }
 
-/* حلقه‌ی تمرکزِ یکسان و قابل‌مشاهده برای همه‌ی عناصرِ تعاملی (a11y) */
+/* حلقه‌ی تمرکزِ یکسان (a11y) — همان focus-app در 1xAi: خطِ persimmon با فاصله */
 .focus-ring {
   outline: none;
 }
-.focus-ring:focus-visible {
-  outline: none;
-  box-shadow:
-    0 0 0 2px var(--background),
-    0 0 0 4px var(--ring);
-  border-radius: inherit;
+.focus-ring:focus-visible,
+.focus-app:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
-/* درخششِ ملایمِ اسکلت (به‌جای pulseِ خشک) — فقط transform/opacity، بدونِ ری‌پینت */
+/* درخششِ ملایمِ اسکلت — فقط transform/opacity */
 @keyframes karjoo-shimmer {
   100% {
     transform: translateX(-100%);
@@ -163,27 +502,36 @@ body {
   animation: karjoo-shimmer 1.6s infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .skeleton-shimmer::after {
+  .skeleton-shimmer::after,
+  .dot-live {
     animation: none;
   }
 }
 
-/* محتوای وبلاگ از موتور IT Master (HTML خام) — تایپوگرافی پایه و RTL */
+/* محتوای وبلاگ از موتور IT Master (HTML خام) — تایپوگرافیِ prose-fa در 1xAi */
 .prose-fa {
   line-height: 2;
+  color: var(--color-bone-soft);
 }
 .prose-fa h2 {
   font-size: 1.5rem;
-  font-weight: 700;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--color-bone);
   margin: 2rem 0 0.75rem;
 }
 .prose-fa h3 {
   font-size: 1.2rem;
   font-weight: 700;
+  color: var(--color-bone);
   margin: 1.5rem 0 0.5rem;
 }
 .prose-fa p {
   margin: 0.85rem 0;
+}
+.prose-fa strong {
+  color: var(--color-bone);
+  font-weight: 600;
 }
 .prose-fa ul,
 .prose-fa ol {
@@ -194,11 +542,28 @@ body {
   margin: 0.35rem 0;
 }
 .prose-fa a {
-  color: var(--brand);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  color: var(--color-persimmon);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-persimmon) 40%, transparent);
+}
+.prose-fa a:hover {
+  border-bottom-color: var(--color-persimmon);
+}
+.prose-fa blockquote {
+  border-inline-start: 2px solid var(--color-persimmon);
+  padding-inline-start: 1rem;
+  color: var(--color-bone);
+}
+.prose-fa code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background: var(--color-night-950);
+  padding: 0.1em 0.35em;
+}
+.prose-fa hr {
+  border-color: var(--hairline);
+  margin: 2rem 0;
 }
 .prose-fa img {
-  border-radius: 0.75rem;
   margin: 1.25rem 0;
 }

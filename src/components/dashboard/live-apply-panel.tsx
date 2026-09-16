@@ -98,10 +98,10 @@ export function LiveApplyPanel({ initialData }: LiveApplyPanelProps) {
     <Card padded className="overflow-hidden">
       <div className="flex flex-col gap-4 border-b border-border/70 pb-5 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+          <div className="inline-flex items-center gap-2 bg-jade/10 px-3 py-1 text-xs font-semibold text-jade">
             <span className="relative flex h-2.5 w-2.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
-              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-jade opacity-60" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-jade" />
             </span>
             نمای زنده
           </div>
@@ -128,15 +128,15 @@ export function LiveApplyPanel({ initialData }: LiveApplyPanelProps) {
       </div>
 
       {error ? (
-        <div className="mb-5 mt-5 flex items-start gap-2 rounded-xl border border-rose-500/25 bg-rose-500/5 px-4 py-3 text-sm text-rose-600 dark:text-rose-400">
+        <div className="mb-5 mt-5 flex items-start gap-2 rounded-xl border border-rose/25 bg-rose/5 px-4 py-3 text-sm text-rose">
           <IconWarn className="mt-0.5 h-4 w-4" />
           <span>{error}</span>
         </div>
       ) : null}
 
       {data.execution.state === "blocked" ? (
-        <div className="mb-5 mt-5 flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-2 text-amber-700 dark:text-amber-300">
+        <div className="mb-5 mt-5 flex flex-col gap-3 rounded-xl border border-amber/30 bg-amber/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2 text-amber">
             <IconWarn className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
               <p className="font-bold">اجرای سرور به‌خاطر بررسی امنیتی متوقف شد</p>
@@ -228,7 +228,7 @@ function QueueJobCard({ job, active = false }: { job: LiveApplyJob; active?: boo
     <article
       className={cn(
         "rounded-xl border bg-card p-3 shadow-xs",
-        active ? "border-emerald-500/35" : "border-border/70",
+        active ? "border-jade/35" : "border-border/70",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -297,7 +297,7 @@ function RecentResultCard({ item }: { item: LiveApplyResult }) {
             href={`/api/applications/${item.applicationId}/resume`}
             target="_blank"
             rel="noopener noreferrer"
-            className="focus-ring inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground hover:brightness-110"
+            className="focus-ring inline-flex items-center gap-1.5 bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground hover:bg-persimmon-soft"
           >
             <IconDoc className="h-3.5 w-3.5" />
             رزومه ارسالی

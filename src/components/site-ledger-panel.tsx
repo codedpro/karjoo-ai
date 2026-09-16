@@ -9,9 +9,8 @@
  * REAL board names + REAL Jobinja categories — the multi-model story shown, not
  * claimed. Respects prefers-reduced-motion (renders a full static ledger).
  *
- * Self-contained fixed "ink + amber" palette (does NOT use the app theme tokens,
- * so it looks identical in light/dark): ink #0C0D10, panel #14161B, hairline
- * #242832, text #E8E9EC, muted #8A9099, signal amber #FFB020, tick #37C08A.
+ * Uses the shared 1xAi editorial tokens (night surfaces, bone text, hairline
+ * rules, persimmon signal, jade tick), so it follows the dark/light theme.
  */
 import { useEffect, useRef, useState } from "react";
 
@@ -36,28 +35,28 @@ const ROWS: Row[] = [
 
 function LedgerRow({ r, isNew }: { r: Row; isNew?: boolean }) {
   return (
-    <div className="flex items-center gap-3 border-b border-[#1c1f27] px-4 py-2.5 text-[13px] last:border-0">
-      <span className="ltr-nums shrink-0 font-mono text-[#8A9099]" dir="ltr">
+    <div className="flex items-center gap-3 border-b border-hairline-soft px-4 py-2.5 text-[13px] last:border-0">
+      <span className="ltr-nums shrink-0 font-mono text-bone-dim" dir="ltr">
         {r.t}
       </span>
       <span
-        className="ltr-nums shrink-0 rounded bg-[#1c1f27] px-1.5 py-0.5 font-mono text-[11px] text-[#c9cdd4]"
+        className="ltr-nums shrink-0 bg-night-700 px-1.5 py-0.5 font-mono text-[11px] text-bone-soft"
         dir="ltr"
       >
         {r.board}
       </span>
-      <span className="min-w-0 flex-1 truncate text-[#c9cdd4]">{r.cat}</span>
-      <span className="inline-flex shrink-0 items-center gap-1 font-medium text-[#37C08A]">
+      <span className="min-w-0 flex-1 truncate text-bone-soft">{r.cat}</span>
+      <span className="inline-flex shrink-0 items-center gap-1 font-medium text-jade">
         <span aria-hidden>✓</span>
         <span className="hidden sm:inline">اپلای شد</span>
       </span>
       <span
-        className="ltr-nums hidden shrink-0 rounded-full border border-[#2a2f3a] px-2 py-0.5 font-mono text-[10px] text-[#8A9099] md:inline"
+        className="ltr-nums hidden shrink-0 border border-hairline-strong px-2 py-0.5 font-mono text-[10px] text-bone-dim md:inline"
         dir="ltr"
         title="cover letter model"
       >
         {r.model}
-        {isNew ? <span className="ml-0.5 animate-pulse text-[#FFB020]">▍</span> : null}
+        {isNew ? <span className="ml-0.5 animate-pulse text-persimmon">▍</span> : null}
       </span>
     </div>
   );
@@ -91,29 +90,29 @@ export function LedgerPanel() {
     : Array.from({ length: count }, (_, i) => ROWS[(start + i) % ROWS.length]);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-[#242832] bg-[#14161B] shadow-[0_20px_60px_-30px_rgba(0,0,0,0.9)]">
+    <div className="overflow-hidden border border-hairline bg-night-800 shadow-md">
       {/* status bar */}
-      <div className="flex items-center justify-between border-b border-[#242832] bg-[#101217] px-4 py-2.5">
+      <div className="flex items-center justify-between border-b border-hairline bg-night-950 px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-[#FFB020] shadow-[0_0_0_3px_rgba(255,176,32,0.15)]" />
-          <span className="font-mono text-xs text-[#c9cdd4]" dir="ltr">
-            karjoo <span className="text-[#8A9099]">— night shift</span>
+          <span className="dot-live" />
+          <span className="font-mono text-xs text-bone-soft" dir="ltr">
+            karjoo <span className="text-bone-dim">— night shift</span>
           </span>
         </div>
-        <span className="ltr-nums font-mono text-[11px] text-[#8A9099]" dir="ltr">
+        <span className="text-[11px] text-jade">
           ● متصل
         </span>
       </div>
       {/* ledger */}
-      <div className="divide-y divide-[#1c1f27]">
+      <div className="divide-y divide-hairline-soft">
         {visible.map((r, i) => (
           <LedgerRow key={r.t + i} r={r} isNew={!reduced && i === visible.length - 1} />
         ))}
       </div>
       {/* footer summary */}
-      <div className="flex items-center justify-between border-t border-[#242832] bg-[#101217] px-4 py-2.5">
-        <span className="text-xs text-[#8A9099]">اپلای‌های امشب</span>
-        <span className="ltr-nums font-mono text-sm font-bold text-[#FFB020]" dir="ltr">
+      <div className="flex items-center justify-between border-t border-hairline bg-night-950 px-4 py-2.5">
+        <span className="text-xs text-bone-dim">اپلای‌های امشب</span>
+        <span className="ltr-nums font-mono text-sm font-bold text-persimmon" dir="ltr">
           ۲۴
         </span>
       </div>

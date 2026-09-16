@@ -45,10 +45,10 @@ export function TailorResumeButton({ listingId }: { listingId: string }) {
 
   const toneClass =
     msg?.tone === "ok"
-      ? "text-emerald-400"
+      ? "text-jade"
       : msg?.tone === "err"
-        ? "text-rose-400"
-        : "text-[#8A9099]";
+        ? "text-rose"
+        : "text-bone-dim";
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -57,7 +57,7 @@ export function TailorResumeButton({ listingId }: { listingId: string }) {
         onClick={go}
         disabled={pending}
         aria-busy={pending}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-[#FFB020]/40 bg-[#FFB020]/10 px-3 py-1.5 text-xs font-semibold text-[#FFB020] transition-colors hover:bg-[#FFB020]/20 disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-persimmon/40 bg-persimmon/10 px-3 py-1.5 text-xs font-semibold text-persimmon transition-colors hover:bg-persimmon/20 disabled:opacity-60"
       >
         {pending ? "در حال ساخت…" : "رزومه‌ی سفارشیِ این شغل"}
       </button>

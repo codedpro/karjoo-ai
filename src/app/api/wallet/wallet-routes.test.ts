@@ -20,6 +20,8 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/auth/http", () => ({ getCurrentUser: vi.fn() }));
+// اشتراکِ 1xai (منبعِ plan) — بدونِ شبکه.
+vi.mock("@/lib/billing/subscription", () => ({ readEntitlements: vi.fn() }));
 // کیف‌پولِ واحد: getUnifiedBalance جعلی + همان کلاسِ OnexaiLinkError برای instanceof.
 vi.mock("@/lib/billing/unified", () => {
   class OnexaiLinkError extends Error {
@@ -67,6 +69,8 @@ import { db } from "@/db";
 import { getCurrentUser } from "@/lib/auth/http";
 import { getUnifiedBalance, OnexaiLinkError } from "@/lib/billing/unified";
 import { OnexaiSvcUnavailableError } from "@/lib/onexai/svc";
+import { readEntitlements } from "@/lib/billing/subscription";
+import { testEntitlements } from "@/lib/billing/entitlements";
 
 import { GET as walletGET } from "@/app/api/wallet/route";
 import { POST as topupPOST } from "@/app/api/wallet/topup/route";
@@ -75,6 +79,7 @@ import { GET as usageGET } from "@/app/api/usage/route";
 const getCurrentUserMock = vi.mocked(getCurrentUser);
 const getUnifiedBalanceMock = vi.mocked(getUnifiedBalance);
 const dbSelectMock = vi.mocked(db.select);
+const readEntitlementsMock = vi.mocked(readEntitlements);
 
 const USER = { id: "user-1", phone: "0912", isActive: true } as never;
 
@@ -115,7 +120,9 @@ describe("GET /api/wallet", () => {
   it("موجودیِ واحد (availableToman) + پلن + دفتر را برمی‌گرداند (مقید به userIdِ نشست)", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
     getUnifiedBalanceMock.mockResolvedValue(poolBalance(120_000));
-    pushSelect([{ plan: "payg" }]); // select پلن
+    readEntitlementsMock.mockResolvedValue(
+      testEntitlements({ planKey: "pro", planNameFa: "حرفه‌ای", status: "active" }),
+    );
     pushSelect([
       {
         id: "l-1",
@@ -132,7 +139,8 @@ describe("GET /api/wallet", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.balanceToman).toBe(120_000);
-    expect(body.plan).toBe("payg");
+    expect(body.plan).toBe("pro");
+    expect(readEntitlementsMock).toHaveBeenCalledWith("user-1");
     expect(body.ledger).toHaveLength(1);
     expect(body.ledger[0].kind).toBe("topup");
     // موجودی با userIdِ نشست خوانده شد (نه از کوئری).
@@ -146,8 +154,9 @@ describe("GET /api/wallet", () => {
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body.error).toContain("1xai");
-    // هیچ select پلن/دفتری پس از شکستِ موجودی زده نشد.
+    // هیچ خواندنِ اشتراک/دفتری پس از شکستِ موجودی زده نشد.
     expect(dbSelectMock).not.toHaveBeenCalled();
+    expect(readEntitlementsMock).not.toHaveBeenCalled();
   });
 
   it("گره به استخر برقرار نشد (OnexaiLinkError) → ۵۰۳", async () => {
@@ -171,15 +180,15 @@ describe("GET /api/wallet", () => {
     expect(getUnifiedBalanceMock).not.toHaveBeenCalled();
   });
 
-  it("پلنِ پیش‌فرض payg اگر ردیفِ کاربر یافت نشد", async () => {
+  it("بدونِ اشتراک (یا 1xai در دسترس نبود) → plan = free", async () => {
     getCurrentUserMock.mockResolvedValue(USER);
     getUnifiedBalanceMock.mockResolvedValue(poolBalance(0));
-    pushSelect([]); // پلن نیست
+    readEntitlementsMock.mockResolvedValue(testEntitlements({ unavailable: true }));
     pushSelect([]); // دفتر خالی
     const res = await walletGET(getReq("https://k.app/api/wallet"));
     const body = await res.json();
     expect(res.status).toBe(200);
-    expect(body.plan).toBe("payg");
+    expect(body.plan).toBe("free");
     expect(body.balanceToman).toBe(0);
     expect(body.ledger).toEqual([]);
   });

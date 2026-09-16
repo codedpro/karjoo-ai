@@ -6,8 +6,8 @@ import "server-only";
  * یک نودِ ورکر را به یک کاربر تخصیص می‌دهد (Track A، قاعده‌ی ۲ — سقفِ IP بر اساسِ پلن).
  * با رازِ مشترکِ داخلی محافظت می‌شود (X-Internal-Secret؛ fail-closed → ۵۰۳).
  *
- * سقفِ IPِ پلن در hسته‌ی assignNodeToUser اعمال می‌شود (Free/Pro=۰، Max=۱، MaxPlus=۵).
- * پلنِ کاربر را اینجا از DB می‌خوانیم و به هسته می‌دهیم. اگر کاربر نباشد → ۴۰۴؛ اگر سقف
+ * سقفِ ورکر در هسته‌ی assignNodeToUser اعمال می‌شود (از اشتراکِ 1xai).
+ * مزایای کاربر را اینجا از 1xai می‌خوانیم و به هسته می‌دهیم. اگر کاربر نباشد → ۴۰۴؛ اگر سقف
  * پر/پلن بی‌ورکر باشد → WorkerIpLimitError → ۴۰۹ (با limit/assigned برای UI).
  *
  * بدنه (JSON): { userId, nodeId }
@@ -16,6 +16,7 @@ import { eq } from "drizzle-orm";
 
 import { guardInternal, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
 import { adminAssignBodySchema } from "@/lib/api/fleet-schemas";
+import { readEntitlements } from "@/lib/billing/subscription";
 import { assignNodeToUser, WorkerIpLimitError } from "@/lib/fleet/assign";
 import { db } from "@/db";
 import { users, workerNodes } from "@/db/schema";
@@ -33,9 +34,9 @@ export async function POST(request: Request): Promise<Response> {
     // ۲) اعتبارسنجیِ بدنه (strict).
     const body = await parseJsonBody(request, adminAssignBodySchema);
 
-    // ۳) پلنِ کاربرِ هدف را بخوان (سقف از روی پلن). کاربرِ ناموجود → ۴۰۴.
+    // ۳) کاربرِ هدف باید موجود باشد (سقف از اشتراکِ 1xai). کاربرِ ناموجود → ۴۰۴.
     const [user] = await db
-      .select({ plan: users.plan })
+      .select({ id: users.id })
       .from(users)
       .where(eq(users.id, body.userId))
       .limit(1);
@@ -55,7 +56,11 @@ export async function POST(request: Request): Promise<Response> {
 
     // ۴) تخصیص — سقفِ IPِ پلن داخلِ هسته اعمال می‌شود (اتمیک، داخلِ تراکنش).
     try {
-      const assignment = await assignNodeToUser(body.userId, body.nodeId, user.plan);
+      const assignment = await assignNodeToUser(
+        body.userId,
+        body.nodeId,
+        await readEntitlements(body.userId, { fresh: true }),
+      );
       return json({ assignment }, 201);
     } catch (err) {
       if (err instanceof WorkerIpLimitError) {

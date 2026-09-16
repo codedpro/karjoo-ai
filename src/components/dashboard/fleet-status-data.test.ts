@@ -1,11 +1,11 @@
 /**
  * تست‌های لایه‌ی وضعیتِ سرورِ اپلایِ کاربر (`fleet-status-data.ts`) — Track C.
  *
- * DB، وضعیتِ پلن (getUserPlanStatus) و فهرستِ تخصیص (listAssignments) mock می‌شوند —
+ * DB، مزایای اشتراکِ 1xai (readEntitlements) و فهرستِ تخصیص (listAssignments) mock می‌شوند —
  * هیچ DB/شبکه‌ی زنده. تمرکز:
  *   • Free/Pro (بدونِ ورکر): مسیرِ ارزان — تخصیص/نشست اصلاً کوئری نمی‌شود.
  *   • Max: تعدادِ نودهای تخصیص‌یافته و تازگیِ نشست درست جمع می‌شوند.
- *   • قاعده‌ی ۴: داده مقید به همان userId است (پلن/تخصیص با همان id خوانده می‌شوند).
+ *   • قاعده‌ی ۴: داده مقید به همان userId است (مزایا/تخصیص با همان id خوانده می‌شوند).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,7 +14,7 @@ const h = vi.hoisted(() => {
   return { selectResults };
 });
 
-vi.mock("@/components/dashboard/plan-data", () => ({ getUserPlanStatus: vi.fn() }));
+vi.mock("@/lib/billing/subscription", () => ({ readEntitlements: vi.fn() }));
 vi.mock("@/lib/fleet/assign", () => ({ listAssignments: vi.fn() }));
 vi.mock("@/db", () => ({
   db: {
@@ -34,11 +34,12 @@ vi.mock("@/db", () => ({
   },
 }));
 
-import { getUserPlanStatus } from "@/components/dashboard/plan-data";
+import { readEntitlements } from "@/lib/billing/subscription";
+import { testEntitlements } from "@/lib/billing/entitlements";
 import { listAssignments } from "@/lib/fleet/assign";
 import { getFleetStatusData } from "@/components/dashboard/fleet-status-data";
 
-const planMock = vi.mocked(getUserPlanStatus);
+const planMock = vi.mocked(readEntitlements);
 const assignMock = vi.mocked(listAssignments);
 
 function pushSelect(rows: unknown[]) {
@@ -47,15 +48,14 @@ function pushSelect(rows: unknown[]) {
 
 const NOW = Date.UTC(2026, 5, 30, 12, 0, 0);
 
-/** کمکی: یک UserPlanStatus کمینه با پلنِ دلخواه. */
-function planStatus(rawPlan: string) {
-  return {
-    planKey: rawPlan,
-    rawPlan,
-    balanceToman: 0,
-    grant: { period: "2026-06", granted: false, amountToman: 0 },
-    apply: { limit: null, usedToday: 0, remaining: null },
-  } as unknown as Awaited<ReturnType<typeof getUserPlanStatus>>;
+/** نگاشتِ پلن‌های قدیمی به مزایای 1xai. */
+const PLANS = {
+  free: testEntitlements(),
+  pro: testEntitlements({ unlimitedApplies: true }),
+  max: testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" }),
+};
+function planStatus(plan: keyof typeof PLANS) {
+  return PLANS[plan];
 }
 
 beforeEach(() => {
@@ -98,6 +98,7 @@ describe("getFleetStatusData", () => {
     expect(data.freshness.total).toBe(1);
     expect(data.freshness.anyFresh).toBe(true);
     expect(assignMock).toHaveBeenCalledWith("user-1");
+    expect(planMock).toHaveBeenCalledWith("user-1");
   });
 
   it("Max با نشستِ منقضی: stale شمرده می‌شود (anyFresh=false)", async () => {

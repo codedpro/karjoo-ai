@@ -126,7 +126,7 @@ export function FieldLabel({
     <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium">
       {children}
       {required ? (
-        <span className="text-rose-500" aria-hidden>
+        <span className="text-rose" aria-hidden>
           {" "}
           *
         </span>

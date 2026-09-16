@@ -10,6 +10,8 @@ import "server-only";
  */
 import { desc, eq, inArray } from "drizzle-orm";
 
+import { readEntitlements } from "@/lib/billing/subscription";
+
 import { db } from "@/db";
 import { users, workerAssignments, workerNodes } from "@/db/schema";
 
@@ -77,11 +79,17 @@ export async function listFleetNodes(): Promise<FleetNodeRow[]> {
       email: users.email,
       name: users.name,
       fullName: users.fullName,
-      plan: users.plan,
     })
     .from(workerAssignments)
     .innerJoin(users, eq(workerAssignments.userId, users.id))
     .where(inArray(workerAssignments.nodeId, nodeIds));
+
+  const userIds = [...new Set(assignmentRows.map((r) => r.userId))];
+  const planNames = new Map(
+    await Promise.all(
+      userIds.map(async (id) => [id, (await readEntitlements(id)).planNameFa] as const),
+    ),
+  );
 
   const byNode = new Map<string, AssignedUserRow[]>();
   for (const r of assignmentRows) {
@@ -91,7 +99,7 @@ export async function listFleetNodes(): Promise<FleetNodeRow[]> {
       email: r.email,
       name: r.name,
       fullName: r.fullName,
-      plan: r.plan,
+      plan: planNames.get(r.userId) ?? "—",
     });
     byNode.set(r.nodeId, list);
   }
@@ -112,12 +120,12 @@ export async function listFleetNodes(): Promise<FleetNodeRow[]> {
   }));
 }
 
-/** پلنِ خامِ یک کاربر را می‌خواند (برای اعمالِ سقفِ IP هنگامِ تخصیص). */
-export async function readUserPlan(userId: string): Promise<string | null> {
+/** آیا این کاربر وجود دارد؟ (پیش از تخصیص؛ سقف از اشتراکِ 1xai). */
+export async function userExists(userId: string): Promise<boolean> {
   const [row] = await db
-    .select({ plan: users.plan })
+    .select({ id: users.id })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
-  return row?.plan ?? null;
+  return Boolean(row);
 }

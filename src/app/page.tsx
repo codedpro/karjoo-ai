@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Logo } from "@/components/brand/logo";
+import { ThemeSwitch } from "@/components/theme";
 import { LedgerPanel } from "@/components/site-ledger-panel";
 import { KARJOO_EXTENSION_DOWNLOAD_PATH } from "@/lib/extension/version";
 import { publicProviderCapabilities } from "@/lib/apply/registry";
@@ -10,15 +11,12 @@ import { site } from "@/lib/site";
 /**
  * Landing — «شیفت شب» / Night-Shift Console.
  *
- * A deliberately self-contained, fixed "ink + amber" experience (NOT the app
- * theme tokens): the product is an operator that applies while you sleep, so the
- * marketing looks like its console. No gradient orbs, no bg-clip-text, no purple
- * glow. Monospace (system stack) for numerals / board slugs / codes; hairline
- * dividers; flat panels; a single "night-lamp" amber signal (#FFB020). Real,
- * verifiable stats only — no vanity user counts.
+ * Same editorial system as 1xAi (night surfaces, bone text, a single persimmon
+ * accent, hairline rules, sharp corners on desktop, mono trackers). Everything is
+ * a theme token, so the page follows the dark/light switch in the footer. No
+ * gradient orbs, no bg-clip-text, no glow. Real, verifiable stats only — no
+ * vanity user counts.
  */
-
-const INK = "#0C0D10";
 
 /** Persian-digit helper for the few structural numerals rendered inline. */
 const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
@@ -101,41 +99,27 @@ const faqs = [
 
 export default function Home() {
   return (
-    <div
-      dir="rtl"
-      className="min-h-dvh font-[inherit] text-[#E8E9EC] antialiased"
-      style={{ backgroundColor: INK }}
-    >
-      {/* barely-visible blueprint hairlines */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 opacity-[0.4]"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, #ffffff0a 1px, transparent 1px), linear-gradient(to bottom, #ffffff0a 1px, transparent 1px)",
-          backgroundSize: "64px 64px",
-        }}
-      />
-
+    // پس‌زمینه از body می‌آید (night-900) تا دانه‌ی کاغذِ body::before رویش دیده شود.
+    <div dir="rtl" className="min-h-dvh text-bone antialiased">
       {/* ───────── Header ───────── */}
-      <header className="sticky top-0 z-20 border-b border-[#242832]/80 bg-[#0C0D10]/85 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-hairline bg-night-900/85 backdrop-blur-xl supports-backdrop-filter:bg-night-900/70">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
           <Link href="/" className="flex items-center" aria-label="کارجو — خانه">
-            <Logo size={30} title="کارجو" className="text-[#E8E9EC]" />
+            <Logo size={30} title="کارجو" className="text-bone" />
           </Link>
-          <nav className="hidden items-center gap-7 font-mono text-[13px] text-[#8A9099] md:flex" dir="ltr">
-            <Link href="#how" className="transition-colors hover:text-[#E8E9EC]">how</Link>
-            <Link href="#caps" className="transition-colors hover:text-[#E8E9EC]">what</Link>
-            <Link href="#boards" className="transition-colors hover:text-[#E8E9EC]">boards</Link>
-            <Link href="#extension" className="transition-colors hover:text-[#E8E9EC]">extension</Link>
+          <nav className="hidden items-center gap-7 font-mono text-[13px] text-bone-dim md:flex" dir="ltr">
+            <Link href="#how" className="transition-colors hover:text-bone">how</Link>
+            <Link href="#caps" className="transition-colors hover:text-bone">what</Link>
+            <Link href="#boards" className="transition-colors hover:text-bone">boards</Link>
+            <Link href="#extension" className="transition-colors hover:text-bone">extension</Link>
           </nav>
           <div className="flex items-center gap-2">
-            <Link href="/login" className="px-3 py-2 text-sm text-[#c9cdd4] transition-colors hover:text-white">
+            <Link href="/login" className="px-3 py-2 text-sm text-bone-soft transition-colors hover:text-bone">
               ورود
             </Link>
             <Link
               href="/login"
-              className="rounded-md bg-[#FFB020] px-4 py-2 text-sm font-bold text-[#0C0D10] transition-transform hover:-translate-y-px"
+              className="focus-ring press bg-persimmon px-4 py-2 text-sm font-medium text-night-950 transition-colors hover:bg-persimmon-soft"
             >
               رایگان شروع کن
             </Link>
@@ -150,20 +134,20 @@ export default function Home() {
             {/* text (right in RTL) */}
             <div>
               <span
-                className="inline-flex items-center gap-2 rounded-full border border-[#242832] bg-[#14161B] px-3 py-1 font-mono text-[11px] text-[#8A9099]"
+                className="tracker inline-flex items-center gap-2 border border-hairline px-3 py-1.5 text-bone-dim"
                 dir="ltr"
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-[#FFB020]" />
+                <span className="dot-live" />
                 karjoo · unified job board + apply engine
               </span>
 
-              <h1 className="mt-6 text-balance text-4xl font-extrabold leading-[1.18] tracking-tight sm:text-6xl">
+              <h1 className="display-fa mt-6 text-balance text-4xl leading-[1.18] sm:text-6xl">
                 همه‌ی سایت‌های کاریابی،
                 <br />
-                <span className="text-[#FFB020]">در یک جای واحد.</span>
+                <span className="text-persimmon">در یک جای واحد.</span>
               </h1>
 
-              <p className="mt-6 max-w-xl text-pretty text-[17px] leading-8 text-[#a7adb8]">
+              <p className="mt-6 max-w-xl text-pretty text-[17px] leading-8 text-bone-soft">
                 شغل‌ها را از ارائه‌دهنده‌های مختلف یک‌جا پیدا کن، در سایت اصلی باز کن یا با کارجو اپلای کن،
                 و وضعیت درخواست‌ها را همان‌جا پیگیری کن.
               </p>
@@ -171,13 +155,13 @@ export default function Home() {
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Link
                   href="/login"
-                  className="rounded-md bg-[#FFB020] px-7 py-3.5 text-center text-base font-bold text-[#0C0D10] transition-transform hover:-translate-y-0.5"
+                  className="focus-ring press bg-persimmon px-7 py-3.5 text-center text-base font-medium text-night-950 transition-colors hover:bg-persimmon-soft"
                 >
                   رایگان شروع کن
                 </Link>
                 <Link
                   href="#how"
-                  className="rounded-md border border-[#2a2f3a] bg-[#14161B] px-7 py-3.5 text-center text-base font-semibold text-[#E8E9EC] transition-colors hover:border-[#3a4150]"
+                  className="focus-ring press border border-hairline-strong px-7 py-3.5 text-center text-base font-semibold text-bone transition-colors hover:border-persimmon hover:text-persimmon"
                 >
                   چطور کار می‌کند؟
                 </Link>
@@ -185,13 +169,12 @@ export default function Home() {
 
               {/* real-stats mono strip */}
               <dl
-                className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-[#242832] pt-6 font-mono text-[13px]"
-                dir="ltr"
+                className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-hairline pt-6 text-[13px]"
               >
                 {stats.map((s) => (
                   <div key={s.k} className="flex items-baseline gap-2">
-                    <dt className="ltr-nums text-lg font-bold text-[#FFB020]">{s.v}</dt>
-                    <dd className="text-[#8A9099]">{s.k}</dd>
+                    <dt className="ltr-nums text-lg font-bold text-persimmon">{s.v}</dt>
+                    <dd className="text-bone-dim">{s.k}</dd>
                   </div>
                 ))}
               </dl>
@@ -200,7 +183,7 @@ export default function Home() {
             {/* console ledger (left in RTL) */}
             <div dir="ltr">
               <LedgerPanel />
-              <p className="mt-3 text-center font-mono text-[11px] text-[#8A9099]" dir="rtl">
+              <p className="tracker-fa mt-3 text-center" dir="rtl">
                 نمونه‌ای از کاری که کارجو شب‌ها انجام می‌دهد — برد · دسته · وضعیت · مدلِ نویسنده‌ی کاورلتر.
               </p>
             </div>
@@ -208,18 +191,18 @@ export default function Home() {
         </section>
 
         {/* ───────── How it works ───────── */}
-        <section id="how" className="border-t border-[#242832]">
+        <section id="how" className="border-t border-hairline">
           <div className="mx-auto max-w-6xl px-5 py-16">
-            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">{"// how it works"}</p>
-            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">از جست‌وجو تا پیگیری، یک مسیر</h2>
-            <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-[#242832] bg-[#242832] md:grid-cols-3">
+            <p className="tracker text-bone-dim" dir="ltr">{"// how it works"}</p>
+            <h2 className="display-fa mt-3 text-2xl sm:text-3xl">از جست‌وجو تا پیگیری، یک مسیر</h2>
+            <div className="mt-10 grid gap-px overflow-hidden border border-hairline bg-night-600 md:grid-cols-3">
               {pipeline.map((s) => (
-                <div key={s.n} className="bg-[#14161B] p-7">
-                  <span className="ltr-nums font-mono text-3xl font-bold text-[#FFB020]" dir="ltr">
+                <div key={s.n} className="bg-night-800 p-7">
+                  <span className="ltr-nums font-mono text-3xl font-bold text-persimmon" dir="ltr">
                     {s.n}
                   </span>
                   <h3 className="mt-4 text-lg font-bold">{s.title}</h3>
-                  <p className="mt-2 text-sm leading-7 text-[#8A9099]">{s.body}</p>
+                  <p className="mt-2 text-sm leading-7 text-bone-dim">{s.body}</p>
                 </div>
               ))}
             </div>
@@ -227,20 +210,20 @@ export default function Home() {
         </section>
 
         {/* ───────── Capabilities ───────── */}
-        <section id="caps" className="border-t border-[#242832]">
+        <section id="caps" className="border-t border-hairline">
           <div className="mx-auto max-w-6xl px-5 py-16">
-            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">{"// what you get"}</p>
-            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">قابلیت‌هایی که واقعاً وقت می‌خرند</h2>
-            <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-[#242832] bg-[#242832] sm:grid-cols-2">
+            <p className="tracker text-bone-dim" dir="ltr">{"// what you get"}</p>
+            <h2 className="display-fa mt-3 text-2xl sm:text-3xl">قابلیت‌هایی که واقعاً وقت می‌خرند</h2>
+            <div className="mt-10 grid gap-px overflow-hidden border border-hairline bg-night-600 sm:grid-cols-2">
               {capabilities.map((c) => (
-                <div key={c.k} className="bg-[#14161B] p-7">
+                <div key={c.k} className="bg-night-800 p-7">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-base font-bold text-[#E8E9EC]">{c.k}</h3>
-                    <span className="shrink-0 rounded-full border border-[#2a2f3a] px-2.5 py-0.5 font-mono text-[11px] text-[#FFB020]">
+                    <h3 className="text-base font-bold text-bone">{c.k}</h3>
+                    <span className="shrink-0 border border-persimmon/40 px-2 py-0.5 text-[11px] text-persimmon">
                       {c.v}
                     </span>
                   </div>
-                  <p className="mt-3 text-sm leading-7 text-[#8A9099]">{c.body}</p>
+                  <p className="mt-3 text-sm leading-7 text-bone-dim">{c.body}</p>
                 </div>
               ))}
             </div>
@@ -248,18 +231,18 @@ export default function Home() {
         </section>
 
         {/* ───────── Boards (source list) ───────── */}
-        <section id="boards" className="border-t border-[#242832]">
+        <section id="boards" className="border-t border-hairline">
           <div className="mx-auto max-w-6xl px-5 py-16">
-            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">{"// integrated sources"}</p>
-            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">ارائه‌دهنده‌ها، مرحله‌ای و شفاف</h2>
-            <ul className="mt-8 divide-y divide-[#1c1f27] overflow-hidden rounded-lg border border-[#242832]">
+            <p className="tracker text-bone-dim" dir="ltr">{"// integrated sources"}</p>
+            <h2 className="display-fa mt-3 text-2xl sm:text-3xl">ارائه‌دهنده‌ها، مرحله‌ای و شفاف</h2>
+            <ul className="mt-8 divide-y divide-hairline-soft overflow-hidden border border-hairline">
               {publicProviderCapabilities().map((b) => (
-                <li key={b.id} className="flex items-center justify-between gap-4 bg-[#14161B] px-5 py-4">
+                <li key={b.id} className="flex items-center justify-between gap-4 bg-night-800 px-5 py-4">
                   <span className="flex items-center gap-3">
-                    <span className={b.workflowState === "live" ? "h-1.5 w-1.5 rounded-full bg-[#37C08A]" : b.workflowState === "in_progress" ? "h-1.5 w-1.5 rounded-full bg-[#FFB020]" : "h-1.5 w-1.5 rounded-full bg-[#8A9099]"} />
+                    <span className={b.workflowState === "live" ? "h-1.5 w-1.5 rounded-full bg-jade" : b.workflowState === "in_progress" ? "h-1.5 w-1.5 rounded-full bg-persimmon" : "h-1.5 w-1.5 rounded-full bg-night-500"} />
                     <span className="text-base font-bold">{b.displayName}</span>
                   </span>
-                  <span className="ltr-nums shrink-0 font-mono text-xs text-[#8A9099]" dir="ltr">
+                  <span className="ltr-nums shrink-0 font-mono text-xs text-bone-dim" dir="ltr">
                     {b.workflowState === "live" ? "live" : b.workflowState === "in_progress" ? "in progress" : "planned"}
                   </span>
                 </li>
@@ -269,17 +252,17 @@ export default function Home() {
         </section>
 
         {/* ───────── Extension ───────── */}
-        <section id="extension" className="border-t border-[#242832]">
+        <section id="extension" className="border-t border-hairline">
           <div className="mx-auto max-w-6xl px-5 py-16">
             <div className="grid items-center gap-10 lg:grid-cols-2">
               <div>
-                <p className="font-mono text-xs text-[#8A9099]" dir="ltr">{"// browser extension"}</p>
-                <h2 className="mt-2 text-2xl font-extrabold leading-snug sm:text-3xl">
+                <p className="tracker text-bone-dim" dir="ltr">{"// browser extension"}</p>
+                <h2 className="display-fa mt-3 text-2xl leading-snug sm:text-3xl">
                   افزونه را نصب کن،
                   <br />
-                  <span className="text-[#FFB020]">اپلای در مرورگرِ خودت</span>
+                  <span className="text-persimmon">اپلای در مرورگرِ خودت</span>
                 </h2>
-                <p className="mt-5 max-w-xl leading-8 text-[#a7adb8]">
+                <p className="mt-5 max-w-xl leading-8 text-bone-soft">
                   افزونه مستقیم در مرورگرِ تو اجرا می‌شود، ارائه‌دهنده‌ها را وصل می‌کند و اپلای‌ها را با حساب خودت جلو می‌برد.
                   مسیر سرور برای پلن‌های بالاتر، همین جریان را ۲۴ ساعته ادامه می‌دهد.
                 </p>
@@ -287,42 +270,42 @@ export default function Home() {
                   <a
                     href={KARJOO_EXTENSION_DOWNLOAD_PATH}
                     download
-                    className="rounded-md bg-[#FFB020] px-7 py-3.5 text-center text-base font-bold text-[#0C0D10] transition-transform hover:-translate-y-0.5"
+                    className="focus-ring press bg-persimmon px-7 py-3.5 text-center text-base font-medium text-night-950 transition-colors hover:bg-persimmon-soft"
                   >
                     دانلود افزونه
                   </a>
                   <Link
                     href="/dashboard/extension"
-                    className="rounded-md border border-[#2a2f3a] bg-[#14161B] px-7 py-3.5 text-center text-base font-semibold transition-colors hover:border-[#3a4150]"
+                    className="focus-ring press border border-hairline-strong px-7 py-3.5 text-center text-base font-semibold text-bone transition-colors hover:border-persimmon hover:text-persimmon"
                   >
                     راهنمای نصب
                   </Link>
                 </div>
-                <p className="mt-4 font-mono text-[11px] text-[#8A9099]" dir="ltr">
+                <p className="mt-4 font-mono text-[11px] text-bone-dim" dir="ltr">
                   Chrome · Edge · Load unpacked
                 </p>
               </div>
 
               {/* mini console preview */}
-              <div dir="ltr" className="overflow-hidden rounded-lg border border-[#242832] bg-[#14161B]">
-                <div className="flex items-center justify-between border-b border-[#242832] bg-[#101217] px-4 py-2.5">
-                  <span className="font-mono text-xs text-[#c9cdd4]">karjoo — popup</span>
-                  <span className="font-mono text-[11px] text-[#37C08A]">● متصل</span>
+              <div dir="ltr" className="overflow-hidden border border-hairline bg-night-800">
+                <div className="flex items-center justify-between border-b border-hairline bg-night-950 px-4 py-2.5">
+                  <span className="font-mono text-xs text-bone-soft">karjoo — popup</span>
+                  <span className="text-[11px] text-jade">● متصل</span>
                 </div>
                 <div className="space-y-2 p-4" dir="rtl">
-                  <div className="flex items-center justify-between rounded-md border border-[#242832] bg-[#101217] px-3.5 py-3">
+                  <div className="flex items-center justify-between border border-hairline bg-night-950 px-3.5 py-3">
                     <span className="text-sm font-semibold">اپلای خودکار در مرورگر</span>
-                    <span className="relative inline-flex h-5 w-9 items-center rounded-full bg-[#FFB020]">
-                      <span className="absolute left-0.5 h-4 w-4 rounded-full bg-[#0C0D10]" />
+                    <span className="relative inline-flex h-5 w-9 items-center rounded-full bg-persimmon">
+                      <span className="absolute left-0.5 h-4 w-4 rounded-full bg-night-900" />
                     </span>
                   </div>
                   {["وب و برنامه‌نویسی", "IT / DevOps", "پشتیبانی مشتریان"].map((c) => (
-                    <div key={c} className="flex items-center justify-between rounded-md bg-[#101217] px-3.5 py-2.5 text-sm">
-                      <span className="flex items-center gap-2 text-[#c9cdd4]">
-                        <span className="text-[#37C08A]">✓</span>
+                    <div key={c} className="flex items-center justify-between bg-night-950 px-3.5 py-2.5 text-sm">
+                      <span className="flex items-center gap-2 text-bone-soft">
+                        <span className="text-jade">✓</span>
                         {c}
                       </span>
-                      <span className="font-mono text-[11px] text-[#8A9099]" dir="ltr">queued</span>
+                      <span className="font-mono text-[11px] text-bone-dim" dir="ltr">queued</span>
                     </div>
                   ))}
                 </div>
@@ -332,24 +315,24 @@ export default function Home() {
         </section>
 
         {/* ───────── FAQ (transcript) ───────── */}
-        <section className="border-t border-[#242832]">
+        <section className="border-t border-hairline">
           <div className="mx-auto max-w-3xl px-5 py-16">
-            <p className="font-mono text-xs text-[#8A9099]" dir="ltr">{"// faq"}</p>
-            <h2 className="mt-2 text-2xl font-extrabold sm:text-3xl">سؤال‌های پرتکرار</h2>
+            <p className="tracker text-bone-dim" dir="ltr">{"// faq"}</p>
+            <h2 className="display-fa mt-3 text-2xl sm:text-3xl">سؤال‌های پرتکرار</h2>
             <div className="mt-8 space-y-3">
               {faqs.map((f) => (
                 <details
                   key={f.q}
-                  className="group overflow-hidden rounded-lg border border-[#242832] bg-[#14161B] [&_summary]:cursor-pointer"
+                  className="group overflow-hidden border border-hairline bg-night-800 [&_summary]:cursor-pointer"
                 >
                   <summary className="flex items-center justify-between gap-3 px-5 py-4 text-base font-bold marker:content-['']">
                     <span className="flex items-center gap-2">
-                      <span className="font-mono text-[#FFB020]" dir="ltr">{">"}</span>
+                      <span className="font-mono text-persimmon" dir="ltr">{">"}</span>
                       {f.q}
                     </span>
-                    <span className="font-mono text-[#8A9099] transition-transform group-open:rotate-45">+</span>
+                    <span className="font-mono text-bone-dim transition-transform group-open:rotate-45">+</span>
                   </summary>
-                  <p className="border-t border-[#242832] px-5 py-4 text-sm leading-8 text-[#8A9099]">
+                  <p className="border-t border-hairline px-5 py-4 text-sm leading-8 text-bone-dim">
                     {f.a}
                   </p>
                 </details>
@@ -359,18 +342,18 @@ export default function Home() {
         </section>
 
         {/* ───────── CTA ───────── */}
-        <section className="border-t border-[#242832]">
+        <section className="border-t border-hairline">
           <div className="mx-auto max-w-6xl px-5 py-20 text-center">
-            <h2 className="text-3xl font-extrabold sm:text-4xl">
-              امشب، بگذار کارجو <span className="text-[#FFB020]">شیفتِ شب</span> را بگیرد.
+            <h2 className="display-fa text-3xl leading-snug sm:text-4xl">
+              امشب، بگذار کارجو <span className="text-persimmon">شیفتِ شب</span> را بگیرد.
             </h2>
-            <p className="mx-auto mt-4 max-w-xl leading-8 text-[#a7adb8]">
+            <p className="mx-auto mt-4 max-w-xl leading-8 text-bone-soft">
               ارائه‌دهنده‌ها را وصل کن؛ کارجو شغل‌های تازه، اپلای و وضعیت‌ها را در یک مسیر نگه می‌دارد.
             </p>
             <div className="mt-8">
               <Link
                 href="/login"
-                className="inline-block rounded-md bg-[#FFB020] px-8 py-4 text-base font-bold text-[#0C0D10] transition-transform hover:-translate-y-0.5"
+                className="focus-ring press inline-block bg-persimmon px-8 py-4 text-base font-medium text-night-950 transition-colors hover:bg-persimmon-soft"
               >
                 ساخت حساب رایگان
               </Link>
@@ -380,24 +363,25 @@ export default function Home() {
       </main>
 
       {/* ───────── Footer ───────── */}
-      <footer className="border-t border-[#242832]">
+      <footer className="border-t border-hairline">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-5 py-8 sm:flex-row">
           <div className="flex items-center gap-3">
-            <Logo variant="mark" size={24} className="text-[#E8E9EC]" />
-            <span className="font-mono text-xs text-[#8A9099]" dir="ltr">
+            <Logo variant="mark" size={24} className="text-bone" />
+            <span className="font-mono text-xs text-bone-dim" dir="ltr">
               karjoo · {site.name}
             </span>
           </div>
-          <div className="flex flex-col items-center gap-1.5 sm:items-end">
+          <div className="flex flex-col items-center gap-2 sm:items-end">
+            <ThemeSwitch />
             <a
               href="https://1xai.ir"
               target="_blank"
               rel="noopener"
-              className="text-[11px] text-[#8A9099] transition-colors hover:text-[#FFB020]"
+              className="text-[11px] text-bone-dim transition-colors hover:text-persimmon"
             >
               از خانواده‌ی <span className="font-mono">1xAi</span> ↗
             </a>
-            <p className="ltr-nums font-mono text-[11px] text-[#8A9099]" dir="ltr">
+            <p className="tracker-fa">
               © ۱۴۰۵ — اپلای با نشستِ خودت · بدونِ دور زدنِ تشخیص
             </p>
           </div>

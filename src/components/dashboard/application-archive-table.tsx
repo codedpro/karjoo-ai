@@ -173,7 +173,7 @@ export function ApplicationArchiveTable({ rows }: { rows: ArchiveRow[] }) {
                         href={`/api/applications/${r.id}/resume`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="focus-ring inline-flex items-center whitespace-nowrap rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground transition hover:brightness-110"
+                        className="focus-ring inline-flex items-center whitespace-nowrap rounded-lg bg-brand px-3 py-1.5 text-xs font-bold text-brand-foreground transition hover:bg-persimmon-soft"
                       >
                         دیدنِ رزومه
                       </a>
@@ -239,7 +239,7 @@ export function ApplicationArchiveTable({ rows }: { rows: ArchiveRow[] }) {
                   href={`/api/applications/${openJd.id}/resume`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="focus-ring rounded-xl bg-brand px-4 py-2 text-sm font-bold text-brand-foreground transition hover:brightness-110"
+                  className="focus-ring rounded-xl bg-brand px-4 py-2 text-sm font-bold text-brand-foreground transition hover:bg-persimmon-soft"
                 >
                   رزومه‌ای که فرستادیم
                 </a>

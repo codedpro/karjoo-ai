@@ -238,7 +238,7 @@ export function UploadsPanel({
         <div
           role="alert"
           aria-live="polite"
-          className="text-pretty rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm leading-6 text-rose-600 dark:text-rose-400"
+          className="text-pretty rounded-xl border border-rose/30 bg-rose/10 px-4 py-3 text-sm leading-6 text-rose"
         >
           {error}
         </div>
@@ -310,7 +310,7 @@ export function UploadsPanel({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={anyBusy}
-              className="focus-ring inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-border bg-card px-5 py-2.5 text-sm font-medium transition-colors hover:border-brand hover:text-foreground active:translate-y-px disabled:pointer-events-none disabled:opacity-60"
+              className="focus-ring inline-flex items-center gap-2 whitespace-nowrap border border-border bg-card px-5 py-2.5 text-sm font-medium transition-colors hover:border-brand hover:text-foreground active:translate-y-px disabled:pointer-events-none disabled:opacity-60"
             >
               <IconUpload className="h-4 w-4" />
               {busy?.kind === "upload" ? "در حال آپلود…" : "انتخابِ فایلِ PDF"}
@@ -388,7 +388,7 @@ export function UploadsPanel({
                     {/* دانلود (رایگان) */}
                     <a
                       href={`/api/resume/download?id=${encodeURIComponent(f.id)}`}
-                      className="focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:border-brand active:translate-y-px"
+                      className="focus-ring inline-flex shrink-0 items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:border-brand active:translate-y-px"
                       title="دانلودِ فایل"
                     >
                       <IconDownload className="h-3.5 w-3.5" />
@@ -411,7 +411,7 @@ export function UploadsPanel({
                               ? "سرویسِ هوش مصنوعی موقتاً در دسترس نیست."
                               : undefined
                         }
-                        className="focus-ring inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-brand px-4 py-2 text-xs font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] hover:-translate-y-0.5 hover:brightness-110 active:translate-y-px disabled:pointer-events-none disabled:opacity-55"
+                        className="focus-ring inline-flex items-center gap-1.5 whitespace-nowrap bg-brand px-4 py-2 text-xs font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] hover:bg-persimmon-soft active:translate-y-px disabled:pointer-events-none disabled:opacity-55"
                       >
                         <IconSparkle className="h-3.5 w-3.5" />
                         {isThisBusy && busy?.kind === "parse"
@@ -427,7 +427,7 @@ export function UploadsPanel({
                       onClick={() => void handleSetPrimary(f.id)}
                       disabled={anyBusy || f.isPrimary}
                       title={f.isPrimary ? "این فایل هم‌اکنون رزومه‌ی اصلیِ شماست." : undefined}
-                      className="focus-ring inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border px-4 py-2 text-xs font-medium transition-colors hover:border-brand active:translate-y-px disabled:pointer-events-none disabled:opacity-55"
+                      className="focus-ring inline-flex items-center gap-1.5 whitespace-nowrap border border-border px-4 py-2 text-xs font-medium transition-colors hover:border-brand active:translate-y-px disabled:pointer-events-none disabled:opacity-55"
                     >
                       <IconStar className="h-3.5 w-3.5" />
                       {isThisBusy && busy?.kind === "primary"
@@ -443,7 +443,7 @@ export function UploadsPanel({
                       type="button"
                       onClick={() => void handleDelete(f.id, f.fileName)}
                       disabled={anyBusy}
-                      className="focus-ring me-0 ms-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-500/10 active:translate-y-px disabled:pointer-events-none disabled:opacity-55 dark:text-rose-400"
+                      className="focus-ring me-0 ms-auto inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2 text-xs font-medium text-rose transition-colors hover:bg-rose/10 active:translate-y-px disabled:pointer-events-none disabled:opacity-55"
                     >
                       <IconTrash className="h-3.5 w-3.5" />
                       {isThisBusy && busy?.kind === "delete" ? "در حال حذف…" : "حذف"}
@@ -462,7 +462,7 @@ export function UploadsPanel({
 /** نشانِ ریزِ «رایگان» درونِ دکمه (متمایز از FreeBadge بزرگ‌تر). */
 function FreeTag() {
   return (
-    <span className="rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+    <span className=" bg-jade/15 px-1.5 py-0.5 text-[10px] font-bold text-jade">
       رایگان
     </span>
   );

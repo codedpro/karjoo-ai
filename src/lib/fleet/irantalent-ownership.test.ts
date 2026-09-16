@@ -7,6 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EMPTY_APPLY_FILTERS } from "@/lib/apply/filters";
+import { testEntitlements } from "@/lib/billing/entitlements";
 
 const claimUserApplyItems = vi.fn<(...args: unknown[]) => Promise<unknown[]>>(
   () => Promise.resolve([]),
@@ -42,7 +43,8 @@ function filtersWith(...enabled: string[]) {
 async function runFleet() {
   return claimFleetJobs("node-1", 5, {
     readAssignedUserIds: async () => ["u1"],
-    readPlan: async () => "max",
+    readEntitlements: async () =>
+      testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" }),
     assertAllowed: async () => ({
       minScore: 0.7,
       quota: { limit: null, usedToday: 0, remaining: null },

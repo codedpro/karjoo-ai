@@ -29,8 +29,9 @@ export function SectionTabs({
   ariaLabel: string;
 }) {
   return (
-    <nav aria-label={ariaLabel} className="-mt-2 mb-6">
-      <ul className="flex flex-wrap gap-1 rounded-xl border border-white/10 bg-white/[0.02] p-1">
+    <nav aria-label={ariaLabel} className="-mt-2 mb-6 overflow-x-auto">
+      {/* زبانه‌های زیرخط‌دار — همان Segments در 1xAi */}
+      <ul className="flex min-w-max gap-1 border-b border-hairline-soft">
         {tabs.map((tab) => {
           const isActive = tab.href === active;
           return (
@@ -39,10 +40,10 @@ export function SectionTabs({
                 href={tab.href}
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
-                  "block rounded-lg px-3 py-2 text-sm transition-colors",
+                  "focus-ring -mb-px block border-b-2 px-3 py-2.5 text-sm transition-colors",
                   isActive
-                    ? "bg-white/10 font-medium text-white"
-                    : "text-white/60 hover:bg-white/5 hover:text-white/90",
+                    ? "border-persimmon font-medium text-bone"
+                    : "border-transparent text-bone-dim hover:text-bone",
                 )}
               >
                 {tab.label}

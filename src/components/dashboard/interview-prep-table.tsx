@@ -212,7 +212,7 @@ export function InterviewPrepTable({
                   scroll={false}
                   aria-current={active ? "true" : undefined}
                   className={cn(
-                    "focus-ring inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors",
+                    "focus-ring inline-flex items-center gap-1.5 border px-3 py-1.5 text-xs font-bold transition-colors",
                     active
                       ? "border-brand/50 bg-brand/10 text-brand"
                       : "border-border text-muted hover:text-foreground",
@@ -352,7 +352,7 @@ export function InterviewPrepTable({
                             href={`/api/applications/${row.applicationId}/resume`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="focus-ring inline-flex items-center gap-1.5 rounded-full bg-brand px-3.5 py-1.5 text-xs font-semibold text-brand-foreground hover:brightness-110"
+                            className="focus-ring inline-flex items-center gap-1.5 bg-brand px-3.5 py-1.5 text-xs font-semibold text-brand-foreground hover:bg-persimmon-soft"
                           >
                             <IconDoc className="h-3.5 w-3.5" />
                             رزومه‌ی ارسالی
@@ -473,7 +473,7 @@ function JdModal({
             href={row.listing.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="focus-ring rounded-full border border-border px-4 py-2 text-sm hover:border-brand/60"
+            className="focus-ring border border-border px-4 py-2 text-sm hover:border-brand/60"
           >
             دیدنِ آگهی در سایت
           </a>
@@ -482,7 +482,7 @@ function JdModal({
               href={`/api/applications/${row.applicationId}/resume`}
               target="_blank"
               rel="noopener noreferrer"
-              className="focus-ring rounded-full bg-brand px-4 py-2 text-sm font-bold text-brand-foreground hover:brightness-110"
+              className="focus-ring bg-brand px-4 py-2 text-sm font-bold text-brand-foreground hover:bg-persimmon-soft"
             >
               رزومه‌ی ارسالی
             </a>

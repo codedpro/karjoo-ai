@@ -22,7 +22,6 @@ import { createHash, createHmac } from "node:crypto";
 
 import { onexaiSvcConfig } from "@/lib/env";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
-import type { Plan } from "@/db/schema";
 
 /** خطای typedِ سرویس — status برای تصمیمِ فراخواننده. */
 export class OnexaiSvcError extends Error {
@@ -140,7 +139,7 @@ async function svcFetch<T>(
       // گیتِ موجودیِ واحد — همان خطای typedِ بیلینگِ کارجو تا مصرف‌کننده‌ها یکسان بمانند.
       throw new InsufficientBalanceError({
         balanceToman: Math.round(Number(data.balance_toman ?? 0)),
-        plan: "free" as Plan, // پلن این‌جا معنای گیت ندارد؛ صرفاً برای شکلِ خطا.
+        plan: "", // اشتراک این‌جا معنای گیت ندارد؛ صرفاً برای شکلِ خطا.
         message:
           "موجودیِ کیف‌پولِ 1xai شما کافی نیست. از داشبوردِ 1xai شارژ کنید.",
       });
@@ -224,6 +223,33 @@ export async function getPoolBalance(onexaiUserId: number): Promise<OnexaiBalanc
     availableToman: Math.floor(r.available_toman),
     isActive: r.is_active,
     unlimited: r.unlimited,
+  };
+}
+
+/** اشتراکِ جاریِ کاربر در 1xai — منبعِ واحدِ مزایای کارجو (features.karjoo_*). */
+export interface OnexaiSubscription {
+  planKey: string;
+  nameFa: string;
+  /** "active" = اشتراکِ پولی/هدیه‌ی معتبر؛ "free" = بدونِ اشتراک. */
+  status: "active" | "free";
+  periodEnd: Date | null;
+  features: Record<string, unknown>;
+}
+
+export async function getPoolSubscription(onexaiUserId: number): Promise<OnexaiSubscription> {
+  const r = await svcFetch<{
+    plan_key: string;
+    name_fa: string;
+    status: string;
+    period_end: string | null;
+    features: Record<string, unknown> | null;
+  }>("GET", `/svc/users/${onexaiUserId}/subscription`);
+  return {
+    planKey: r.plan_key,
+    nameFa: r.name_fa,
+    status: r.status === "active" ? "active" : "free",
+    periodEnd: r.period_end ? new Date(r.period_end) : null,
+    features: r.features ?? {},
   };
 }
 

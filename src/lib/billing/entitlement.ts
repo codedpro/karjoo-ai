@@ -3,12 +3,10 @@ import "server-only";
 /**
  * نگهبانِ استحقاقِ استفاده از سرویسِ پولیِ هوش مصنوعی (server-only).
  *
- * قاعده‌ی قفل‌شده (WF3 بخش C): گیتِ هوش مصنوعی روی *موجودی* است، نه پلن. هر پلنی
- * (شاملِ Free) با موجودی > ۰ می‌تواند از AI استفاده کند؛ پلن صرفاً سهمیه/ورکر را
- * تعیین می‌کند (plans.ts)، نه یک بلاکِ سراسری. گیت *پیش از* فراخوانیِ مدل انجام می‌شود
+ * گیتِ هوش مصنوعی روی پولِ در دسترس است. گیت *پیش از* فراخوانیِ مدل انجام می‌شود
  * (هرگز بی‌سروصدا هزینه‌ی بالادست خرج نشود):
- *   • موجودی > ۰  → مجاز (هر پلن).
- *   • موجودی ≤ ۰  → InsufficientBalanceError (باید در 1xai شارژ شود).
+ *   • موجودی > ۰ یا اشتراکِ فعالِ 1xai → مجاز (اعتبارِ اشتراک اول مصرف می‌شود).
+ *   • در غیرِ این صورت → InsufficientBalanceError (باید در 1xai شارژ شود).
  *
  * موجودی از کیف‌پولِ *واحدِ 1xai* خوانده می‌شود (getUnifiedBalance → availableToman؛
  * «یک انسان، یک موجودی» — شارژ فقط در 1xai.ir/topup). fail-closed: اگر svcِ 1xai در
@@ -20,10 +18,9 @@ import "server-only";
  *
  * db و خواننده‌ی پلن/موجودی تزریق‌پذیرند تا تستِ بدونِ DB/svc ممکن باشد.
  */
-import { eq } from "drizzle-orm";
-
 import { db as defaultDb } from "@/db";
-import { users, type Plan } from "@/db/schema";
+import type { Entitlements } from "@/lib/billing/entitlements";
+import { readEntitlements } from "@/lib/billing/subscription";
 import { getUnifiedBalance } from "@/lib/billing/unified";
 import { InsufficientBalanceError } from "@/lib/billing/errors";
 
@@ -47,28 +44,18 @@ export function isFreeAction(action: string): action is FreeAction {
 
 /** نتیجه‌ی موفقِ گیت — پلن و موجودیِ فعلی (برای فراخواننده/لاگ). */
 export interface Entitlement {
-  plan: Plan;
+  /** نامِ اشتراکِ 1xaiِ کاربر (نمایشی). */
+  plan: string;
   balanceToman: number;
 }
 
 /** وابستگی‌های قابلِ‌تزریقِ گیت — برای تستِ بدونِ DB. */
 export interface EntitlementDeps {
   db?: EntitlementDb;
-  /** خواننده‌ی پلنِ کاربر (پیش‌فرض از جدولِ users). */
-  readPlan?: (userId: string) => Promise<Plan>;
+  /** مزایای کاربر از اشتراکِ 1xai (پیش‌فرض readEntitlements). */
+  readEntitlements?: (userId: string) => Promise<Entitlements>;
   /** خواننده‌ی موجودی (پیش‌فرض availableTomanِ کیف‌پولِ واحدِ 1xai). */
   readBalance?: (userId: string) => Promise<number>;
-}
-
-/** پلنِ کاربر را از جدولِ users می‌خواند (پیش‌فرضِ readPlan). */
-async function defaultReadPlan(userId: string, db: EntitlementDb): Promise<Plan> {
-  const [row] = await db
-    .select({ plan: users.plan })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  // اگر کاربر یافت نشد، محتاطانه free فرض می‌کنیم (fail-closed → باید شارژ/پلن داشته باشد).
-  return row?.plan ?? "free";
 }
 
 /**
@@ -86,18 +73,21 @@ export async function assertCanUsePaidAi(
   deps: EntitlementDeps = {},
 ): Promise<Entitlement> {
   const db = deps.db ?? defaultDb;
-  const readPlan = deps.readPlan ?? ((id: string) => defaultReadPlan(id, db));
+  const readSub = deps.readEntitlements ?? ((id: string) => readEntitlements(id));
   const readBalance =
     deps.readBalance ??
     (async (id: string) => (await getUnifiedBalance(id, { db })).availableToman);
 
-  const plan = await readPlan(userId);
-  const balanceToman = await readBalance(userId);
+  const [entitlements, balanceToman] = await Promise.all([
+    readSub(userId),
+    readBalance(userId),
+  ]);
+  const plan = entitlements.planNameFa;
 
-  // گیتِ واحد: موجودیِ مثبت لازم است (هر پلن). پول در کیف‌پولِ واحدِ 1xai زندگی می‌کند،
-  // پس همین شرطِ «> ۰» همه‌ی پلن‌ها را پوشش می‌دهد. پلنِ free بلاکِ سخت ندارد — اگر
-  // کاربر در 1xai شارژ کرده باشد، مجاز است.
-  if (balanceToman <= 0) {
+  // گیتِ واحد: موجودیِ مثبت *یا* اشتراکِ فعالِ 1xai. اعتبارِ اشتراک پیش از کیف‌پول مصرف
+  // می‌شود و گیت‌ویِ 1xai خودش سقفِ آن را اعمال می‌کند؛ پس مشترکی که کیف‌پولش خالی است
+  // نباید این‌جا بلاک شود.
+  if (balanceToman <= 0 && entitlements.status !== "active") {
     throw new InsufficientBalanceError({
       balanceToman,
       plan,

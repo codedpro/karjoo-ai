@@ -114,7 +114,7 @@ function DownloadButton() {
     <a
       href={EXTENSION_ZIP}
       download
-      className="focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] duration-150 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-px"
+      className="focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] duration-150 hover:bg-persimmon-soft active:translate-y-px"
     >
       <IconDownload className="h-4 w-4" />
       دانلودِ افزونه (ZIP)

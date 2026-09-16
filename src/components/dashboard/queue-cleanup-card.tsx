@@ -61,24 +61,24 @@ export function QueueCleanupCard({ initial }: { initial: QueueCount[] }) {
         <Badge tone={total > 0 ? "muted" : "muted"}>{total.toLocaleString("fa-IR")} مورد</Badge>
       </div>
 
-      <p className="mb-4 text-xs text-white/60">
+      <p className="mb-4 text-xs text-bone-dim">
         صف با فیلترهای همان لحظه پر شده است. اگر الان فیلتری را عوض کردید، آگهی‌های
         قبلی همچنان در نوبت می‌مانند — تا وقتی از این‌جا برشان دارید. تاریخچه و
         ارسال‌های انجام‌شده دست نمی‌خورند و کشف بعدی صف را دوباره پر می‌کند.
       </p>
 
       {total === 0 ? (
-        <p className="text-sm text-white/60">نوبت خالی است.</p>
+        <p className="text-sm text-bone-dim">نوبت خالی است.</p>
       ) : (
         <ul className="grid gap-2">
           {counts.filter((c) => c.pending > 0).map((c) => (
             <li
               key={c.board}
-              className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-xl border border-hairline bg-night-900 px-3 py-2"
             >
               <span className="text-sm">
                 {boardLabel(c.board)}
-                <span className="mr-2 text-xs text-white/50">
+                <span className="mr-2 text-xs text-bone-dim">
                   {c.pending.toLocaleString("fa-IR")} آگهی
                 </span>
               </span>
@@ -89,7 +89,7 @@ export function QueueCleanupCard({ initial }: { initial: QueueCount[] }) {
                   </Button>
                   <button
                     type="button"
-                    className="text-xs text-white/60 hover:text-white"
+                    className="text-xs text-bone-dim hover:text-bone"
                     onClick={() => setConfirming(null)}
                   >
                     انصراف
@@ -112,7 +112,7 @@ export function QueueCleanupCard({ initial }: { initial: QueueCount[] }) {
       )}
 
       {message ? (
-        <p className={cn("mt-3 text-sm", message.includes("برداشته") ? "text-emerald-300" : "text-rose-300")}>
+        <p className={cn("mt-3 text-sm", message.includes("برداشته") ? "text-jade" : "text-rose")}>
           {message}
         </p>
       ) : null}

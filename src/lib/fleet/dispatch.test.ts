@@ -16,6 +16,10 @@ import {
   recordFleetResult,
   type ClaimFleetDeps,
 } from "@/lib/fleet/dispatch";
+import { testEntitlements } from "@/lib/billing/entitlements";
+
+const MAX = testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" });
+const MAXPLUS = testEntitlements({ unlimitedApplies: true, workerIpLimit: 5, status: "active" });
 import type {
   ClaimedApplyItem,
   RecordResultOutput,
@@ -82,7 +86,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
   it("نودِ بدونِ کاربرِ تخصیص‌یافته ⇒ هیچ کاری", async () => {
     const deps: ClaimFleetDeps = {
       readAssignedUserIds: async () => [],
-      readPlan: async () => "max",
+      readEntitlements: async () => MAX,
       assertAllowed: async () => ({ minScore: 0.7 }),
       claimItems: async () => [item()],
       loadSession: async () => "SESSION",
@@ -95,7 +99,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
     const claimItems = vi.fn(async () => [item()]);
     const deps: ClaimFleetDeps = {
       readAssignedUserIds: async () => ["uBlocked", "uOk"],
-      readPlan: async () => "max",
+      readEntitlements: async () => MAX,
       assertAllowed: async (userId) => {
         if (userId === "uBlocked") {
           // گیتِ سطحِ سرور: تاگلِ سرور خاموش/پلنِ بی‌ورکر → این کاربر بی‌سروصدا رد می‌شود.
@@ -122,7 +126,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
     const claimItems = vi.fn(async () => [item()]);
     const deps: ClaimFleetDeps = {
       readAssignedUserIds: async () => ["u1"],
-      readPlan: async () => "maxplus",
+      readEntitlements: async () => MAXPLUS,
       assertAllowed: async () => ({ minScore: 0.75 }),
       claimItems,
       loadSession: async () => "S",
@@ -138,7 +142,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
     );
     const deps: ClaimFleetDeps = {
       readAssignedUserIds: async () => ["u1"],
-      readPlan: async () => "max",
+      readEntitlements: async () => MAX,
       assertAllowed: async () => ({ minScore: 0.7 }),
       claimItems: async () => [
         item({ taskId: "tA", board: "jobinja" }),
@@ -155,11 +159,11 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
     expect(loadSession).toHaveBeenCalledWith("u1", "jobinja");
   });
 
-  it("نبودِ پلنِ کاربر ⇒ آن کاربر رد می‌شود (گیت اصلاً صدا نمی‌خورد)", async () => {
+  it("کاربرِ یافت‌نشده (بدونِ مزایا) ⇒ آن کاربر رد می‌شود (گیت اصلاً صدا نمی‌خورد)", async () => {
     const assertAllowed = vi.fn(async () => ({ minScore: 0.7 }));
     const deps: ClaimFleetDeps = {
       readAssignedUserIds: async () => ["uGhost"],
-      readPlan: async () => null,
+      readEntitlements: async () => null,
       assertAllowed,
       claimItems: async () => [item()],
       loadSession: async () => "S",
@@ -172,7 +176,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
   it("limit کلِ کارها را بین کاربران محدود می‌کند", async () => {
     const deps: ClaimFleetDeps = {
       readAssignedUserIds: async () => ["u1", "u2"],
-      readPlan: async () => "maxplus",
+      readEntitlements: async () => MAXPLUS,
       assertAllowed: async () => ({ minScore: 0.7 }),
       // هر کاربر می‌تواند ۱ آیتم بدهد؛ ولی limit کل = ۱.
       claimItems: async (userId, lim) => (lim > 0 ? [item({ taskId: `t-${userId}` })] : []),
@@ -194,7 +198,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
     const releaseMissingResumeTask = vi.fn(async () => undefined);
     const deps: ClaimFleetDeps = {
       readAssignedUserIds: async () => ["u1"],
-      readPlan: async () => "max",
+      readEntitlements: async () => MAX,
       assertAllowed: async () => ({ minScore: 0.7 }),
       claimItems: async () => [item()],
       loadSession: async () => "S",

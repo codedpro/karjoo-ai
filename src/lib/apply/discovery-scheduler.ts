@@ -8,7 +8,6 @@ import {
   sessionBlobs,
   userServerAutoApply,
   users,
-  type Plan,
 } from "@/db/schema";
 import {
   assertServerAutoApplyAllowed,
@@ -17,7 +16,8 @@ import {
 import { runFilterApply, type RunFilterApplyReport } from "@/lib/apply/orchestrator";
 import { liveBoardIds } from "@/lib/apply/registry";
 import { assertCanUsePaidAi } from "@/lib/billing/entitlement";
-import { applyQuotaFor } from "@/lib/billing/plans";
+import { applyQuotaOf, type Entitlements } from "@/lib/billing/entitlements";
+import { readEntitlements } from "@/lib/billing/subscription";
 import type { QueueResumePrepResult } from "@/lib/resume/queue-prep";
 import { canServerExecute } from "@/lib/apply/execution-run";
 
@@ -50,7 +50,6 @@ const DISCOVERY_LOCK_KEY = 0x6b61726a; // "karj"
 /** یک کاربرِ کاندیدای کشفِ سرور (تاگل روشن + نشستِ معتبر). */
 export interface EligibleUser {
   userId: string;
-  plan: Plan;
 }
 
 /** نتیجه‌ی پردازشِ یک کاربر در این دور. */
@@ -96,7 +95,9 @@ export interface ServerDiscoveryDeps {
   /** فهرست‌کننده‌ی کاربرانِ واجدِ شرایط — پیش‌فرض listEligibleForServerDiscovery. */
   listEligible?: (conn: Database, limit: number) => Promise<EligibleUser[]>;
   /** گیتِ سطحِ سرور (plan/toggle/quota) — minScore برای سازگاری تنظیمات برمی‌گردد ولی گیت صف نیست. */
-  assertAllowed?: (userId: string, plan: Plan) => Promise<{ minScore: number }>;
+  assertAllowed?: (userId: string, entitlements: Entitlements) => Promise<{ minScore: number }>;
+  /** مزایای کاربر از اشتراکِ 1xai (پیش‌فرض readEntitlements). */
+  readEntitlements?: (userId: string) => Promise<Entitlements>;
   /** گیتِ موجودیِ AI — پیش‌فرض assertCanUsePaidAi؛ throw → کاربر رد می‌شود (بی‌اسپند). */
   canUsePaidAi?: (userId: string) => Promise<unknown>;
   /** اجراگرِ کشف — پیش‌فرض runFilterApply. */
@@ -146,7 +147,7 @@ export async function listEligibleForServerDiscovery(
   );
 
   const candidates = await conn
-    .select({ userId: users.id, plan: users.plan })
+    .select({ userId: users.id })
     .from(users)
     .innerJoin(
       userServerAutoApply,
@@ -204,8 +205,8 @@ export async function runServerDiscovery(
   const listEligible = deps.listEligible ?? listEligibleForServerDiscovery;
   const assertAllowed =
     deps.assertAllowed ??
-    (async (userId: string, plan: Plan) => {
-      const { minScore } = await assertServerAutoApplyAllowed(userId, plan, {
+    (async (userId: string, entitlements: Entitlements) => {
+      const { minScore } = await assertServerAutoApplyAllowed(userId, entitlements, {
         db: conn as never,
       });
       return { minScore };
@@ -238,7 +239,9 @@ export async function runServerDiscovery(
   let deadlineHit = false;
   let totalPreparedResumes = 0;
 
-  for (const { userId, plan } of eligible) {
+  const getEntitlements = deps.readEntitlements ?? ((userId: string) => readEntitlements(userId));
+
+  for (const { userId } of eligible) {
     // بودجه‌ی زمان: پیش از سررسیدِ cron/تابع بایست تا اجراها روی هم نیفتند. باقی‌مانده‌ها
     // دورِ بعد (به‌لطفِ چرخشِ منصفانه) اولویت دارند.
     if (now() - startedAt >= budgetMs) {
@@ -253,9 +256,10 @@ export async function runServerDiscovery(
         outcomes.push({ userId, status: "skipped", reason: "execution_owned_or_blocked" });
         continue;
       }
-      // گیتِ سطحِ سرور (plan/toggle/quota دوباره — belt & suspenders، fail-closed).
+      // گیتِ سطحِ سرور (اشتراک/toggle/quota دوباره — belt & suspenders، fail-closed).
+      const entitlements = await getEntitlements(userId);
       try {
-        await assertAllowed(userId, plan);
+        await assertAllowed(userId, entitlements);
       } catch (err) {
         skipped += 1;
         outcomes.push({ userId, status: "skipped", reason: gateReason(err) });
@@ -271,7 +275,7 @@ export async function runServerDiscovery(
         continue;
       }
 
-      const dailyCap = applyQuotaFor(plan) ?? Number.MAX_SAFE_INTEGER;
+      const dailyCap = applyQuotaOf(entitlements) ?? Number.MAX_SAFE_INTEGER;
       const report = await runFilter({
         userId,
         aiFilter: false,

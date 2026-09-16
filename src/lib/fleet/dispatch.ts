@@ -25,7 +25,9 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import { prepareNextTailoredResumeForQueue } from "@/lib/resume/queue-prep";
-import { applications, candidateProfiles, resumes, tasks, users, type Plan } from "@/db/schema";
+import { applications, candidateProfiles, resumes, tasks, users } from "@/db/schema";
+import type { Entitlements } from "@/lib/billing/entitlements";
+import { readEntitlements } from "@/lib/billing/subscription";
 import {
   assertServerAutoApplyAllowed,
   recordAutoApplyAudit,
@@ -89,10 +91,10 @@ export interface ClaimFleetDeps {
   db?: FleetDispatchDb;
   /** خواننده‌ی userIdهای تخصیص‌یافته به نود (پیش‌فرض listUserIdsForNode). */
   readAssignedUserIds?: (nodeId: string) => Promise<string[]>;
-  /** خواننده‌ی پلنِ کاربر (پیش‌فرض از users.plan). */
-  readPlan?: (userId: string) => Promise<Plan | null>;
+  /** مزایای کاربر از اشتراکِ 1xai (null اگر کاربر نباشد). */
+  readEntitlements?: (userId: string) => Promise<Entitlements | null>;
   /** گیتِ اپلای خودکارِ *سرور* (پیش‌فرض assertServerAutoApplyAllowed) — برمی‌گرداند {minScore}. */
-  assertAllowed?: (userId: string, plan: Plan) => Promise<{ minScore: number }>;
+  assertAllowed?: (userId: string, entitlements: Entitlements) => Promise<{ minScore: number }>;
   /** claim آیتم‌های صف برای یک کاربر (پیش‌فرض claimUserApplyItems). */
   claimItems?: (
     userId: string,
@@ -115,17 +117,17 @@ export interface ClaimFleetDeps {
   markTaskLeases?: (taskIds: string[], nodeId: string) => Promise<void>;
 }
 
-/** پلنِ کاربر را از جدولِ users می‌خواند (یا null اگر کاربر نباشد). */
-async function readUserPlan(
+/** مزایای کاربر را از اشتراکِ 1xai می‌خواند (یا null اگر کاربر نباشد). */
+async function readUserEntitlements(
   userId: string,
   db: FleetDispatchDb,
-): Promise<Plan | null> {
+): Promise<Entitlements | null> {
   const [row] = await db
-    .select({ plan: users.plan })
+    .select({ id: users.id })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
-  return row?.plan ?? null;
+  return row ? readEntitlements(userId) : null;
 }
 
 /**
@@ -203,8 +205,8 @@ async function releaseTaskForMissingResume(
  * همین نود که گیتِ اپلای خودکارشان می‌گذرد، و فقط آیتم‌های بالای آستانه.
  *
  * جریان (به‌ازای هر کاربرِ تخصیص‌یافته):
- *   ۱) پلنِ کاربر را بخوان (نبودِ کاربر → رد).
- *   ۲) assertServerAutoApplyAllowed(userId, plan) — اگر رد شد (پلنِ بی‌ورکر/تاگلِ سرور
+ *   ۱) مزایای کاربر را از اشتراکِ 1xai بخوان (نبودِ کاربر → رد).
+ *   ۲) assertServerAutoApplyAllowed(userId, entitlements) — اگر رد شد (اشتراکِ بی‌ورکر/تاگلِ سرور
  *      خاموش/سقف پر)، این کاربر را *بی‌سروصدا رد کن* (نودِ دیگران را بلاک نکن) و آیتمی برنگردان.
  *   ۳) claimUserApplyItems(userId, perUser, {minScore}) — آیتم‌های بالای آستانه را lease کن.
  *   ۴) برای هر آیتم، نشستِ همان (کاربر، board) را رمزگشایی کن؛ اگر نشست نباشد، آن آیتم را
@@ -221,11 +223,12 @@ export async function claimFleetJobs(
   const db = deps.db ?? defaultDb;
   const readAssigned =
     deps.readAssignedUserIds ?? ((id: string) => listUserIdsForNode(id, db));
-  const readPlan = deps.readPlan ?? ((id: string) => readUserPlan(id, db));
+  const readUserBenefits =
+    deps.readEntitlements ?? ((id: string) => readUserEntitlements(id, db));
   const assertAllowed =
     deps.assertAllowed ??
-    ((userId: string, plan: Plan) =>
-      assertServerAutoApplyAllowed(userId, plan, { db }));
+    ((userId: string, entitlements: Entitlements) =>
+      assertServerAutoApplyAllowed(userId, entitlements, { db }));
   const claimItems =
     deps.claimItems ??
     (async (userId: string, lim: number, minScore: number) => {
@@ -300,13 +303,13 @@ export async function claimFleetJobs(
     if (!(await canExecute(userId))) continue;
 
     // ۱) پلن.
-    const plan = await readPlan(userId);
-    if (!plan) continue;
+    const entitlements = await readUserBenefits(userId);
+    if (!entitlements) continue;
 
     // ۲) گیتِ اپلای خودکار — ردِ بی‌سروصدا (نودِ بقیه را بلاک نکن).
     let minScore: number;
     try {
-      ({ minScore } = await assertAllowed(userId, plan));
+      ({ minScore } = await assertAllowed(userId, entitlements));
     } catch (gateErr) {
       // ServerAutoApplyNotAllowedError (پلنِ بی‌ورکر/تاگلِ سرور خاموش/سقف پر) رفتارِ
       // *موردانتظار* است و بی‌سروصدا رد می‌شود. ولی هر خطای *غیرمنتظره‌ی دیگری* در

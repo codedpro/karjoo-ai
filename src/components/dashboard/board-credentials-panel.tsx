@@ -150,23 +150,23 @@ export function BoardCredentialsPanel({
           {credentials.map((credential) => (
             <li
               key={credential.board}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-hairline bg-bone/[0.02] px-4 py-3"
             >
               <div className="min-w-0">
                 <p className="text-sm font-medium">{boardLabel(credential.board)}</p>
-                <p className="text-xs text-white/60">
+                <p className="text-xs text-bone-dim">
                   {credential.usernameHint}
                   {credential.lastLoginStatus ? (
                     <>
                       {" · "}
-                      <span className={cn(credential.lastLoginStatus !== "ok" && "text-amber-300")}>
+                      <span className={cn(credential.lastLoginStatus !== "ok" && "text-amber")}>
                         {STATUS_LABELS[credential.lastLoginStatus] ?? credential.lastLoginStatus}
                       </span>
                     </>
                   ) : null}
                 </p>
                 {credential.locked ? (
-                  <p className="mt-1 text-xs text-amber-300">
+                  <p className="mt-1 text-xs text-amber">
                     پس از چند تلاش ناموفق، ورود خودکار موقتاً متوقف شده است. رمز تازه را
                     وارد کنید تا دوباره فعال شود.
                   </p>
@@ -187,15 +187,15 @@ export function BoardCredentialsPanel({
       ) : null}
 
       {eligible.length === 0 ? (
-        <p className="mt-4 text-sm text-white/70">
+        <p className="mt-4 text-sm text-bone-soft">
           برای فعال‌کردن ورود خودکار، اول باید همان سایت را یک‌بار از افزونه متصل کنید.
         </p>
       ) : (
         <form className="mt-4 grid gap-3" onSubmit={save}>
           <label className="grid gap-1 text-sm">
-            <span className="text-white/70">سایت</span>
+            <span className="text-bone-soft">سایت</span>
             <select
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+              className="rounded-lg border border-hairline bg-night-900 px-3 py-2"
               value={board}
               onChange={(event) => setBoard(event.target.value)}
             >
@@ -207,9 +207,9 @@ export function BoardCredentialsPanel({
             </select>
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-white/70">ایمیل یا نام کاربری در آن سایت</span>
+            <span className="text-bone-soft">ایمیل یا نام کاربری در آن سایت</span>
             <input
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+              className="rounded-lg border border-hairline bg-night-900 px-3 py-2"
               type="text"
               autoComplete="off"
               dir="ltr"
@@ -219,9 +219,9 @@ export function BoardCredentialsPanel({
             />
           </label>
           <label className="grid gap-1 text-sm">
-            <span className="text-white/70">رمز عبور آن سایت</span>
+            <span className="text-bone-soft">رمز عبور آن سایت</span>
             <input
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2"
+              className="rounded-lg border border-hairline bg-night-900 px-3 py-2"
               type="password"
               autoComplete="new-password"
               dir="ltr"
@@ -234,15 +234,15 @@ export function BoardCredentialsPanel({
             <Button type="submit" disabled={busy || !username || !password}>
               {busy ? "در حال ورود…" : "ورود و ذخیره"}
             </Button>
-            <span className="text-xs text-white/50">
+            <span className="text-xs text-bone-dim">
               اول وارد می‌شویم؛ اگر سایت قبول نکرد، چیزی ذخیره نمی‌شود.
             </span>
           </div>
         </form>
       )}
 
-      {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
-      {done ? <p className="mt-3 text-sm text-emerald-300">{done}</p> : null}
+      {error ? <p className="mt-3 text-sm text-rose">{error}</p> : null}
+      {done ? <p className="mt-3 text-sm text-jade">{done}</p> : null}
     </Card>
   );
 }

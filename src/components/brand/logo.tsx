@@ -3,17 +3,17 @@
  *
  * فلسفه‌ی طراحی
  * ─────────────
- * نشان یک «بَجِ» گِردگوشه با گرادیانِ برند است که مونوگرامِ «K» (کارجو) سفید داخلش نشسته،
- * به‌همراهِ یک «جرقه»ی فیروزه‌ای (نمادِ هوشِ مصنوعی + خودکارسازیِ اپلای). فرمِ بَج مثلِ
- * آیکنِ اپ‌های مدرن، منظم و متعادل است و در اندازه‌ی فاوآیکن هم خوانا می‌ماند.
+ * نشان یک «بَجِ» گِردگوشه به رنگِ persimmon (تأکیدِ امضای 1xAi) است که مونوگرامِ «K»
+ * (کارجو) و یک «جرقه» (نمادِ هوشِ مصنوعی + خودکارسازیِ اپلای) به رنگِ صفحه داخلش نشسته‌اند.
+ * فرمِ بَج منظم و متعادل است و در اندازه‌ی فاوآیکن هم خوانا می‌ماند.
  *
  * قواعدِ پیاده‌سازی
  * ────────────────
- *   • نشان یک بَجِ خودبسنده است (گرادیان + سفید + لهجه‌ی فیروزه‌ای): روی هر زمینه‌ای یکسان
- *     و درست دیده می‌شود؛ رنگِ متن (currentColor) فقط وردمارک را تمی می‌کند.
+ *   • رنگ‌ها توکن‌اند (`--color-persimmon` / `--color-night-900`)؛ پس نشان با تمِ تیره/روشن
+ *     جابه‌جا می‌شود و K همیشه به رنگِ صفحه روی persimmon می‌نشیند. رنگِ متن (currentColor)
+ *     فقط وردمارک را تمی می‌کند.
  *   • RTL-درست: چیدمان راست‌به‌چپ است (نشان سمتِ راست، سپس «کارجو»، سپس «AI»).
- *   • بدونِ وابستگی — فقط React. `id`ها با `useId` یکتا می‌شوند تا چند لوگو در یک صفحه
- *     گرادیان‌هاشان تداخل نکنند.
+ *   • بدونِ وابستگی — فقط React؛ بدونِ گرادیان، پس به `id`ِ یکتا هم نیازی نیست.
  *
  * API
  * ───
@@ -21,8 +21,6 @@
  *   <Brandmark/>  — فقط نشان (برای فاوآیکن/آواتار/جای تنگ).
  *   props: variant ('full' | 'mark')، size (ارتفاعِ px)، className، title، showAi.
  */
-import { useId } from "react";
-
 /* ────────────────────────────────  انواعِ مشترک  ─────────────────────────── */
 
 /** حالتِ نمایشِ لوگو: قفلِ کامل (نشان+متن) یا فقط نشان. */
@@ -54,32 +52,27 @@ const MARK_BOX = 64;
 /* ─────────────────────────────  نشانِ کارجو (بَج)  ────────────────────────── */
 
 /**
- * بَجِ برند — مربعِ گِردگوشه با گرادیانِ برند، مونوگرامِ «K»ِ سفید، و یک جرقه‌ی فیروزه‌ای
- * بالا-راستِ حرف (نمادِ AI/اتوماسیون). خودبسنده و ثابت‌رنگ تا روی هر زمینه‌ای درست بنشیند.
+ * بَجِ برند — مربعِ گِردگوشه‌ی persimmon، مونوگرامِ «K» و یک جرقه بالا-راستِ حرف (نمادِ
+ * AI/اتوماسیون) به رنگِ صفحه. fallbackها مقادیرِ تمِ تیره‌اند (اگر توکن‌ها در دسترس نبودند).
  */
-function KarjooBadge({ gradId }: { gradId: string }) {
+function KarjooBadge() {
+  const ink = "var(--color-night-900, #0d0a07)";
   return (
     <>
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--brand, #ffb020)" />
-          <stop offset="1" stopColor="var(--brand-2, #f59e0b)" />
-        </linearGradient>
-      </defs>
       {/* بَجِ گِردگوشه */}
-      <rect x="4" y="4" width="56" height="56" rx="18" fill={`url(#${gradId})`} />
+      <rect x="4" y="4" width="56" height="56" rx="18" fill="var(--color-persimmon, #ff6b35)" />
       {/* مونوگرامِ K — ستون + دو بازو */}
-      <path d="M23 15V49" stroke="#0c0d10" strokeWidth="6.5" strokeLinecap="round" />
+      <path d="M23 15V49" stroke={ink} strokeWidth="6.5" strokeLinecap="round" />
       <path
         d="M43.5 15 27.5 32 43.5 49"
         fill="none"
-        stroke="#0c0d10"
+        stroke={ink}
         strokeWidth="6.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      {/* جرقه‌ی فیروزه‌ای — AI/اتوماسیون */}
-      <circle cx="45.5" cy="13.5" r="4.6" fill="var(--accent, #37c08a)" />
+      {/* جرقه — AI/اتوماسیون */}
+      <circle cx="45.5" cy="13.5" r="4.6" fill={ink} />
     </>
   );
 }
@@ -94,8 +87,6 @@ function MarkSvg({
   className?: string;
   title: string;
 }) {
-  const uid = useId().replace(/:/g, "");
-  const gradId = `karjoo-grad-${uid}`;
   const labelled = title.length > 0;
   return (
     <svg
@@ -110,7 +101,7 @@ function MarkSvg({
       xmlns="http://www.w3.org/2000/svg"
     >
       {labelled ? <title>{title}</title> : null}
-      <KarjooBadge gradId={gradId} />
+      <KarjooBadge />
     </svg>
   );
 }
@@ -118,8 +109,8 @@ function MarkSvg({
 /* ────────────────────────────  وردمارکِ «کارجو»  ─────────────────────────── */
 
 /**
- * وردمارکِ «کارجو» به‌صورتِ متن (فونتِ وزیرمتن از `--font-vazir`) با `currentColor`،
- * به‌علاوه‌ی نشانِ اختیاریِ «AI» به‌شکلِ چیپِ کوچکِ برند. اندازه‌ها نسبی (em) هستند تا با
+ * وردمارکِ «کارجو» به‌صورتِ متن (پشته‌ی فونتِ سیستمیِ `--font-sans`) با `currentColor`،
+ * به‌علاوه‌ی نشانِ اختیاریِ «AI» به‌شکلِ چیپِ چهارگوشِ persimmon. اندازه‌ها نسبی (em) هستند تا با
  * `size`ِ لوگو مقیاس بخورند.
  */
 function Wordmark({ showAi }: { showAi: boolean }) {
@@ -130,7 +121,7 @@ function Wordmark({ showAi }: { showAi: boolean }) {
     >
       <span
         style={{
-          fontFamily: "var(--font-vazir, inherit)",
+          fontFamily: "inherit",
           fontWeight: 800,
           fontSize: "0.68em",
           letterSpacing: "-0.01em",
@@ -144,16 +135,14 @@ function Wordmark({ showAi }: { showAi: boolean }) {
         <span
           aria-hidden="true"
           style={{
-            fontFamily: "var(--font-vazir, inherit)",
+            fontFamily: "inherit",
             fontWeight: 700,
             fontSize: "0.34em",
             letterSpacing: "0.08em",
             lineHeight: 1,
             padding: "0.32em 0.55em",
-            borderRadius: "0.55em",
-            color: "#0c0d10",
-            background:
-              "linear-gradient(135deg, var(--brand, #ffb020), var(--brand-2, #f59e0b))",
+            color: "var(--color-night-900, #0d0a07)",
+            background: "var(--color-persimmon, #ff6b35)",
             direction: "ltr",
           }}
         >

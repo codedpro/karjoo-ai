@@ -196,7 +196,7 @@ export function ModelPicker({
       {error ? (
         <div
           role="alert"
-          className="text-pretty rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-400"
+          className="text-pretty rounded-xl border border-rose/30 bg-rose/10 px-4 py-3 text-sm text-rose"
         >
           {error}
         </div>
@@ -309,7 +309,7 @@ function ModelCard({
           {model.displayName}
         </h3>
         {isSaved ? (
-          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-brand px-2.5 py-0.5 text-xs font-bold text-brand-foreground">
+          <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap bg-brand px-2.5 py-0.5 text-xs font-bold text-brand-foreground">
             {isDefaultBadge ? "پیش‌فرضِ فعال" : "انتخابِ شما"}
             <IconCheck className="h-3.5 w-3.5" />
           </span>

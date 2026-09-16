@@ -10,8 +10,7 @@
  *
  * صرفاً نگاشت/فرمت است؛ هیچ کوئری/رازی. اعداد جای دیگری با `toFaDigits` فارسی می‌شوند.
  */
-import type { Plan } from "@/db/schema";
-import { normalizePlanKey, planFor, workerIpLimitFor, type PlanKey } from "@/lib/billing/plans";
+import { workerIpLimitOf, type Entitlements } from "@/lib/billing/entitlements";
 
 type Tone = "brand" | "accent" | "muted" | "green" | "amber" | "rose";
 
@@ -19,27 +18,24 @@ type Tone = "brand" | "accent" | "muted" | "green" | "amber" | "rose";
 
 /** خلاصه‌ی قابلیتِ اپلای خودکارِ ورکرِ یک پلن (برای پنلِ کاربر و دروازه‌بانیِ UI). */
 export interface PlanFleetCapability {
-  /** کلیدِ پلنِ نرمال‌شده (payg→free، premium→pro). */
-  planKey: PlanKey;
+  /** کلیدِ پلنِ 1xai. */
+  planKey: string;
   /** نامِ نمایشیِ فارسیِ پلن. */
   planLabelFa: string;
-  /** سقفِ IPِ ورکر (Free/Pro=۰، Max=۱، MaxPlus=۵). */
+  /** سقفِ ورکر از اشتراکِ 1xai (features.karjoo_worker_ips). */
   workerIpLimit: number;
   /** آیا این پلن اصلاً اپلای خودکارِ سرورِ اپلای دارد؟ (workerIpLimit > 0). */
   hasWorkerAutoApply: boolean;
 }
 
 /**
- * قابلیتِ سرورِ اپلای را برای پلنِ خامِ کاربر برمی‌گرداند. هرگز throw نمی‌کند:
- * پلن‌های تاریخی/ناشناخته به‌صورتِ دفاعی نرمال می‌شوند (planFor/normalizePlanKey).
- * سقفِ IP از منبعِ حقیقتِ Foundation (workerIpLimitFor) می‌آید — این فایل آن را نمی‌سازد.
+ * قابلیتِ سرورِ اپلای را از مزایای اشتراکِ 1xai برمی‌گرداند. هرگز throw نمی‌کند.
  */
-export function planFleetCapability(plan: Plan | string): PlanFleetCapability {
-  const planKey = normalizePlanKey(plan);
-  const workerIpLimit = workerIpLimitFor(plan);
+export function planFleetCapability(entitlements: Entitlements): PlanFleetCapability {
+  const workerIpLimit = workerIpLimitOf(entitlements);
   return {
-    planKey,
-    planLabelFa: planFor(plan).labelFa,
+    planKey: entitlements.planKey,
+    planLabelFa: entitlements.planNameFa,
     workerIpLimit,
     hasWorkerAutoApply: workerIpLimit > 0,
   };

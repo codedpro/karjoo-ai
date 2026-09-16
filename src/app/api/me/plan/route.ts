@@ -1,148 +1,68 @@
 import "server-only";
 
 /**
- * مسیرهای پلنِ کاربرِ احرازشده (نشستِ وب):
- *   • GET  /api/me/plan — پلنِ فعلی + وضعیتِ گرنتِ ماهِ جاری + اپلای امروز/سهمیه + موجودی.
- *   • POST /api/me/plan — تغییرِ پلن. پایین‌آوردن/همان پلن فوری اعمال می‌شود؛ *ارتقا*
- *     از ماشینِ حالتِ ضدِکرشِ purchasePlan (plan-purchase.ts) می‌گذرد: هر خرید یک ردیفِ
- *     plan_purchases با referenceِ *بدونِ زمان* (plan:<rowId>) دارد، پس retry پس از هر
- *     کرشی — حتی پس از رفتنِ ماهِ UTC — به همان reference می‌رسد و دوباره‌کسر ساختاری
- *     ناممکن است. هیچ تأییدِ ادمین/گرنتِ ماهانه‌ای وجود ندارد — پلن = استحقاق + قیمت.
+ * اشتراکِ کاربرِ احرازشده:
+ *   • GET  /api/me/plan — اشتراکِ 1xai + مزایای کارجو + اپلای امروز/سهمیه + موجودی.
+ *   • POST /api/me/plan — دیگر وجود ندارد (۴۱۰). کارجو پلنِ جداگانه نمی‌فروشد؛ خرید و
+ *     تغییرِ اشتراک فقط در 1xai.ir انجام می‌شود و همان اشتراک مزایای کارجو را هم می‌دهد.
  *
- * امنیت (قاعده‌ی ۴ CONTEXT — دادهٔ هر کاربر فقط برای همان کاربر): کاربرِ هدف همیشه از
- * کوکیِ نشست گرفته می‌شود، نه از بدنه/کوئری؛ بدنه فقط کلیدِ پلنِ مقصد را دارد و با zod
- * اعتبارسنجی می‌شود. هیچ userId از کلاینت پذیرفته نمی‌شود.
+ * امنیت: کاربر همیشه از کوکیِ نشست یا Bearerِ افزونه می‌آید، نه از بدنه/کوئری.
  */
-import { eq } from "drizzle-orm";
-
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
-import { changePlanBodySchema } from "@/lib/api/plan-schemas";
-import { getCurrentUser, getCurrentUserOrBearer } from "@/lib/auth/http";
+import { errorJson, json, withErrorHandling } from "@/lib/api/http";
+import { getCurrentUserOrBearer } from "@/lib/auth/http";
 import { getUserPlanStatus } from "@/components/dashboard/plan-data";
-import { planFor, type PlanKey } from "@/lib/billing/plans";
-import { InsufficientBalanceError } from "@/lib/billing/errors";
-import { OnexaiLinkError } from "@/lib/billing/unified";
 import {
-  PurchaseConflictError,
-  purchasePlan,
-  settleOpenPurchase,
-} from "@/lib/billing/plan-purchase";
-import { OnexaiSvcUnavailableError } from "@/lib/onexai/svc";
+  ONEXAI_PLAN_URL,
+  ONEXAI_TOPUP_URL,
+  type Entitlements,
+} from "@/lib/billing/entitlements";
 
-// به DB و node API (cookies) دست می‌زند → اجرای Node و رندرِ پویا.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** نشانیِ یکتای شارژِ کیف‌پولِ واحد — تنها جایی که پول واردِ خانواده می‌شود. */
-const ONEXAI_TOPUP_URL = "https://1xai.ir/topup";
-
-/* ─────────────────────────────  GET /api/me/plan  ───────────────────────────── */
+/**
+ * ردهٔ قدیمیِ پلن که افزونه‌های منتشرشده هنوز می‌خوانند (فقط برای اینکه بدانند نشست را به
+ * خزانه بفرستند یا نه: max/maxplus). از مزایای اشتراکِ 1xai ساخته می‌شود.
+ */
+function legacyTier(e: Entitlements): "free" | "pro" | "max" | "maxplus" {
+  if (e.workerIpLimit >= 5) return "maxplus";
+  if (e.workerIpLimit > 0) return "max";
+  return e.unlimitedApplies ? "pro" : "free";
+}
 
 export async function GET(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
-    // ۱) احراز هویت — userId از نشستِ احرازشده: کوکیِ وب **یا** Bearerِ افزونه (نه از کوئری).
-    //    افزونه باید پلن را بخواند تا بداند آیا نشستِ بوردها را به vault بفرستد (Max/Max+)؛
-    //    چون از chrome-extension:// صدا می‌زند کوکی ندارد و پیش‌تر همیشه ۴۰۱ می‌گرفت →
-    //    getPlan() بی‌صدا "free" برمی‌گرداند → vault هرگز پُر نمی‌شد. فقط خواندن Bearer را
-    //    می‌پذیرد؛ POST (خریدِ پلن = جابه‌جاییِ پول) عمداً فقط-کوکی می‌ماند.
     const user = await getCurrentUserOrBearer(request);
     if (!user) {
       return errorJson("احراز هویت لازم است", 401);
     }
 
-    // ۲) وضعیتِ کاملِ پلن — مقید به userIdِ نشست، فقط-خواندنی (هیچ نوشتنی).
     const status = await getUserPlanStatus(user.id);
-    const def = planFor(status.planKey);
+    const e = status.entitlements;
 
     return json({
-      plan: status.planKey,
-      definition: def,
+      plan: legacyTier(e),
+      subscription: {
+        planKey: e.planKey,
+        planNameFa: e.planNameFa,
+        status: e.status,
+        periodEnd: e.periodEnd?.toISOString() ?? null,
+        unlimitedApplies: e.unlimitedApplies,
+        workerIpLimit: e.workerIpLimit,
+        unavailable: e.unavailable ?? false,
+        manageUrl: ONEXAI_PLAN_URL,
+      },
       balanceToman: status.balanceToman,
-      grant: status.grant,
+      topupUrl: ONEXAI_TOPUP_URL,
       apply: status.apply,
     });
   });
 }
 
-/* ─────────────────────────────  POST /api/me/plan  ──────────────────────────── */
-
-export async function POST(request: Request): Promise<Response> {
-  return withErrorHandling(async () => {
-    // ۱) احراز هویتِ وب — userId از کوکیِ نشست (نه از بدنه).
-    const user = await getCurrentUser();
-    if (!user) {
-      return errorJson("احراز هویت لازم است", 401);
-    }
-
-    // ۲) اعتبارسنجیِ بدنه — فقط کلیدِ پلنِ مقصد (۴۰۰ در صورتِ نامعتبر).
-    const { plan: target } = await parseJsonBody(request, changePlanBodySchema);
-
-    // ۳) پلنِ فعلی برای تشخیصِ ارتقا (قیمتِ مقصد > قیمتِ فعلی → پرداخت لازم است).
-    const [row] = await db
-      .select({ plan: users.plan })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1);
-    const currentRaw = row?.plan ?? "free";
-    const currentDef = planFor(currentRaw);
-    const targetDef = planFor(target as PlanKey);
-    const isUpgrade = targetDef.priceToman > currentDef.priceToman;
-
-    // ۴) پایین‌آوردن یا همان پلن (بدونِ هزینه‌ی بیشتر) → فوری اعمال می‌شود، اما *اول*
-    //    هر خریدِ بازِ به‌جامانده settle می‌شود (خنثیِ مالی): وگرنه پولِ یک ارتقایِ
-    //    کرش‌کرده (debited بدونِ پلن) با دور زدنِ ماشین برای همیشه معلق می‌ماند.
-    if (!isUpgrade) {
-      try {
-        await settleOpenPurchase(user.id);
-      } catch (err) {
-        if (err instanceof PurchaseConflictError) {
-          return errorJson(err.message, 409);
-        }
-        if (err instanceof OnexaiSvcUnavailableError || err instanceof OnexaiLinkError) {
-          // تکلیفِ پولِ معلق بدونِ svc روشن نمی‌شود → پایین‌آوردن هم صبر کند (fail-closed).
-          return errorJson("کیف‌پولِ 1xai در دسترس نیست", 503);
-        }
-        throw err;
-      }
-      await db
-        .update(users)
-        .set({ plan: target, updatedAt: new Date() })
-        .where(eq(users.id, user.id));
-      return json({ ok: true, upgraded: false, plan: target, definition: targetDef });
-    }
-
-    // ۵) ارتقا → ماشینِ حالتِ ضدِکرش: ردیفِ plan_purchases با referenceِ بدونِ زمان،
-    //    کسرِ idempotent، سپس ثبتِ پلن + completed. هر کرش/دوکلیکی retryپذیر است و
-    //    دوباره‌کسر ساختاری ناممکن (جزئیات و اثباتِ حالت‌ها در plan-purchase.ts).
-    let balanceToman: number;
-    try {
-      const result = await purchasePlan(user.id, target, targetDef.priceToman);
-      balanceToman = result.balanceToman;
-    } catch (err) {
-      if (err instanceof InsufficientBalanceError) {
-        // موجودیِ واحد کافی نیست → ۴۰۲ + نشانیِ شارژ (فقط در داشبوردِ 1xai).
-        return json({ error: err.message, topupUrl: ONEXAI_TOPUP_URL }, 402);
-      }
-      if (err instanceof PurchaseConflictError) {
-        // درخواستِ هم‌زمانِ ناسازگار (دوکلیک/دو تب) — retryِ کوتاه‌مدت امن است.
-        return errorJson(err.message, 409);
-      }
-      if (err instanceof OnexaiSvcUnavailableError || err instanceof OnexaiLinkError) {
-        // گیتِ پول fail-closed است: svc/گره برقرار نشد → ۵۰۳، هیچ ارتقایی رخ نمی‌دهد؛
-        // خریدِ باز می‌ماند و retryِ بعدی از همان reference ادامه می‌دهد.
-        return errorJson("کیف‌پولِ 1xai در دسترس نیست", 503);
-      }
-      throw err;
-    }
-
-    return json({
-      ok: true,
-      upgraded: true,
-      plan: target,
-      definition: targetDef,
-      balanceToman,
-    });
-  });
+export async function POST(): Promise<Response> {
+  return errorJson(
+    "اشتراکِ کارجو و 1xAi یکی است؛ خرید و تغییرِ اشتراک فقط در 1xai.ir انجام می‌شود.",
+    410,
+    { manageUrl: ONEXAI_PLAN_URL },
+  );
 }

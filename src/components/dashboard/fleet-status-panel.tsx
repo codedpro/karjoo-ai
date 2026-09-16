@@ -59,10 +59,10 @@ export function FleetStatusPanel({ data }: { data: FleetStatusData }) {
           <strong className="font-semibold text-foreground">
             ۲۴ ساعته و بدونِ افزونه
           </strong>{" "}
-          از روی سرورهای ایرانی، به پلنِ Max ارتقا دهید.
+          از روی سرورهای کارجو، اشتراکِ 1xAi را به پیشرفته، پرو یا مکس ارتقا دهید.
         </p>
         <ButtonLink href="/dashboard/plans" size="sm" className="mt-4">
-          ارتقا به Max
+          دیدنِ اشتراک‌ها
         </ButtonLink>
       </Card>
     );
@@ -147,7 +147,7 @@ export function FleetStatusPanel({ data }: { data: FleetStatusData }) {
 
       {/* هشدارِ تازگی (در صورت کهنه‌بودن/نبودِ نشست) */}
       {sessionWarn ? (
-        <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-700 dark:text-amber-400">
+        <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber/30 bg-amber/10 px-4 py-3 text-amber">
           <IconWarn className="mt-0.5 h-4 w-4 shrink-0" />
           <p className="text-pretty text-xs leading-6">
             برای اجرای پایدارِ سرورِ اپلای، دستِ‌کم یک سایتِ متصل با نشستِ تازه لازم است.

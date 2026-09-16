@@ -27,6 +27,7 @@ vi.mock("@/lib/fleet/assign", () => ({
   },
 }));
 vi.mock("@/lib/fleet/commands", () => ({ issueCommand: vi.fn() }));
+vi.mock("@/lib/billing/subscription", () => ({ readEntitlements: vi.fn() }));
 
 const dbState = vi.hoisted(() => ({ queues: [] as unknown[][] }));
 vi.mock("@/db", () => ({
@@ -51,6 +52,8 @@ vi.mock("@/db", () => ({
 import { guardInternal } from "@/lib/api/http";
 import { assignNodeToUser, WorkerIpLimitError } from "@/lib/fleet/assign";
 import { issueCommand } from "@/lib/fleet/commands";
+import { readEntitlements } from "@/lib/billing/subscription";
+import { testEntitlements } from "@/lib/billing/entitlements";
 
 import { GET as fleetGET } from "@/app/api/admin/fleet/route";
 import { POST as assignPOST } from "@/app/api/admin/fleet/assign/route";
@@ -59,6 +62,9 @@ import { POST as commandPOST } from "@/app/api/admin/fleet/command/route";
 const guardMock = vi.mocked(guardInternal);
 const assignMock = vi.mocked(assignNodeToUser);
 const issueMock = vi.mocked(issueCommand);
+const readEntitlementsMock = vi.mocked(readEntitlements);
+
+const MAXPLUS = testEntitlements({ unlimitedApplies: true, workerIpLimit: 5, status: "active" });
 
 const USER_ID = "33333333-3333-4333-8333-333333333333";
 const NODE_ID = "11111111-1111-4111-8111-111111111111";
@@ -149,7 +155,7 @@ describe("POST /api/admin/fleet/assign", () => {
   });
 
   it("نودِ ناموجود → ۴۰۴", async () => {
-    dbState.queues = [[{ plan: "max" }], []]; // user موجود، node خالی.
+    dbState.queues = [[{ id: USER_ID }], []]; // user موجود، node خالی.
     const res = await assignPOST(
       jsonReq("https://k.app/api/admin/fleet/assign", {
         userId: USER_ID,
@@ -160,8 +166,9 @@ describe("POST /api/admin/fleet/assign", () => {
     expect(assignMock).not.toHaveBeenCalled();
   });
 
-  it("تخصیصِ موفق → ۲۰۱؛ پلنِ کاربر به هسته پاس می‌شود", async () => {
-    dbState.queues = [[{ plan: "maxplus" }], [{ id: NODE_ID }]];
+  it("تخصیصِ موفق → ۲۰۱؛ مزایای تازه‌ی کاربر به هسته پاس می‌شود", async () => {
+    readEntitlementsMock.mockResolvedValue(MAXPLUS);
+    dbState.queues = [[{ id: USER_ID }], [{ id: NODE_ID }]];
     assignMock.mockResolvedValue({
       id: "assign-1",
       userId: USER_ID,
@@ -174,11 +181,15 @@ describe("POST /api/admin/fleet/assign", () => {
       }),
     );
     expect(res.status).toBe(201);
-    expect(assignMock).toHaveBeenCalledWith(USER_ID, NODE_ID, "maxplus");
+    expect(readEntitlementsMock).toHaveBeenCalledWith(USER_ID, { fresh: true });
+    expect(assignMock).toHaveBeenCalledWith(USER_ID, NODE_ID, MAXPLUS);
   });
 
   it("سقفِ IPِ پلن پر (WorkerIpLimitError) → ۴۰۹ با limit/assigned", async () => {
-    dbState.queues = [[{ plan: "max" }], [{ id: NODE_ID }]];
+    dbState.queues = [[{ id: USER_ID }], [{ id: NODE_ID }]];
+    readEntitlementsMock.mockResolvedValue(
+      testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" }),
+    );
     assignMock.mockRejectedValue(new WorkerIpLimitError({ limit: 1, assigned: 1 }));
     const res = await assignPOST(
       jsonReq("https://k.app/api/admin/fleet/assign", {

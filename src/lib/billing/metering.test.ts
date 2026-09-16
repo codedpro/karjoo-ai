@@ -26,6 +26,10 @@ import { OnexaiSvcUnavailableError } from "@/lib/onexai/svc";
 import { appAiBudget, usageRecords } from "@/db/schema";
 import type { FetchLike, GatewayConfig } from "@/lib/ai/gateway";
 import type { ModelPrice } from "@/lib/billing/pricing";
+import { testEntitlements } from "@/lib/billing/entitlements";
+
+const FREE = testEntitlements();
+const ACTIVE = testEntitlements({ planKey: "pro", status: "active" });
 
 const CONFIG: GatewayConfig = {
   baseUrl: "https://gw.example/v1",
@@ -73,7 +77,7 @@ function baseOpts(over: Partial<MeteringOptions> = {}): MeteringOptions {
   return {
     resolveModel: async () => ({ modelId: "gpt-4o-mini", provider: "openai" }),
     priceFor: async () => PRICE,
-    entitlement: { readPlan: async () => "payg", readBalance: async () => 5000 },
+    entitlement: { readEntitlements: async () => FREE, readBalance: async () => 5000 },
     ensureApiKey: async () => USER_KEY,
     // گاردِ بودجه‌ی سراسری را در دسترس فرض می‌کنیم (تستِ نگه‌داری جداست).
     assertAiAvailable: async () => {},
@@ -152,7 +156,7 @@ describe("meteredChat — گیتِ بیلینگ (کیف‌پولِ واحد)", (
         store,
         ensureApiKey,
         gateway: { config: CONFIG, fetchImpl },
-        entitlement: { readPlan: async () => "payg", readBalance: async () => 0 },
+        entitlement: { readEntitlements: async () => FREE, readBalance: async () => 0 },
       }),
     ).catch((e) => e);
 
@@ -162,7 +166,7 @@ describe("meteredChat — گیتِ بیلینگ (کیف‌پولِ واحد)", (
     expect(store.usage).toHaveLength(0); // هیچ رکوردی.
   });
 
-  it("پلنِ free با موجودیِ صفر ⇒ InsufficientBalanceError و هیچ فراخوانی", async () => {
+  it("بدونِ اشتراک با موجودیِ صفر ⇒ InsufficientBalanceError و هیچ فراخوانی", async () => {
     const fetchImpl = fetchReturning("x", { prompt_tokens: 1 });
     const err = await meteredChat(
       "u1",
@@ -170,14 +174,14 @@ describe("meteredChat — گیتِ بیلینگ (کیف‌پولِ واحد)", (
       { messages: [{ role: "user", content: "hi" }] },
       baseOpts({
         gateway: { config: CONFIG, fetchImpl },
-        entitlement: { readPlan: async () => "free", readBalance: async () => 0 },
+        entitlement: { readEntitlements: async () => FREE, readBalance: async () => 0 },
       }),
     ).catch((e) => e);
     expect(err).toBeInstanceOf(InsufficientBalanceError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("پلنِ free با موجودیِ مثبت ⇒ مجاز (گیت روی موجودی است، نه پلن)", async () => {
+  it("بدونِ اشتراک با موجودیِ مثبت ⇒ مجاز (گیت روی موجودی است، نه پلن)", async () => {
     const store = inMemoryMeteringStore();
     const fetchImpl = fetchReturning(JSON.stringify({ ok: true }), {
       prompt_tokens: 1000,
@@ -190,7 +194,7 @@ describe("meteredChat — گیتِ بیلینگ (کیف‌پولِ واحد)", (
       baseOpts({
         store,
         gateway: { config: CONFIG, fetchImpl },
-        entitlement: { readPlan: async () => "free", readBalance: async () => 5000 },
+        entitlement: { readEntitlements: async () => FREE, readBalance: async () => 5000 },
       }),
     );
     expect(out.charge.costToman).toBeGreaterThan(0);
@@ -209,7 +213,7 @@ describe("meteredChat — گیتِ بیلینگ (کیف‌پولِ واحد)", (
         store,
         gateway: { config: CONFIG, fetchImpl },
         entitlement: {
-          readPlan: async () => "payg",
+          readEntitlements: async () => FREE,
           readBalance: async () => {
             throw new OnexaiSvcUnavailableError();
           },
@@ -285,7 +289,7 @@ describe("resolveModel — مدلِ صریح", () => {
           inputPer1kToman: 500,
           outputPer1kToman: 2500,
         }),
-        entitlement: { readPlan: async () => "premium", readBalance: async () => 100_000 },
+        entitlement: { readEntitlements: async () => ACTIVE, readBalance: async () => 100_000 },
         ensureApiKey: async () => USER_KEY,
         assertAiAvailable: async () => {},
         store,

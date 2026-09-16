@@ -217,7 +217,7 @@ export function DisconnectBoardButton({ board }: { board: string }) {
       {error ? (
         <span
           role="alert"
-          className="max-w-32 text-pretty text-[0.7rem] leading-4 text-rose-600 dark:text-rose-400"
+          className="max-w-32 text-pretty text-[0.7rem] leading-4 text-rose"
         >
           {error}
         </span>

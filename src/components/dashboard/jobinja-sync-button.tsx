@@ -32,9 +32,9 @@ interface SyncView {
 }
 
 const TONE_BOX: Record<SyncTone, string> = {
-  success: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  success: "bg-jade/10 text-jade",
   info: "border border-border bg-surface/70 text-muted",
-  error: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+  error: "bg-rose/10 text-rose",
 };
 
 const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;

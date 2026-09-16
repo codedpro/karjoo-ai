@@ -119,12 +119,12 @@ export function JobinjaProfileCard({
   const feedback = (
     <>
       {error ? (
-        <p role="alert" className="mt-3 text-sm font-medium text-rose-500">
+        <p role="alert" className="mt-3 text-sm font-medium text-rose">
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p className="mt-3 text-sm font-medium text-emerald-500">{notice}</p>
+        <p className="mt-3 text-sm font-medium text-jade">{notice}</p>
       ) : null}
     </>
   );

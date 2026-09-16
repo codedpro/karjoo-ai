@@ -5,7 +5,7 @@ import "server-only";
  *
  * هیچ‌چیز به‌صورت خودکار اپلای نمی‌شود مگر این سه گارد با هم برقرار باشند:
  *   ۱) **تاگلِ رضایت روشن** (user_auto_apply.enabled = true) — رضایتِ صریحِ کاربر.
- *   ۲) **زیرِ سقفِ روزانه** — Free = ۱۰۰/روز؛ پلن‌های پولی نامحدود (از apply-quota/plans).
+ *   ۲) **زیرِ سقفِ روزانه** — بدونِ «اپلای نامحدود» در اشتراکِ 1xai = ۱۰۰/روز (apply-quota).
  *   ۳) **آستانه‌ی امتیازِ تطبیق** — هر آیتمِ اپلای باید score ≥ minScore باشد (پیش‌فرض ۰٫۷).
  *
  * این لایه گاردها را *جدا از* مسیرِ افزونه نگه می‌دارد تا چوک‌پوینتِ claim فقط آن را صدا
@@ -20,7 +20,6 @@ import {
   auditEvents,
   userAutoApply,
   userServerAutoApply,
-  type Plan,
   type UserAutoApplyRow,
   type UserServerAutoApplyRow,
 } from "@/db/schema";
@@ -28,7 +27,7 @@ import {
   assertApplyQuota,
   type ApplyQuotaStatus,
 } from "@/lib/billing/apply-quota";
-import { workerIpLimitFor } from "@/lib/billing/plans";
+import { workerIpLimitOf, type Entitlements } from "@/lib/billing/entitlements";
 
 /** آستانه‌ی پیش‌فرضِ امتیازِ تطبیق اگر کاربر تنظیمی نداشته باشد (هم‌راستا با schema default). */
 export const DEFAULT_AUTO_APPLY_MIN_SCORE = 0.7;
@@ -201,11 +200,11 @@ export interface AssertAutoApplyDeps {
  *      آیتم‌های score ≥ minScore و در محدوده‌ی سهمیه را بدهد.
  *
  * @param userId کاربری که آیتم برایش claim می‌شود (همیشه از نشست، نه از بدنه — قاعده‌ی ۴).
- * @param plan   پلنِ کاربر (برای سقفِ روزانه از plans.ts).
+ * @param entitlements مزایای کاربر از اشتراکِ 1xai (سقفِ روزانه).
  */
 export async function assertAutoApplyAllowed(
   userId: string,
-  plan: Plan,
+  entitlements: Entitlements,
   deps: AssertAutoApplyDeps = {},
 ): Promise<AutoApplyAllowance> {
   // ۱) تاگلِ رضایت.
@@ -217,7 +216,7 @@ export async function assertAutoApplyAllowed(
   // ۲) سقفِ روزانه (پلن‌های پولی نامحدودند و کوئریِ شمارش نمی‌زنند).
   let quota: ApplyQuotaStatus;
   try {
-    quota = await assertApplyQuota(userId, plan, deps);
+    quota = await assertApplyQuota(userId, entitlements, deps);
   } catch (err) {
     // ApplyQuotaError → کدِ گیتِ quota_exceeded (با حفظِ سقف/مصرف).
     const e = err as { usedToday?: number; limit?: number };
@@ -361,7 +360,7 @@ export class ServerAutoApplyNotAllowedError extends Error {
         (args.code === "disabled"
           ? "اپلای خودکارِ سرور برای این کاربر روشن نیست (تاگلِ رضایتِ سرور خاموش است)."
           : args.code === "not_entitled"
-            ? "اپلای خودکارِ سرور نیازمندِ پلنِ Max یا Max+ است (پلنِ فعلی ورکر ندارد)."
+            ? "اپلای خودکارِ سرور نیازمندِ اشتراکِ 1xAi با ورکرِ کارجو است (پرو، پیشرفته، مکس یا شرکتی)."
             : "به سقفِ اپلای روزانه رسیده‌اید؛ اپلای خودکارِ سرور تا فردا متوقف است."),
     );
     this.name = "ServerAutoApplyNotAllowedError";
@@ -385,7 +384,7 @@ export interface AssertServerAutoApplyDeps {
  * گیتِ مرکزیِ سطحِ *سرور* که مسیرِ dispatchِ ناوگان پیش از برگرداندنِ کار صدا می‌زند.
  *
  * گاردها (به‌ترتیب، fail-closed):
- *   ۱) پلنِ بدونِ ورکر (workerIpLimitFor(plan) === ۰ → Free/Pro) →
+ *   ۱) پلنِ بدونِ ورکر (workerIpLimitOf(entitlements) === ۰) →
  *      ServerAutoApplyNotAllowedError('not_entitled'). *پیش از* خواندنِ تاگل چک می‌شود تا
  *      پلن‌های بی‌حق حتی اگر ردیفِ روشن داشته باشند، کار نگیرند.
  *   ۲) تاگلِ سرور خاموش → ServerAutoApplyNotAllowedError('disabled').
@@ -394,15 +393,15 @@ export interface AssertServerAutoApplyDeps {
  *      سازگار با امضای assertAllowed در claimFleetJobs).
  *
  * @param userId کاربری که کار برایش claim می‌شود (همیشه از تخصیصِ نود، نه از بدنه).
- * @param plan   پلنِ کاربر — سقفِ ورکر و سقفِ روزانه از plans.ts.
+ * @param entitlements مزایای کاربر از اشتراکِ 1xai — سقفِ ورکر و سقفِ روزانه.
  */
 export async function assertServerAutoApplyAllowed(
   userId: string,
-  plan: Plan,
+  entitlements: Entitlements,
   deps: AssertServerAutoApplyDeps = {},
 ): Promise<AutoApplyAllowance> {
   // ۱) پلن‌گِیت — پلنِ بدونِ ورکر (Free/Pro) اصلاً حقِ سطحِ سرور ندارد.
-  const workerIpLimit = workerIpLimitFor(plan);
+  const workerIpLimit = workerIpLimitOf(entitlements);
   if (workerIpLimit <= 0) {
     throw new ServerAutoApplyNotAllowedError({ code: "not_entitled", workerIpLimit });
   }
@@ -416,7 +415,7 @@ export async function assertServerAutoApplyAllowed(
   // ۳) سقفِ روزانه (پلن‌های پولی نامحدودند و کوئریِ شمارش نمی‌زنند).
   let quota: ApplyQuotaStatus;
   try {
-    quota = await assertApplyQuota(userId, plan, deps);
+    quota = await assertApplyQuota(userId, entitlements, deps);
   } catch (err) {
     const e = err as { usedToday?: number; limit?: number };
     throw new ServerAutoApplyNotAllowedError({

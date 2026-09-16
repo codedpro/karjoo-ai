@@ -32,7 +32,7 @@ import {
   assertServerAutoApplyAllowed,
   AutoApplyNotAllowedError,
 } from "@/lib/apply/auto-apply";
-import { readUserPlan } from "@/lib/billing/apply-quota-guard";
+import { readUserEntitlements } from "@/lib/billing/apply-quota-guard";
 import {
   recordFleetResult,
 } from "@/lib/fleet/dispatch";
@@ -83,7 +83,7 @@ export async function runIranTalentForUser(
 
   let minScore: number;
   try {
-    ({ minScore } = await assertServerAutoApplyAllowed(userId, await readUserPlan(userId, db), { db }));
+    ({ minScore } = await assertServerAutoApplyAllowed(userId, await readUserEntitlements(userId), { db }));
   } catch (error) {
     bump(summary.reasons, error instanceof AutoApplyNotAllowedError ? error.code : "gate_error");
     return summary;

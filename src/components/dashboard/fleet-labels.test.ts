@@ -20,51 +20,53 @@ import {
   summarizeSessionFreshness,
   workerIpCapacityLabel,
 } from "./fleet-labels";
+import { testEntitlements } from "@/lib/billing/entitlements";
 
-describe("planFleetCapability — نگاشتِ پلن به قابلیتِ سرورِ اپلای", () => {
-  it("Free: بدونِ سرورِ اپلای (سقفِ IP = ۰)", () => {
-    const cap = planFleetCapability("free");
+describe("planFleetCapability — نگاشتِ اشتراکِ 1xai به قابلیتِ سرورِ اپلای", () => {
+  it("بدونِ اشتراک: بدونِ سرورِ اپلای (سقفِ IP = ۰)", () => {
+    const cap = planFleetCapability(testEntitlements());
     expect(cap.planKey).toBe("free");
+    expect(cap.planLabelFa).toBe("رایگان");
     expect(cap.workerIpLimit).toBe(0);
     expect(cap.hasWorkerAutoApply).toBe(false);
   });
 
-  it("Pro: بدونِ سرورِ اپلای (افزونه‌محور)", () => {
-    const cap = planFleetCapability("pro");
+  it("اپلای نامحدود بدونِ ورکر: بدونِ سرورِ اپلای (افزونه‌محور)", () => {
+    const cap = planFleetCapability(testEntitlements({ planKey: "plus", unlimitedApplies: true }));
+    expect(cap.planKey).toBe("plus");
     expect(cap.workerIpLimit).toBe(0);
     expect(cap.hasWorkerAutoApply).toBe(false);
   });
 
-  it("Max: یک سرورِ اپلای", () => {
-    const cap = planFleetCapability("max");
-    expect(cap.planKey).toBe("max");
-    expect(cap.workerIpLimit).toBe(1);
-    expect(cap.hasWorkerAutoApply).toBe(true);
-    expect(cap.planLabelFa).toBe("مکس");
+  it("یک ورکر: یک سرورِ اپلای، کلید و نامِ پلنِ 1xai", () => {
+    const cap = planFleetCapability(
+      testEntitlements({
+        planKey: "pro",
+        planNameFa: "حرفه‌ای",
+        status: "active",
+        unlimitedApplies: true,
+        workerIpLimit: 1,
+      }),
+    );
+    expect(cap).toEqual({
+      planKey: "pro",
+      planLabelFa: "حرفه‌ای",
+      workerIpLimit: 1,
+      hasWorkerAutoApply: true,
+    });
   });
 
-  it("MaxPlus: پنج سرورِ اپلای", () => {
-    const cap = planFleetCapability("maxplus");
+  it("پنج ورکر: پنج سرورِ اپلای", () => {
+    const cap = planFleetCapability(
+      testEntitlements({ planKey: "max", status: "active", unlimitedApplies: true, workerIpLimit: 5 }),
+    );
     expect(cap.workerIpLimit).toBe(5);
     expect(cap.hasWorkerAutoApply).toBe(true);
   });
 
-  it("پلنِ تاریخیِ payg → free (بدونِ ورکر)", () => {
-    const cap = planFleetCapability("payg");
-    expect(cap.planKey).toBe("free");
+  it("مزایای جایگزین (1xai در دسترس نبود) → بدونِ ورکر", () => {
+    const cap = planFleetCapability(testEntitlements({ unavailable: true }));
     expect(cap.hasWorkerAutoApply).toBe(false);
-  });
-
-  it("پلنِ تاریخیِ premium → pro (بدونِ ورکر)", () => {
-    const cap = planFleetCapability("premium");
-    expect(cap.planKey).toBe("pro");
-    expect(cap.hasWorkerAutoApply).toBe(false);
-  });
-
-  it("پلنِ ناشناخته → دفاعی free (هرگز throw نمی‌کند)", () => {
-    const cap = planFleetCapability("bogus");
-    expect(cap.planKey).toBe("free");
-    expect(cap.workerIpLimit).toBe(0);
   });
 });
 

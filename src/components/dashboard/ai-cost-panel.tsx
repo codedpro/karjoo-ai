@@ -10,19 +10,8 @@
  * *نرخ* می‌ماند و اگر پردازشِ پولی ممکن نباشد، یک هشدارِ یک‌خطی.
  */
 import { formatToman, type CostEstimate } from "@/lib/billing/ui";
-import type { Plan } from "@/db/schema";
 
 import { Badge, Card } from "./ui";
-
-/** برچسبِ کوتاهِ پلن — عمداً موجز تا در نشان یک-خطی بماند (payg قبلاً می‌شکست). */
-const PLAN_LABELS: Record<Plan, string> = {
-  free: "رایگان",
-  payg: "به‌ازای‌مصرف",
-  premium: "ویژه",
-  pro: "حرفه‌ای",
-  max: "مکس",
-  maxplus: "مکس پلاس",
-};
 
 /** یک ردیفِ «نامِ کنش — حدودِ هزینه». عدد `ltr-nums` و برچسب `text-pretty`. */
 function CostRow({ label, estimate }: { label: string; estimate: CostEstimate | null }) {
@@ -43,7 +32,8 @@ export function AiCostPanel({
   matchEstimate,
   coverLetterEstimate,
 }: {
-  plan: Plan;
+  /** نامِ اشتراکِ 1xai. */
+  plan: string;
   canUsePaidAi: boolean;
   matchEstimate: CostEstimate | null;
   coverLetterEstimate: CostEstimate | null;
@@ -52,7 +42,7 @@ export function AiCostPanel({
     <Card padded>
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-balance text-base font-bold">هر کار چقدر هزینه دارد</h3>
-        <Badge tone="muted">{PLAN_LABELS[plan]}</Badge>
+        <Badge tone="muted">{plan}</Badge>
       </div>
 
       <ul className="mt-2 divide-y divide-border/70">
@@ -68,7 +58,7 @@ export function AiCostPanel({
       {!canUsePaidAi ? (
         <p
           role="status"
-          className="mt-4 text-pretty rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs leading-6 text-amber-700 dark:text-amber-300"
+          className="mt-4 text-pretty border border-amber/30 bg-amber/10 px-3.5 py-2.5 text-xs leading-6 text-amber"
         >
           موجودی برای این پردازش‌ها کافی نیست — کیف‌پول را شارژ کنید.
         </p>
