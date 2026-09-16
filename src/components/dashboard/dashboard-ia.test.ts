@@ -125,13 +125,13 @@ describe("the targeting page", () => {
 
   it("leaves the old interests URL working", () => {
     const source = readFileSync(join(DASHBOARD_DIR, "interests/page.tsx"), "utf8");
-    expect(source).toContain('redirect("/dashboard/profiles#targeting")');
+    expect(source).toContain('redirect("/dashboard/profiles?tab=targeting")');
   });
 
   it("keeps execution separate from profile targeting", () => {
     const autoApply = readFileSync(join(DASHBOARD_DIR, "auto-apply/page.tsx"), "utf8");
     expect(autoApply).not.toContain("BoardTargetingEditor");
-    expect(autoApply).toContain('/dashboard/profiles#targeting');
+    expect(autoApply).toContain('/dashboard/profiles?tab=targeting');
   });
 });
 

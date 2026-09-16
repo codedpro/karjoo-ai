@@ -18,11 +18,7 @@ import { runFilterApply, type RunFilterApplyReport } from "@/lib/apply/orchestra
 import { liveBoardIds } from "@/lib/apply/registry";
 import { assertCanUsePaidAi } from "@/lib/billing/entitlement";
 import { applyQuotaFor } from "@/lib/billing/plans";
-import {
-  prepareTailoredResumesForQueue,
-  type QueueResumePrepResult,
-} from "@/lib/resume/queue-prep";
-import { enabledApplyBoards, readApplyFilters } from "@/lib/apply/filters";
+import type { QueueResumePrepResult } from "@/lib/resume/queue-prep";
 import { canServerExecute } from "@/lib/apply/execution-run";
 
 /**
@@ -217,12 +213,11 @@ export async function runServerDiscovery(
   const canUsePaidAi =
     deps.canUsePaidAi ?? ((userId: string) => assertCanUsePaidAi(userId, { db: conn as never }));
   const runFilter = deps.runFilter ?? ((opts) => runFilterApply(opts));
+  // Tailored resumes are generated just in time by the claim paths, when a job's
+  // turn comes — never banked here for jobs that may never be sent.
   const prepareResumes =
     deps.prepareResumes ??
-    (async (userId: string, db: Database) => {
-      const allowedBoards = enabledApplyBoards(await readApplyFilters(userId, db));
-      return prepareTailoredResumesForQueue(userId, { db, allowedBoards });
-    });
+    (async (): Promise<QueueResumePrepResult> => ({ attempted: 0, prepared: 0, failed: 0 }));
   const markAttempted = deps.markAttempted ?? defaultMarkAttempted;
   const canExecute =
     deps.canExecute ??

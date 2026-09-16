@@ -76,7 +76,7 @@ export default async function AutoApplyPage() {
         title="اپلای خودکار"
         subtitle="اجرای خودکار، ظرفیت ارسال و وضعیت زنده‌ی درخواست‌ها از این‌جا کنترل می‌شود."
         actions={
-          <ButtonLink href="/dashboard/profiles#targeting" variant="secondary">
+          <ButtonLink href="/dashboard/profiles?tab=targeting" variant="secondary">
             <IconTarget className="h-4 w-4" />
             تنظیم شغل‌های هدف
           </ButtonLink>

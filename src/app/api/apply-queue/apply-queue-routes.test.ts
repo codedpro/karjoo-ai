@@ -143,9 +143,8 @@ describe("POST /api/apply-queue/claim", () => {
     );
   });
 
-  it("آیتمِ آماده را بی‌درنگ می‌دهد و ساختِ رزومه را به بعد از پاسخ می‌اندازد", async () => {
-    // ساختِ رزومه یک فراخوانِ AI ده‌ها ثانیه‌ای است. اگر پیش از claim انجام شود،
-    // افزونه برای *هر* اپلای همان‌قدر منتظر می‌ماند — همان فاصله‌ی طولانیِ بینِ ارسال‌ها.
+  it("آیتمِ آماده را بی‌درنگ می‌دهد و هیچ رزومه‌ای را از پیش نمی‌سازد", async () => {
+    // رزومه فقط وقتی نوبتِ همان آگهی برسد ساخته می‌شود — نه برای آگهی‌های جلوتر در صف.
     authMock.mockResolvedValue({ userId: "u-fast", session: { kind: "extension" } } as never);
     claimMock.mockResolvedValue([
       { taskId: "t1", matchId: "m1", listing: { title: "Dev" } },
@@ -156,10 +155,8 @@ describe("POST /api/apply-queue/claim", () => {
     expect((await res.json()).count).toBe(1);
     // هیچ ساختِ همگامی پیش از پاسخ انجام نشد.
     expect(prepareResumeMock).not.toHaveBeenCalled();
-    // ولی ذخیره دوباره پر می‌شود، وگرنه claimِ بعدی دوباره منتظر می‌ماند.
-    expect(prepareBatchMock).toHaveBeenCalledWith("u-fast", expect.objectContaining({
-      limit: expect.any(Number),
-    }));
+    // و هیچ ساختِ دسته‌ای هم برای آگهی‌های بعدی انجام نمی‌شود.
+    expect(prepareBatchMock).not.toHaveBeenCalled();
   });
 
   it("اگر هیچ رزومه‌ای آماده نباشد، همان‌جا می‌سازد و دوباره claim می‌کند", async () => {

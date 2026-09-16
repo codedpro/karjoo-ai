@@ -24,6 +24,7 @@ import "server-only";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
+import { prepareNextTailoredResumeForQueue } from "@/lib/resume/queue-prep";
 import { applications, candidateProfiles, resumes, tasks, users, type Plan } from "@/db/schema";
 import {
   assertServerAutoApplyAllowed,
@@ -235,11 +236,17 @@ export async function claimFleetJobs(
       const allowedBoards = enabledApplyBoards(await readApplyFilters(userId, db)).filter(
         (board) => board !== "irantalent",
       );
-      return claimUserApplyItems(userId, lim, db, {
-        minScore,
-        requireTailoredResume: true,
-        allowedBoards,
-      });
+      const claimReady = () =>
+        claimUserApplyItems(userId, lim, db, {
+          minScore,
+          requireTailoredResume: true,
+          allowedBoards,
+        });
+      const ready = await claimReady();
+      if (ready.length > 0) return ready;
+      // Nothing ready — generate the resume for the next job in line only.
+      const prepared = await prepareNextTailoredResumeForQueue(userId, { db, allowedBoards });
+      return prepared.status === "ready" ? claimReady() : [];
     });
   const loadSession =
     deps.loadSession ??

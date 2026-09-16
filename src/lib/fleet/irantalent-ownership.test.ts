@@ -23,6 +23,12 @@ vi.mock("@/lib/apply/filters", async (importOriginal) => {
   return { ...actual, readApplyFilters: (...args: unknown[]) => readApplyFilters(...(args as [])) };
 });
 
+const prepareNextTailoredResumeForQueue = vi.fn();
+vi.mock("@/lib/resume/queue-prep", () => ({
+  prepareNextTailoredResumeForQueue: (...args: unknown[]) =>
+    prepareNextTailoredResumeForQueue(...(args as [])),
+}));
+
 const { claimFleetJobs } = await import("@/lib/fleet/dispatch");
 
 function filtersWith(...enabled: string[]) {
@@ -48,6 +54,7 @@ async function runFleet() {
 beforeEach(() => {
   vi.clearAllMocks();
   claimUserApplyItems.mockResolvedValue([]);
+  prepareNextTailoredResumeForQueue.mockResolvedValue({ status: "empty" });
 });
 
 describe("server-owned runs and IranTalent", () => {
@@ -62,6 +69,17 @@ describe("server-owned runs and IranTalent", () => {
     expect(options.allowedBoards).toEqual(["jobinja", "jobvision"]);
     expect(options.allowedBoards).not.toContain("irantalent");
     expect(options.requireTailoredResume).toBe(true);
+  });
+
+  it("generates a resume only for the next job when none is ready, then claims it", async () => {
+    readApplyFilters.mockResolvedValue(filtersWith("jobinja"));
+    prepareNextTailoredResumeForQueue.mockResolvedValue({ status: "ready", taskId: "t1" });
+    await runFleet();
+    expect(prepareNextTailoredResumeForQueue).toHaveBeenCalledTimes(1);
+    expect(prepareNextTailoredResumeForQueue.mock.calls[0]![1]).toMatchObject({
+      allowedBoards: ["jobinja"],
+    });
+    expect(claimUserApplyItems).toHaveBeenCalledTimes(2);
   });
 
   it("leases nothing when IranTalent is the only enabled provider", async () => {

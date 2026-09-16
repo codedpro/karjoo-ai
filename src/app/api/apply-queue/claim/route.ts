@@ -44,10 +44,8 @@ import {
 } from "@/lib/apply/execution-run";
 import {
   prepareNextTailoredResumeForQueue,
-  prepareTailoredResumesForQueue,
 } from "@/lib/resume/queue-prep";
 import { enabledApplyBoards, readApplyFilters } from "@/lib/apply/filters";
-import { after } from "next/server";
 
 // به DB دست می‌زند → اجرای Node لازم است.
 export const runtime = "nodejs";
@@ -77,15 +75,6 @@ function clampToRemaining(requested: number, remaining: number | null): number {
  * stale DOM assumptions.
  */
 const LEGACY_CLAIM_BOARDS = ["jobinja", "jobvision", "e-estekhdam"] as const;
-
-/**
- * How many tailored resumes to keep banked ahead of the extension.
- *
- * Generation is an AI call measured in tens of seconds; an apply cycle is a few
- * seconds. Keeping a small buffer ahead is what stops the extension waiting on
- * generation between every submission.
- */
-const RESUME_BUFFER_DEPTH = 3;
 
 export async function POST(request: Request): Promise<Response> {
   return withErrorHandling(async () => {
@@ -121,33 +110,17 @@ export async function POST(request: Request): Promise<Response> {
       if (allowedBoards.length === 0) {
         return json({ count: 0, items: [], reason: "all_boards_parked" });
       }
-      // Claim FIRST. Generating a tailored resume before every claim made the
-      // extension wait on an AI call for each application even when resumes were
-      // already banked — that wait, not the politeness delay, was the gap between
-      // submissions. When something is ready we hand it over immediately and
-      // refill the buffer after the response has been sent.
+      // Resumes are generated just in time: only for the job whose turn it is,
+      // never banked ahead (queued jobs may never be sent, and each PDF costs AI).
       const ready = await claimUserApplyItems(userId, body.limit, undefined, {
         requireTailoredResume: true,
         allowedBoards,
       });
       if (ready.length > 0) {
-        after(async () => {
-          try {
-            // Refill a few, not one: the next claim arrives within seconds, so a
-            // single replacement would drain as fast as it is made and the caller
-            // would be back to waiting on generation.
-            await prepareTailoredResumesForQueue(userId, {
-              limit: RESUME_BUFFER_DEPTH,
-              allowedBoards,
-            });
-          } catch (error) {
-            console.error("[claim] background resume prep failed", error);
-          }
-        });
         return json({ count: ready.length, items: ready });
       }
 
-      // Nothing banked — this caller has to pay for the generation.
+      // Nothing ready — generate the resume for the next job in line.
       const prepared = await prepareNextTailoredResumeForQueue(userId, { allowedBoards });
       const items = await claimUserApplyItems(userId, body.limit, undefined, {
         requireTailoredResume: true,
