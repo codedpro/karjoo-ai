@@ -10,6 +10,8 @@
  *   • oauth              → خطای عمومیِ Google/تبادلِ توکن/دریافتِ پروفایل.
  *   • oauth_unconfigured → کلیدهای Google روی سرور تنظیم نشده‌اند.
  *   • access_denied      → کاربر در صفحه‌ی Google اجازه نداد.
+ *   • onexai             → بلیتِ «ورود با 1xAi» نامعتبر/منقضی/مصرف‌شده بود.
+ *   • onexai_unavailable → 1xai در دسترس نبود.
  * هر کدِ ناشناخته → پیامِ عمومی.
  */
 
@@ -22,6 +24,8 @@ const LOGIN_ERROR_MESSAGES: Record<string, string> = {
   oauth: GENERIC_LOGIN_ERROR,
   oauth_unconfigured: GENERIC_LOGIN_ERROR,
   access_denied: "دسترسی به حسابِ گوگل لغو شد. برای ورود، اجازه‌ی دسترسی لازم است.",
+  onexai: "ورود با حسابِ 1xAi انجام نشد؛ لینکِ ورود منقضی شده بود. دوباره امتحان کنید.",
+  onexai_unavailable: "اتصال به 1xAi برقرار نشد. کمی بعد دوباره امتحان کنید.",
 };
 
 /**

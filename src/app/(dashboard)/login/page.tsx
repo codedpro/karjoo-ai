@@ -32,6 +32,9 @@ export const metadata: Metadata = {
 /** اندپوینتِ شروعِ جریانِ OAuth (state می‌سازد و به Google redirect می‌کند). */
 const GOOGLE_START_PATH = "/api/auth/google";
 
+/** ورودِ یک‌کلیکی: 1xai بلیت می‌سازد و به /api/auth/1xai/callback برمی‌گرداند. */
+const ONEXAI_SSO_URL = "https://1xai.ir/sso/karjoo?next=%2Fdashboard";
+
 export default async function LoginPage({
   searchParams,
 }: {
@@ -70,10 +73,18 @@ export default async function LoginPage({
             </div>
           ) : null}
 
+          {/* ورود با حسابِ 1xAi — اگر در 1xai.ir وارد باشید، بدونِ گذرواژه. */}
+          <a
+            href={ONEXAI_SSO_URL}
+            className="focus-ring press mt-6 flex w-full items-center justify-center gap-3 bg-persimmon px-6 py-3 text-base font-semibold text-night-900 transition-colors hover:bg-persimmon-soft"
+          >
+            ورود با حسابِ 1xAi
+          </a>
+
           {/* دکمه‌ی ورود با گوگل — لینکِ سرور-رندرشده، بدونِ JSِ کلاینت. */}
           <a
             href={GOOGLE_START_PATH}
-            className="focus-ring press mt-6 flex w-full items-center justify-center gap-3 border border-hairline-strong px-6 py-3 text-base font-medium text-bone transition-colors hover:border-persimmon/50 hover:bg-bone/5"
+            className="focus-ring press mt-3 flex w-full items-center justify-center gap-3 border border-hairline-strong px-6 py-3 text-base font-medium text-bone transition-colors hover:border-persimmon/50 hover:bg-bone/5"
           >
             <GoogleGlyph />
             ورود با گوگل

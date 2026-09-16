@@ -257,6 +257,42 @@ export async function findOrCreateUserByGoogle(
  * OAuth» (برای مثال کلید = IPِ کلاینت) از آن استفاده می‌کند تا از اسپمِ redirect جلوگیری شود.
  * در پروداکشنِ چندنمونه‌ای باید به Redis منتقل شود.
  */
+/**
+ * کاربرِ محلیِ متناظر با یک حسابِ استخرِ 1xai (ورود با گذرواژه یا با بلیتِ 1xAi).
+ * ترتیبِ تطبیق: onexaiUserId (پایدار) → ایمیل (و تثبیتِ گره) → ساختِ کاربرِ تازه.
+ */
+export async function findOrCreateUserByPool(
+  pool: { id: number; email: string },
+  opts: { db?: AuthHttpDb } = {},
+): Promise<User> {
+  const db = opts.db ?? defaultDb;
+  const email = pool.email.trim().toLowerCase();
+
+  const [byPool] = await db
+    .select()
+    .from(users)
+    .where(eq(users.onexaiUserId, pool.id))
+    .limit(1);
+  if (byPool) return byPool;
+
+  const [byEmail] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (byEmail) {
+    if (byEmail.onexaiUserId != null) return byEmail;
+    const [updated] = await db
+      .update(users)
+      .set({ onexaiUserId: pool.id, updatedAt: new Date() })
+      .where(eq(users.id, byEmail.id))
+      .returning();
+    return updated ?? byEmail;
+  }
+
+  const [created] = await db
+    .insert(users)
+    .values({ email, onexaiUserId: pool.id })
+    .returning();
+  return created;
+}
+
 export const OTP_RATE_LIMIT_MAX = 5;
 export const OTP_RATE_LIMIT_WINDOW_MS = 10 * 60_000; // ۱۰ دقیقه
 

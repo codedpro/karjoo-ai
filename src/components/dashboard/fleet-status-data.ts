@@ -88,7 +88,7 @@ export async function getFleetStatusData(
 ): Promise<FleetStatusData> {
   const capability = planFleetCapability(await readEntitlements(userId));
 
-  // پلن‌های بدونِ ورکر (Free/Pro): تخصیص و تازگیِ نشست را اصلاً کوئری نمی‌کنیم (مسیرِ ارزان).
+  // پلن‌های بدونِ ورکر (بدونِ ورکر): تخصیص و تازگیِ نشست را اصلاً کوئری نمی‌کنیم (مسیرِ ارزان).
   if (!capability.hasWorkerAutoApply) {
     return {
       capability,

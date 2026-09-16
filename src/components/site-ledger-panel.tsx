@@ -12,7 +12,7 @@
  * Uses the shared 1xAi editorial tokens (night surfaces, bone text, hairline
  * rules, persimmon signal, jade tick), so it follows the dark/light theme.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 type Row = {
   t: string; // HH:MM (Persian digits, LTR)
@@ -62,29 +62,34 @@ function LedgerRow({ r, isNew }: { r: Row; isNew?: boolean }) {
   );
 }
 
+const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
+
+function subscribeReducedMotion(onChange: () => void): () => void {
+  const mq = window.matchMedia(REDUCED_MOTION);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia(REDUCED_MOTION).matches;
+}
+
 export function LedgerPanel() {
   // Start with 3 rows; append one every ~2.4s, keeping a 6-row window. Newest row
   // carries the amber caret. prefers-reduced-motion → render the full list static.
-  const [count, setCount] = useState(3);
-  const [reduced, setReduced] = useState(false);
-  const idx = useRef(3);
+  const reduced = useSyncExternalStore(subscribeReducedMotion, prefersReducedMotion, () => false);
+  const [tick, setTick] = useState(3);
 
   useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (mq.matches) {
-      setReduced(true);
-      setCount(ROWS.length);
-      return;
-    }
-    const id = window.setInterval(() => {
-      idx.current = (idx.current + 1) % (ROWS.length + 1);
-      setCount((c) => (c >= 6 ? 6 : c + 1));
-    }, 2400);
+    if (reduced) return;
+    const id = window.setInterval(() => setTick((t) => t + 1), 2400);
     return () => window.clearInterval(id);
-  }, []);
+  }, [reduced]);
 
   // Which rows are visible: a rolling window over ROWS.
-  const start = reduced ? 0 : Math.max(0, idx.current + 1 - count) % ROWS.length;
+  const count = Math.min(6, tick);
+  const idx = tick % (ROWS.length + 1);
+  const start = reduced ? 0 : Math.max(0, idx + 1 - count) % ROWS.length;
   const visible = reduced
     ? ROWS
     : Array.from({ length: count }, (_, i) => ROWS[(start + i) % ROWS.length]);

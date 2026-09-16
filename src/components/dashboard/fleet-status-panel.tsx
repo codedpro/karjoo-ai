@@ -2,12 +2,12 @@
  * پنلِ «اپلای خودکارِ سرورِ اپلای» روی صفحه‌ی اپلای خودکار (Track C — server-safe).
  *
  * دو حالت دارد، بسته به پلنِ کاربر:
- *   • Max/Max+ → «اپلای خودکارِ شما روی N سرورِ اپلای فعال است»، سقفِ IPِ پلن، تازگیِ
+ *   • اشتراکِ دارای ورکر → «اپلای خودکارِ شما روی N سرورِ اپلای فعال است»، سقفِ IPِ پلن، تازگیِ
  *     نشستِ خزانه، و این‌که ۲۴/۷ بدونِ افزونه اجرا می‌شود.
- *   • Free/Pro → دعوت به «ارتقا به Max برای اپلای خودکارِ سرور».
+ *   • بدونِ ورکر → دعوت به «ارتقای اشتراکِ 1xAi برای اپلای خودکارِ سرور».
  *
  * فقط استایل/چیدمان؛ داده از RSC (getFleetStatusData) پاس داده می‌شود. هیچ رازی، هیچ کوئری،
- * هیچ state. سقفِ IP و قابلیت از plans.ts (منبعِ حقیقت) می‌آیند، نه از این‌جا. زبانِ بصری روی
+ * هیچ state. سقفِ ورکر و قابلیت از اشتراکِ 1xai می‌آیند، نه از این‌جا. زبانِ بصری روی
  * پرایمیتیوهای مشترک (Card/Badge/ButtonLink) و آیکن‌های SVG سوار است (بدونِ ایموجی).
  */
 import { Badge, ButtonLink, Card, cn, toFaDigits } from "./ui";
@@ -42,7 +42,7 @@ function PanelHead({
 export function FleetStatusPanel({ data }: { data: FleetStatusData }) {
   const { capability, assignedNodes, freshness } = data;
 
-  /* ───── Free/Pro: دعوت به ارتقا ───── */
+  /* ───── بدونِ ورکر: دعوت به ارتقا ───── */
   if (!capability.hasWorkerAutoApply) {
     return (
       <Card padded>
@@ -68,7 +68,7 @@ export function FleetStatusPanel({ data }: { data: FleetStatusData }) {
     );
   }
 
-  /* ───── Max/Max+: وضعیتِ فعالِ سرورِ اپلای ───── */
+  /* ───── اشتراکِ دارای ورکر: وضعیتِ فعالِ سرورِ اپلای ───── */
   const ipCapacity = workerIpCapacityLabel(capability.workerIpLimit);
   const active = assignedNodes > 0;
   const sessionWarn = freshness.total === 0 || !freshness.anyFresh;

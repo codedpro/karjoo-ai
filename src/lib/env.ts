@@ -124,7 +124,7 @@ const envSchema = z.object({
   // فراخوانیِ مدل در یک اجرا). اختیاری؛ پیش‌فرض ۲۵. عددِ صحیحِ مثبت.
   KARJOO_ORCHESTRATOR_RUN_CAP: optionalNonEmpty(z.coerce.number().int().positive()),
 
-  // ── خزانه‌ی نشست (session vault — Max/Max+ track C، قاعده‌ی ۴) ───────────────
+  // ── خزانه‌ی نشست (session vault — track C، قاعده‌ی ۴) ───────────────
   // کلیدِ AES-256-GCM برای رمزنگاریِ بلابِ نشستِ کاربر در خزانه. یک کلیدِ ۳۲ بایتیِ
   // base64 یا hex. اختیاری در بوت: اگر تنظیم نشده باشد، /api/session/refresh یک خطای
   // روشنِ «پیکربندی‌نشده» می‌دهد و *هرگز* نشستِ خام را ذخیره نمی‌کند (fail-closed).
@@ -141,7 +141,7 @@ const envSchema = z.object({
   // سقفِ بازه‌ی jitterِ ادبِ اپلای خودکار، به میلی‌ثانیه (advisory برای افزونه). پیش‌فرض ۸۰۰۰.
   KARJOO_AUTO_APPLY_JITTER_MS_MAX: optionalNonEmpty(z.coerce.number().int().min(0)),
 
-  // ── ناوگانِ اپلای (worker fleet — Max/Max+، قاعده‌های ۱ و ۴) ────────────────
+  // ── ناوگانِ اپلای (worker fleet — اشتراکِ دارای ورکر، قاعده‌های ۱ و ۴) ────────────────
   // رازِ مشترکِ یک‌بارمصرفِ ثبت‌نام که نودها برای enroll ارائه می‌دهند. اختیاری در بوت:
   // اگر تنظیم نشده باشد، ثبت‌نام «بسته» است و enrollNode با خطای روشن (۵۰۳) رد می‌شود —
   // یعنی هیچ نودِ جدیدی نمی‌تواند بدونِ این راز ثبت‌نام کند (fail-closed). حداقل ۱۶ کاراکتر.
@@ -157,14 +157,6 @@ const envSchema = z.object({
   // (fail-closed) و هیچ درخواستی بیرون نمی‌رود. راز hex است (هم‌قراردادِ pay-worker).
   ONEXAI_SVC_URL: optionalNonEmpty(z.string().url()),
   ONEXAI_SVC_SECRET: optionalNonEmpty(z.string().min(32)),
-
-  // ── کارت‌به‌کارت (billing) — شماره‌کارت و نامِ صاحبِ کارتِ مقصد که به کاربر نشان داده
-  // می‌شود تا مبلغ را منتقل کند. اختیاری در بوت: اگر تنظیم نشده باشد، فرمِ شارژ «هنوز
-  // فعال نیست» را می‌دهد (fail-closed؛ هرگز کارتِ ساختگی نشان داده نمی‌شود). این‌ها را
-  // در env تنظیم کنید (نه در کد/گیت)؛ شماره‌کارتِ واقعی هرگز commit نمی‌شود.
-  KARJOO_CARD_NUMBER: optionalNonEmpty(z.string().min(1)),
-  KARJOO_CARD_HOLDER: optionalNonEmpty(z.string().min(1)),
-  KARJOO_CARD_BANK: optionalNonEmpty(z.string().min(1)),
 });
 
 /** درصدِ پیش‌فرضِ حاشیه‌ی سود اگر KARJOO_AI_MARGIN_PCT تنظیم نشده باشد. */
@@ -481,27 +473,6 @@ export function onexaiSvcConfig(): OnexaiSvcConfig | null {
   return {
     baseUrl: env.ONEXAI_SVC_URL.replace(/\/+$/, ""),
     secretHex: env.ONEXAI_SVC_SECRET,
-  };
-}
-
-/** اطلاعاتِ کارتِ مقصدِ کارت‌به‌کارت که به کاربر نشان داده می‌شود. */
-export interface CardToCardInfo {
-  cardNumber: string;
-  holder: string;
-  bank?: string;
-}
-
-/**
- * اطلاعاتِ کارتِ مقصد، یا null اگر تنظیم نشده باشد (شماره‌کارت + نامِ صاحب لازم‌اند).
- * هرگز throw نمی‌کند. لایه‌ی بیلینگ اگر null بود، «شارژ هنوز فعال نیست» می‌دهد — پس هیچ
- * درخواستِ پرداختی بدونِ کارتِ واقعیِ پیکربندی‌شده ساخته نمی‌شود.
- */
-export function cardToCardInfo(): CardToCardInfo | null {
-  if (!env.KARJOO_CARD_NUMBER || !env.KARJOO_CARD_HOLDER) return null;
-  return {
-    cardNumber: env.KARJOO_CARD_NUMBER,
-    holder: env.KARJOO_CARD_HOLDER,
-    ...(env.KARJOO_CARD_BANK ? { bank: env.KARJOO_CARD_BANK } : {}),
   };
 }
 

@@ -206,6 +206,26 @@ export async function verifyPoolPassword(
   }
 }
 
+/**
+ * بلیتِ یک‌بارمصرفِ «ورود با 1xAi» را مصرف می‌کند (۶۰ ثانیه اعتبار، فقط یک بار).
+ * بلیتِ نامعتبر/مصرف‌شده/منقضی → null؛ خطای امضا/زیرساخت → OnexaiSvcUnavailableError.
+ */
+export async function redeemPoolSsoTicket(
+  ticket: string,
+): Promise<{ id: number; email: string } | null> {
+  try {
+    return await svcFetch<{ id: number; email: string }>("POST", "/svc/sso/redeem", { ticket });
+  } catch (err) {
+    if (err instanceof OnexaiSvcError && (err.status === 401 || err.status === 400)) {
+      if (err.message.includes("ticket")) return null;
+      throw new OnexaiSvcUnavailableError(
+        "درگاهِ سرویسِ 1xai درخواست را نپذیرفت (راز/ساعت را بررسی کنید).",
+      );
+    }
+    throw err;
+  }
+}
+
 /* ────────────────────────────────  کیف‌پول  ───────────────────────────────── */
 
 /** موجودیِ کیف‌پولِ واحدِ یک کاربرِ استخر (تومانِ صحیح). */

@@ -12,7 +12,7 @@ import "server-only";
  *   ۱) بدنه‌ی JSON با zod (strict): {email, password}. ایمیل نرمال (trim/lowercase).
  *   ۲) محدودسازِ نرخ per-IP و per-email (۱۰ بار / ۱۰ دقیقه) → ۴۲۹ با Retry-After.
  *   ۳) verifyPoolPassword → null → ۴۰۱ با پیامِ یکنواخت (بدونِ افشای وجود/نبودِ حساب).
- *   ۴) پیدا/ساختِ کاربرِ محلی با email؛ onexaiUserId در صورتِ خالی‌بودن تثبیت می‌شود.
+ *   ۴) پیدا/ساختِ کاربرِ محلی (findOrCreateUserByPool: شناسه‌ی 1xai، سپس ایمیل).
  *   ۵) کاربرِ غیرفعال (isActive=false) → همان ۴۰۱ یکنواخت (بدونِ نشتِ وضعیت).
  *   ۶) issueSession('web') + setSessionCookie → {ok:true}.
  *
@@ -23,15 +23,11 @@ import "server-only";
  *     enumerate‌کردنِ حساب‌ها ممکن نباشد. گذرواژه هرگز لاگ نمی‌شود.
  */
 import { z } from "zod";
-import { eq } from "drizzle-orm";
 
-import { db } from "@/db";
-import { users } from "@/db/schema";
-import type { User } from "@/db/schema";
 import { errorJson, json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
 import { checkRateLimit } from "@/lib/api/rate-limit";
 import { issueSession, WEB_SESSION_TTL_MS } from "@/lib/auth/core";
-import { clientIp, setSessionCookie } from "@/lib/auth/http";
+import { clientIp, findOrCreateUserByPool, setSessionCookie } from "@/lib/auth/http";
 import { OnexaiSvcUnavailableError, verifyPoolPassword } from "@/lib/onexai/svc";
 import { EVENTS, flush, identify, track } from "@/lib/analytics";
 
@@ -109,29 +105,7 @@ export async function POST(request: Request): Promise<Response> {
 
     // ۴) پیدا/ساختِ کاربرِ محلی با ایمیل؛ گرهِ onexaiUserId در صورتِ نیاز تثبیت می‌شود
     //    (ورودِ بعدی/مسیرهای پولی دیگر resolve لازم ندارند).
-    const [existing] = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, body.email))
-      .limit(1);
-
-    let user: User;
-    if (!existing) {
-      const [created] = await db
-        .insert(users)
-        .values({ email: body.email, onexaiUserId: pool.id })
-        .returning();
-      user = created;
-    } else if (existing.onexaiUserId == null) {
-      const [updated] = await db
-        .update(users)
-        .set({ onexaiUserId: pool.id, updatedAt: new Date() })
-        .where(eq(users.id, existing.id))
-        .returning();
-      user = updated ?? existing;
-    } else {
-      user = existing;
-    }
+    const user = await findOrCreateUserByPool({ id: pool.id, email: body.email });
 
     // ۵) کاربرِ غیرفعال → همان ۴۰۱ یکنواخت (وضعیتِ حساب به بیرون نشت نمی‌کند).
     if (user.isActive === false) {

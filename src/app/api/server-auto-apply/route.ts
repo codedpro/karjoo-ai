@@ -7,9 +7,9 @@ import "server-only";
  *   • GET  /api/server-auto-apply — وضعیتِ تاگلِ سرور + واجدِ شرایط بودن:
  *       { enabled, minScore, eligible, plan, planLabel, workerIpLimit }.
  *   • PUT  /api/server-auto-apply — ست‌کردنِ تاگلِ سطحِ سرور و/یا آستانه
- *       (بدنه: { enabled?, minScore? }). فقط برای پلن‌های Max/Max+ (workerIpLimit > 0).
+ *       (بدنه: { enabled?, minScore? }). فقط برای اشتراک‌های دارای ورکر (workerIpLimit > 0).
  *
- * پلن‌گِیت (سختِ Track B): پیش از هر نوشتنی، اگر پلنِ کاربر ورکر ندارد (Free/Pro) و کاربر
+ * پلن‌گِیت (سختِ Track B): پیش از هر نوشتنی، اگر پلنِ کاربر ورکر ندارد (بدونِ ورکر) و کاربر
  * می‌خواهد تاگل را روشن کند، با ۴۰۳ و بدنه‌ی ساخت‌یافته (code:'not_entitled') رد می‌شود —
  * هیچ upsert/ممیزی‌ای رخ نمی‌دهد. خاموش‌کردن همیشه مجاز است (کاربری که پلنش پایین آمده باید
  * بتواند رضایتِ قبلی را لغو کند).
@@ -78,7 +78,7 @@ export async function PUT(request: Request): Promise<Response> {
     const workerIpLimit = workerIpLimitOf(entitlements);
     const eligible = workerIpLimit > 0;
 
-    // پلن‌گِیتِ سخت: پلنِ بدونِ ورکر (Free/Pro) *نمی‌تواند روشن کند*. هر تلاش برای روشن‌کردن
+    // پلن‌گِیتِ سخت: پلنِ بدونِ ورکر (بدونِ ورکر) *نمی‌تواند روشن کند*. هر تلاش برای روشن‌کردن
     // (یا صرفِ تغییرِ آستانه در حالِ فعال‌بودنِ درخواست‌شده) پیش از هر نوشتنی با ۴۰۳ رد می‌شود.
     // خاموش‌کردن (enabled=false) همیشه مجاز است تا رضایتِ قبلی قابلِ لغو بماند.
     const wantsEnable = body.enabled === true;

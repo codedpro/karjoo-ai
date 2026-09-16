@@ -30,7 +30,6 @@ import {
   Bell,
   Bot,
   Building2,
-  CreditCard,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
@@ -151,7 +150,6 @@ export const IconChip = icon(Puzzle); // میراثِ نامِ chip → همان
 // پول / بیلینگ
 export const IconWallet = icon(Wallet); // کیف‌پول
 export const IconReceipt = icon(Receipt); // رسید/ردِ ممیزی
-export const IconCard = icon(CreditCard); // پرداختِ کارت‌به‌کارت
 export const IconPlan = icon(BadgeCheck); // اشتراک/پلن
 
 // مدیریت (ادمین)

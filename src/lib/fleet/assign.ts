@@ -33,7 +33,7 @@ export type FleetAssignDb = typeof defaultDb;
  */
 export class WorkerIpLimitError extends Error {
   readonly code = "worker_ip_limit_exceeded" as const;
-  /** سقفِ IPِ ورکرِ این پلن (Free/Pro=۰، Max=۱، MaxPlus=۵). */
+  /** سقفِ IPِ ورکرِ این پلن (از اشتراکِ 1xai). */
   readonly limit: number;
   /** تعدادِ نودهای از پیش‌تخصیص‌یافته به این کاربر. */
   readonly assigned: number;
@@ -183,7 +183,7 @@ export async function autoAssignNodeForUser(
   entitlements: Entitlements,
   conn: FleetAssignDb = defaultDb,
 ): Promise<WorkerAssignment | null> {
-  // پلنِ بی‌ورکر (Free/Pro) → اصلاً تلاش نکن.
+  // پلنِ بی‌ورکر (بدونِ ورکر) → اصلاً تلاش نکن.
   if (workerIpLimitOf(entitlements) <= 0) return null;
 
   // از قبل نود دارد → کارِ تازه‌ای لازم نیست (idempotent).

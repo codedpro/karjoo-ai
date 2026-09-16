@@ -270,35 +270,47 @@ function faDate(iso: string | null): string {
  * مشخص و دکمه‌اش غیرفعال است تا کاربر به‌اشتباه خودش را بیرون نیندازد (خروج جای دیگری است).
  * هیچ توکن/رازی این‌جا نمایش داده نمی‌شود.
  */
+/** فهرستِ نشست‌ها را می‌خواند؛ خطا را به‌صورتِ پیامِ فارسی برمی‌گرداند (نه throw). */
+async function fetchSessions(): Promise<{ sessions: AuthSessionRow[]; error: string | null }> {
+  try {
+    const res = await fetch("/api/sessions", {
+      headers: { accept: "application/json" },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        sessions: [],
+        error: (data as { error?: string }).error ?? "دریافتِ فهرستِ دستگاه‌ها ناموفق بود.",
+      };
+    }
+    return { sessions: (data as { sessions?: AuthSessionRow[] }).sessions ?? [], error: null };
+  } catch {
+    return { sessions: [], error: "اتصال به سرور برقرار نشد." };
+  }
+}
+
 export function ConnectedDevicesPanel() {
   const [sessions, setSessions] = useState<AuthSessionRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setError(null);
-    try {
-      const res = await fetch("/api/sessions", {
-        headers: { accept: "application/json" },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(
-          (data as { error?: string }).error ?? "دریافتِ فهرستِ دستگاه‌ها ناموفق بود.",
-        );
-        setSessions([]);
-        return;
-      }
-      setSessions((data as { sessions?: AuthSessionRow[] }).sessions ?? []);
-    } catch {
-      setError("اتصال به سرور برقرار نشد.");
-      setSessions([]);
-    }
+    const result = await fetchSessions();
+    setSessions(result.sessions);
+    setError(result.error);
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    void fetchSessions().then((result) => {
+      if (cancelled) return;
+      setSessions(result.sessions);
+      setError(result.error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function revoke(id: string) {
     if (revoking) return;

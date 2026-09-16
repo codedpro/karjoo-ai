@@ -8,7 +8,7 @@ import "server-only";
  *   • تنظیماتِ مؤثرِ تاگلِ *سرور* (enabled/minScore) را از هسته‌ی Foundation
  *     (getServerAutoApplySettings، جدولِ user_server_auto_apply) می‌خواند.
  *
- * برای پلن‌های بدونِ ورکر (Free/Pro) اصلاً تنظیماتِ سرور را کوئری نمی‌کنیم (مسیرِ ارزان):
+ * برای پلن‌های بدونِ ورکر (بدونِ ورکر) اصلاً تنظیماتِ سرور را کوئری نمی‌کنیم (مسیرِ ارزان):
  * آن‌ها واجدِ شرایط نیستند و کارتِ ارتقا می‌بینند، نه تاگل.
  */
 import { cache } from "react";
@@ -37,7 +37,7 @@ export const getServerAutoApplyCardData = cache(
     const capability = planFleetCapability(await readEntitlements(userId));
 
     if (!capability.hasWorkerAutoApply) {
-      // Free/Pro — واجدِ شرایط نیستند؛ تاگل رندر نمی‌شود، پس تنظیماتِ سرور را نمی‌خوانیم.
+      // بدونِ ورکر — واجدِ شرایط نیستند؛ تاگل رندر نمی‌شود، پس تنظیماتِ سرور را نمی‌خوانیم.
       return {
         capability,
         settings: { enabled: false, minScore: 0.7 },

@@ -231,7 +231,7 @@ export async function assertAutoApplyAllowed(
   return { minScore: settings.minScore, quota };
 }
 
-/* ══════════════  سطحِ «سرور» (پَسیو، ناوگانِ ۲۴/۷ — پلن Max/Max+)  ══════════════
+/* ══════════════  سطحِ «سرور» (پَسیو، ناوگانِ ۲۴/۷ — اشتراکِ دارای ورکر)  ══════════════
 
    یک سطحِ *مستقلِ* دوم (GOAL 3). این‌ها آینه‌ی helperهای بالا هستند اما روی جدولِ
    user_server_auto_apply و با یک گاردِ اضافه‌ی «پلن دارای ورکر» (workerIpLimit > ۰).
@@ -329,7 +329,7 @@ export async function setServerAutoApplyEnabled(
 
 /**
  * کدهای پایدارِ ردِ گیتِ اپلای خودکارِ *سرور*. مثلِ گیتِ افزونه، به‌علاوه‌ی `not_entitled`
- * برای پلن‌های بدونِ ورکر (Free/Pro) که حتی با تاگلِ روشن هم مجاز نیستند.
+ * برای پلن‌های بدونِ ورکر (بدونِ ورکر) که حتی با تاگلِ روشن هم مجاز نیستند.
  */
 export type ServerAutoApplyDenialCode =
   | "disabled"
@@ -400,7 +400,7 @@ export async function assertServerAutoApplyAllowed(
   entitlements: Entitlements,
   deps: AssertServerAutoApplyDeps = {},
 ): Promise<AutoApplyAllowance> {
-  // ۱) پلن‌گِیت — پلنِ بدونِ ورکر (Free/Pro) اصلاً حقِ سطحِ سرور ندارد.
+  // ۱) پلن‌گِیت — پلنِ بدونِ ورکر (بدونِ ورکر) اصلاً حقِ سطحِ سرور ندارد.
   const workerIpLimit = workerIpLimitOf(entitlements);
   if (workerIpLimit <= 0) {
     throw new ServerAutoApplyNotAllowedError({ code: "not_entitled", workerIpLimit });

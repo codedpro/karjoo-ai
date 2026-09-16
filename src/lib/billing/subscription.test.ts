@@ -127,22 +127,28 @@ describe("readEntitlements", () => {
     expect(getPoolSubscriptionFn).toHaveBeenCalledTimes(2);
   });
 
-  it("خطای svc → مزایای رایگان با unavailable=true (و کش نمی‌شود)", async () => {
+  it("خطای svc → مزایای رایگان با unavailable=true، ۱۵ ثانیه کش و بعد تلاشِ دوباره", async () => {
     const getPoolSubscriptionFn = vi
       .fn<(id: number) => Promise<OnexaiSubscription>>()
       .mockRejectedValueOnce(new Error("svc down"))
       .mockResolvedValueOnce(PRO_SUB);
+    let clock = 0;
     const deps = {
       db: makeDb() as never,
       resolveUserFn: resolveUserFn as never,
       getPoolSubscriptionFn,
-      now: () => 0,
+      now: () => clock,
     };
 
     const e = await readEntitlements("u1", deps);
     expect(e).toEqual({ ...FREE_ENTITLEMENTS, unavailable: true });
 
-    // شکست کش نشد: خواندنِ بعدی دوباره تلاش می‌کند.
+    // هنگامِ قطعی هر فراخوانی دوباره منتظرِ timeout نمی‌ماند.
+    clock = 14_999;
+    expect((await readEntitlements("u1", deps)).unavailable).toBe(true);
+    expect(getPoolSubscriptionFn).toHaveBeenCalledTimes(1);
+
+    clock = 15_000;
     const again = await readEntitlements("u1", deps);
     expect(again.workerIpLimit).toBe(1);
     expect(getPoolSubscriptionFn).toHaveBeenCalledTimes(2);
