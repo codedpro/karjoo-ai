@@ -43,6 +43,9 @@ describe("which signals to probe per board", () => {
   it("irantalent → cookie names (SPA with a first-party auth cookie)", () => {
     expect(sessionTokenKeys("irantalent")).toEqual([]);
   });
+  it("karboom → cookie names (server-rendered)", () => {
+    expect(sessionTokenKeys("karboom")).toEqual([]);
+  });
 });
 
 describe("sessionShapeOf", () => {
@@ -51,6 +54,7 @@ describe("sessionShapeOf", () => {
     expect(sessionShapeOf("e-estekhdam")).toBe("cookie");
     expect(sessionShapeOf("jobvision")).toBe("token");
     expect(sessionShapeOf("irantalent")).toBe("cookie");
+    expect(sessionShapeOf("karboom")).toBe("cookie");
   });
 });
 
@@ -71,6 +75,7 @@ describe("no board decides login from guessed cookie names any more", () => {
     expect(sessionShapeOf("jobinja")).toBe("cookie");
     expect(sessionShapeOf("e-estekhdam")).toBe("cookie");
     expect(sessionShapeOf("irantalent")).toBe("cookie");
+    expect(sessionShapeOf("karboom")).toBe("cookie");
     expect(sessionShapeOf("jobvision")).toBe("token");
   });
 });

@@ -72,3 +72,38 @@ describe("a selected category the catalog does not know must be visible", () => 
     expect(panel).toContain("selectedCategories.delete(key)");
   });
 });
+
+describe("sidepanel stale run display", () => {
+  const panel = readFileSync("src/sidepanel/sidepanel.ts", "utf8");
+
+  it("only calls a stale heartbeat stalled when there is work to recover", () => {
+    expect(panel).toContain(
+      "const hasRecoverableWork = Boolean(run.currentTaskId) || counts.queued > 0 || overview.queue.length > 0;",
+    );
+    expect(panel).toContain("const stalled = heartbeatStale && hasRecoverableWork;");
+    expect(panel).toContain("const staleIdle = heartbeatStale && !hasRecoverableWork;");
+  });
+
+  it("renders stale empty queues as idle instead of stopped", () => {
+    expect(panel).toContain("آماده — کاری در حال انجام نیست");
+    expect(panel).toContain("کاری برای اجرا وجود ندارد؛ با اضافه شدن مورد جدید، می‌توانید شروع کنید.");
+  });
+});
+
+describe("Karboom provider wiring", () => {
+  const panel = readFileSync("src/sidepanel/sidepanel.ts", "utf8");
+  const worker = readFileSync("src/background/service-worker.ts", "utf8");
+
+  it("loads Karboom's filter catalog when the filters screen opens", () => {
+    expect(panel).toContain('send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "karboom" })');
+    expect(panel).toContain('catalogs.set("karboom", karboomCatalog)');
+  });
+
+  it("detects Karboom login inside a first-party Karboom tab", () => {
+    expect(worker).toContain("probeKarboomSession");
+    expect(worker).toContain('chrome.tabs.query({ url: boardTabPatterns(BOARDS.karboom.origin) })');
+    expect(worker).toContain('fetch("/profile"');
+    expect(worker).toContain('redirect: "follow"');
+    expect(worker).toContain("response.url");
+  });
+});

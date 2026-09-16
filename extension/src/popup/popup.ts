@@ -17,15 +17,16 @@ import { BOARDS, type BoardId } from "@ext/lib/config";
 import { isPaired, getApiOrigin } from "@ext/lib/storage";
 import { isValidPairingCodeShape, normalizePairingCode } from "@ext/lib/pairing-code";
 import { toQueueCardViews, type QueueCardView } from "@ext/lib/queue-view";
-import { stateLabel, thresholdLabel, lastRunLabel } from "@ext/lib/auto-apply-view";
+import { stateLabel, thresholdLabel, liveAwareLastRunLabel } from "@ext/lib/auto-apply-view";
 import { checkForUpdate, type UpdateCheckResult } from "@ext/lib/update-check";
 import type {
   Identity,
   ApplyQueueItem,
   AutoApplySettings,
   AutoApplyStatus,
+  ExtensionRunOverview,
 } from "@ext/lib/types";
-import type { ProbeSessionResult, BoardImportOutcome } from "@ext/lib/messages";
+import type { ProbeSessionResult, BoardImportOutcome, UpdateExtensionResult } from "@ext/lib/messages";
 import { LONG_SEND_TIMEOUT_MS, send } from "@ext/popup/messaging";
 
 /* ── tiny DOM utils ────────────────────────────────────────────────────── */
@@ -179,6 +180,29 @@ function renderUpdateBanner(result: UpdateCheckResult, origin: string) {
   }
 
   show(banner, true);
+  wireUpdateActionButton();
+}
+
+function wireUpdateActionButton() {
+  const button = $opt<HTMLButtonElement>("update-action");
+  if (!button || button.dataset.wired === "1") return;
+  button.dataset.wired = "1";
+  button.addEventListener("click", async () => {
+    const status = $opt("update-action-status");
+    button.disabled = true;
+    if (status) {
+      setText(status, "در حال بررسی و دریافت نسخه...");
+      show(status, true);
+    }
+    try {
+      const result = await send<UpdateExtensionResult>({ type: "UPDATE_EXTENSION" }, LONG_SEND_TIMEOUT_MS);
+      if (status) setText(status, result.message);
+    } catch (error) {
+      if (status) setText(status, errMsg(error));
+    } finally {
+      button.disabled = false;
+    }
+  });
 }
 
 function wireSignOut() {
@@ -269,6 +293,7 @@ async function enterMain() {
   wireImport();
   wireAutoApply();
   wireFindJobs();
+  wireResetQueue();
   $("refresh-queue").addEventListener("click", () => void loadQueue());
 
   // Async state loads WITHOUT blocking the render; each is independently guarded so a
@@ -342,8 +367,11 @@ async function refreshAutoApplyView() {
     showGlobalError(errMsg(e));
   }
   try {
-    const status = await send<AutoApplyStatus | null>({ type: "GET_AUTO_APPLY_STATUS" });
-    renderAutoStatus(status);
+    const [status, overview] = await Promise.all([
+      send<AutoApplyStatus | null>({ type: "GET_AUTO_APPLY_STATUS" }),
+      send<ExtensionRunOverview | null>({ type: "GET_RUN_OVERVIEW" }).catch(() => null),
+    ]);
+    renderAutoStatus(status, overview);
   } catch {
     // Status is best-effort; leave the default text.
   }
@@ -357,8 +385,8 @@ function renderAutoSettings(settings: AutoApplySettings) {
   ($("auto-run-now") as HTMLButtonElement).disabled = !settings.enabled;
 }
 
-function renderAutoStatus(status: AutoApplyStatus | null) {
-  setText($("auto-last-run"), lastRunLabel(status));
+function renderAutoStatus(status: AutoApplyStatus | null, overview: ExtensionRunOverview | null = null) {
+  setText($("auto-last-run"), liveAwareLastRunLabel(status, overview));
 }
 
 function identityLabel(identity: Identity | null): string {
@@ -530,6 +558,56 @@ function wireFindJobs() {
       setStatusLine(errMsg(e), "error");
     } finally {
       btn.disabled = false;
+      btn.textContent = original;
+    }
+  });
+}
+
+function wireResetQueue() {
+  const btn = $opt<HTMLButtonElement>("reset-queue");
+  if (!btn) return;
+  const findBtn = $opt<HTMLButtonElement>("find-jobs");
+  const statusEl = $opt("reset-queue-status");
+
+  btn.addEventListener("click", async () => {
+    const confirmed = window.confirm(
+      "همهٔ کارهای ناتمام صف پاک شوند و جست‌وجو با فیلترهای فعلی از ابتدا شروع شود؟ تاریخچهٔ ارسال‌ها و موارد در حال بررسی حفظ می‌شوند.",
+    );
+    if (!confirmed) return;
+
+    btn.disabled = true;
+    if (findBtn) findBtn.disabled = true;
+    const original = btn.textContent ?? "پاک‌سازی صف و جست‌وجوی دوباره";
+    btn.textContent = "در حال پاک‌سازی…";
+    if (statusEl) {
+      setText(statusEl, "در حال توقف امن اجرا و ساخت دوبارهٔ صف…");
+      statusEl.className = "notice";
+      show(statusEl, true);
+    }
+    try {
+      const result = await send<{ removed: number; byBoard: Record<string, number> }>(
+        { type: "RESET_QUEUE_AND_REDISCOVER" },
+        LONG_SEND_TIMEOUT_MS,
+      );
+      if (statusEl) {
+        setText(
+          statusEl,
+          `${result.removed} کار ناتمام پاک شد. جست‌وجوی تازه با فیلترهای فعلی شروع شد.`,
+        );
+      }
+      void refreshAutoApplyView();
+    } catch (error) {
+      if (isAuthError(error)) {
+        void handleSessionExpired();
+        return;
+      }
+      if (statusEl) {
+        setText(statusEl, errMsg(error));
+        statusEl.className = "error";
+      }
+    } finally {
+      btn.disabled = false;
+      if (findBtn) findBtn.disabled = false;
       btn.textContent = original;
     }
   });

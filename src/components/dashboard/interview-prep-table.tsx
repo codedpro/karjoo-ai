@@ -3,6 +3,9 @@
 /**
  * جدولِ «وضعیتِ اپلای‌ها» (client — فیلتر/جست‌وجو/تلاشِ دوباره در خودِ مرورگر انجام می‌شود).
  *
+ * فیلتر، جست‌وجو و صفحه‌بندی در سرور و از روی URL انجام می‌شود تا کلِ تاریخچه (نه فقط
+ * چند صد ردیفِ آخر) قابلِ جست‌وجو باشد و صفحه سبک بماند.
+ *
  * سه تصمیمِ اصلیِ این بازنویسی:
  *   ۱) قابِ جدول `TableFrame` است، نه یک `min-w-[1100px]` که *همیشه* افقی اسکرول می‌شد.
  *      ستون‌های کم‌اهمیت‌تر (زمان/تلاش/توضیح) زیرِ md و xl پنهان می‌شوند و همان توضیح
@@ -16,7 +19,8 @@
  * تازه‌وارد است و باید راهِ ادامه بدهد (لینک به اپلای خودکار)؛ دومی فقط پیشنهادِ
  * پاک‌کردنِ فیلتر است.
  */
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { IconDoc, IconRefresh, IconSend } from "@/components/dashboard/icons";
@@ -31,6 +35,8 @@ import {
 } from "@/components/dashboard/ui";
 import type {
   InterviewPrepData,
+  InterviewPrepFilter,
+  InterviewPrepQuery,
   InterviewPrepRow,
   InterviewPrepStatus,
 } from "@/lib/apply/interview-prep";
@@ -55,6 +61,11 @@ const STATUS_META: Record<
     label: "در حالِ ارسال",
     tone: "brand",
     note: "همین حالا در حالِ پرکردنِ فرمِ کارفرماست.",
+  },
+  verifying: {
+    label: "در حال بررسی",
+    tone: "amber",
+    note: "کارجو نتیجه را با تاریخچهٔ خود سایت تطبیق می‌دهد؛ فعلاً دوباره ارسال نمی‌شود.",
   },
   submitted: {
     label: "ارسال شد",
@@ -83,10 +94,11 @@ const STATUS_META: Record<
   },
 };
 
-const FILTERS: Array<InterviewPrepStatus | "all"> = [
+const FILTERS: InterviewPrepFilter[] = [
   "all",
   "queued",
   "applying",
+  "verifying",
   "submitted",
   "failed",
   "skipped",
@@ -124,38 +136,32 @@ function faDate(iso: string | null): string {
   }
 }
 
-function rowText(row: InterviewPrepRow): string {
-  return [
-    row.listing.title,
-    row.listing.company,
-    row.listing.city,
-    row.listing.board,
-    row.reason,
-    row.lastError,
-    row.listing.description,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+const BASE_HREF = "/dashboard/interview-prep";
+
+function statusHref(query: InterviewPrepQuery, patch: Partial<InterviewPrepQuery>): string {
+  const next = { ...query, page: 1, ...patch };
+  const params = new URLSearchParams();
+  if (next.q) params.set("q", next.q);
+  if (next.status !== "all") params.set("status", next.status);
+  if (next.page > 1) params.set("page", String(next.page));
+  const qs = params.toString();
+  return qs ? `${BASE_HREF}?${qs}` : BASE_HREF;
 }
 
-export function InterviewPrepTable({ data }: { data: InterviewPrepData }) {
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<InterviewPrepStatus | "all">("all");
+export function InterviewPrepTable({
+  data,
+  query,
+}: {
+  data: InterviewPrepData;
+  query: InterviewPrepQuery;
+}) {
   const [openJd, setOpenJd] = useState<InterviewPrepRow | null>(null);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return data.rows.filter((row) => {
-      if (status !== "all" && row.status !== status) return false;
-      if (!q) return true;
-      return rowText(row).includes(q);
-    });
-  }, [data.rows, query, status]);
+  const filtered = data.rows;
 
   async function retry(row: InterviewPrepRow) {
     if (!row.applicationId) return;
@@ -178,7 +184,7 @@ export function InterviewPrepTable({ data }: { data: InterviewPrepData }) {
   }
 
   // کاربرِ تازه‌وارد اصلاً ردیفی ندارد — این «چیزی پیدا نشد» نیست، «هنوز شروع نشده» است.
-  if (data.rows.length === 0) {
+  if (data.summary.total === 0) {
     return (
       <EmptyState
         icon={<IconSend />}
@@ -198,13 +204,13 @@ export function InterviewPrepTable({ data }: { data: InterviewPrepData }) {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2" role="group" aria-label="فیلترِ وضعیت">
             {FILTERS.map((item) => {
-              const active = status === item;
+              const active = query.status === item;
               return (
-                <button
+                <Link
                   key={item}
-                  type="button"
-                  onClick={() => setStatus(item)}
-                  aria-pressed={active}
+                  href={statusHref(query, { status: item })}
+                  scroll={false}
+                  aria-current={active ? "true" : undefined}
                   className={cn(
                     "focus-ring inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors",
                     active
@@ -216,27 +222,36 @@ export function InterviewPrepTable({ data }: { data: InterviewPrepData }) {
                   <span className="ltr-nums font-normal opacity-70">
                     {toFaDigits(filterCount(data.summary, item))}
                   </span>
-                </button>
+                </Link>
               );
             })}
           </div>
-          <div className="lg:w-full lg:max-w-sm">
+          <form action={BASE_HREF} className="flex gap-2 lg:w-full lg:max-w-sm">
+            {query.status !== "all" ? (
+              <input type="hidden" name="status" value={query.status} />
+            ) : null}
             <label htmlFor="apply-status-search" className="sr-only">
               جست‌وجو در فهرست
             </label>
             <input
               id="apply-status-search"
+              name="q"
               type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              defaultValue={query.q}
               placeholder="جست‌وجو در عنوانِ شغل، شرکت یا متنِ آگهی"
               className="focus-ring w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
             />
-          </div>
+            <Button type="submit" variant="secondary" size="sm">
+              جست‌وجو
+            </Button>
+          </form>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
           <span>
-            نمایشِ {toFaDigits(filtered.length)} از {toFaDigits(data.rows.length)}
+            {toFaDigits(data.filteredTotal)} مورد
+            {data.pageCount > 1
+              ? ` · صفحه‌ی ${toFaDigits(data.page)} از ${toFaDigits(data.pageCount)}`
+              : ""}
           </span>
           <span>آخرین به‌روزرسانی: {faDate(data.updatedAt)}</span>
           {notice ? (
@@ -252,16 +267,9 @@ export function InterviewPrepTable({ data }: { data: InterviewPrepData }) {
           title="با این فیلتر چیزی پیدا نشد"
           body="عبارتِ جست‌وجو را کوتاه‌تر کن یا روی «همه» بزن."
           action={
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setStatus("all");
-                setQuery("");
-              }}
-            >
+            <ButtonLink href={BASE_HREF} variant="secondary">
               نمایشِ همه
-            </Button>
+            </ButtonLink>
           }
         />
       ) : (
@@ -376,6 +384,26 @@ export function InterviewPrepTable({ data }: { data: InterviewPrepData }) {
           </table>
         </TableFrame>
       )}
+
+      {data.pageCount > 1 ? (
+        <nav aria-label="صفحه‌بندی" className="flex flex-wrap items-center justify-center gap-2">
+          {data.page > 1 ? (
+            <ButtonLink href={statusHref(query, { page: data.page - 1 })} variant="secondary" size="sm">
+              صفحه‌ی قبل
+            </ButtonLink>
+          ) : null}
+          <Badge tone="muted">
+            <span className="ltr-nums">{toFaDigits(data.page)}</span>
+            /
+            <span className="ltr-nums">{toFaDigits(data.pageCount)}</span>
+          </Badge>
+          {data.page < data.pageCount ? (
+            <ButtonLink href={statusHref(query, { page: data.page + 1 })} variant="secondary" size="sm">
+              صفحه‌ی بعد
+            </ButtonLink>
+          ) : null}
+        </nav>
+      ) : null}
 
       {openJd ? <JdModal row={openJd} onClose={() => setOpenJd(null)} /> : null}
     </div>

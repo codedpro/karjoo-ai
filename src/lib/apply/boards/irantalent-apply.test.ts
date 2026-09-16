@@ -97,6 +97,7 @@ describe("applyToIranTalent", () => {
     const { fetchMock, calls } = stub();
     const result = await applyToIranTalent(input(), fetchMock);
     expect(result.status).toBe("submitted");
+    expect(result.proof).toEqual({ provider: "irantalent", signal: "position_is_applied" });
 
     expect(calls.some((c) => c.url.endsWith("/file"))).toBe(false);
     const submit = calls.find((c) => c.url.endsWith("/apply"))!;
@@ -123,13 +124,24 @@ describe("applyToIranTalent", () => {
       appliedAfter: false,
       appliedJobs: { data: [{ position: { id: 182341 } }] },
     });
-    expect(await applyToIranTalent(input(), fetchMock)).toMatchObject({ status: "submitted" });
+    expect(await applyToIranTalent(input(), fetchMock)).toMatchObject({
+      status: "submitted",
+      proof: { provider: "irantalent", signal: "application_history" },
+    });
   });
 
-  it("skips closed, already-applied, redirected, and screening-question jobs", async () => {
+  it("stores an already-applied position as provider-confirmed history", async () => {
+    const { fetchMock } = stub({ position: { is_applied: true } });
+    expect(await applyToIranTalent(input(), fetchMock)).toMatchObject({
+      status: "submitted",
+      reason: "already_applied_on_board",
+      proof: { provider: "irantalent", signal: "position_is_applied" },
+    });
+  });
+
+  it("skips closed, redirected, and screening-question jobs", async () => {
     for (const [position, reason] of [
       [{ status: { id: 171 } }, "irantalent_job_unavailable"],
-      [{ is_applied: true }, "irantalent_already_applied"],
       [{ redirection_url: "https://elsewhere.example" }, "irantalent_job_unavailable"],
       [{ screening_questions: [{ id: 1 }] }, "irantalent_screening_questions_required"],
     ] as const) {

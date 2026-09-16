@@ -15,7 +15,11 @@ import { readSessionBlob } from "@/lib/vault/store";
 import { decryptSession } from "@/lib/vault/crypto";
 import { sessionBundleSchema } from "@/lib/api/session-schemas";
 import { KARJOO_USER_AGENT } from "@/lib/apply/robots";
-import { isFreshProviderDate } from "@/lib/apply/freshness";
+import { isFreshProviderDate, providerSyncCutoff } from "@/lib/apply/freshness";
+import {
+  reconcileJobinjaVerifying,
+  type JobinjaReconciliationResult,
+} from "@/lib/apply/boards/jobinja-verification";
 
 const ORIGIN = "https://jobinja.ir";
 
@@ -428,6 +432,7 @@ async function fetchWithCookies(path: string, cookieHeader: string): Promise<str
 
 export interface JobinjaReadDeps {
   db?: Database;
+  reconcileVerification?: boolean;
 }
 
 /** درخواست‌های اپلای را upsert می‌کند (کلیدِ dedupe: user×board×externalId). */
@@ -470,6 +475,13 @@ export async function upsertApplications(
       });
     n += 1;
   }
+  if (board === "jobinja" && apps.length > 0 && deps.reconcileVerification !== false) {
+    await reconcileJobinjaVerifying(userId, apps, {
+      completeWindow: false,
+      windowStart: providerSyncCutoff(),
+      db: conn,
+    });
+  }
   return n;
 }
 
@@ -510,6 +522,8 @@ export interface SyncResult {
   reason?: string;
   applications: number;
   profile: boolean;
+  historyComplete?: boolean;
+  verification?: JobinjaReconciliationResult;
 }
 
 /**
@@ -543,24 +557,48 @@ export async function syncJobinjaFromVault(
   // اول یعنی سقفِ ۲۵ تا — کاربری با ۵۰ درخواست فقط نیمی از وضعیت‌ها را می‌دید. تا
   // MAX_APPLIED_PAGES صفحه جلو می‌رویم (سقفِ ایمنی در برابرِ صفحه‌بندیِ بی‌انتها).
   let applications = 0;
+  let historyComplete = false;
+  let verification: JobinjaReconciliationResult | undefined;
   if (appliedHtml) {
     const all = [...parseAppliedJobs(appliedHtml)];
     const page1 = parseAppliedPageInfo(appliedHtml);
     const lastPage = Math.min(page1?.lastPage ?? 1, MAX_APPLIED_PAGES);
-    if (!pageIsPastSyncWindow(all)) {
+    let reachedBoundary = pageIsPastSyncWindow(all);
+    let fetchedThroughLastPage = page1 !== null && lastPage === 1;
+    let pageFetchFailed = false;
+    if (!reachedBoundary) {
       for (let page = 2; page <= lastPage; page += 1) {
         const html = await fetchWithCookies(`/jobs/applied?page=${page}`, cookieHeader);
-        if (!html) break;
+        if (!html) {
+          pageFetchFailed = true;
+          break;
+        }
         const rows = parseAppliedJobs(html);
-        if (rows.length === 0) break; // صفحه‌ی خالی → پایان
-        if (pageIsPastSyncWindow(rows)) break;
+        if (rows.length === 0) {
+          pageFetchFailed = true;
+          break;
+        }
         all.push(...rows);
+        if (pageIsPastSyncWindow(rows)) {
+          reachedBoundary = true;
+          break;
+        }
+        if (page === lastPage) fetchedThroughLastPage = true;
       }
     }
+    historyComplete = !pageFetchFailed && (reachedBoundary || fetchedThroughLastPage);
     // یکتاسازی روی externalId (صفحه‌ها ممکن است هم‌پوشانی داشته باشند).
     const seen = new Set<string>();
     const unique = all.filter((a) => (seen.has(a.externalId) ? false : (seen.add(a.externalId), true)));
-    applications = await upsertApplications(userId, "jobinja", unique, { db: conn });
+    applications = await upsertApplications(userId, "jobinja", unique, {
+      db: conn,
+      reconcileVerification: false,
+    });
+    verification = await reconcileJobinjaVerifying(userId, unique, {
+      completeWindow: historyComplete,
+      windowStart: providerSyncCutoff(),
+      db: conn,
+    });
   }
   let profile = false;
   if (cvHtml) {
@@ -570,7 +608,13 @@ export async function syncJobinjaFromVault(
       profile = true;
     }
   }
-  return { ok: appliedHtml !== null || cvHtml !== null, applications, profile };
+  return {
+    ok: appliedHtml !== null || cvHtml !== null,
+    applications,
+    profile,
+    historyComplete,
+    ...(verification ? { verification } : {}),
+  };
 }
 
 /* ─────────────────────────────  read (for UI)  ─────────────────────────── */

@@ -27,6 +27,7 @@ interface LiveApplyPanelProps {
 
 const STATUS_LABEL: Record<string, { label: string; tone: "green" | "amber" | "rose" | "muted" }> = {
   submitted: { label: "ارسال شد", tone: "green" },
+  verifying: { label: "در حال بررسی", tone: "amber" },
   draft: { label: "پیش‌نویس", tone: "muted" },
   skipped: { label: "ارسال نشد", tone: "amber" },
   failed: { label: "ناموفق", tone: "rose" },

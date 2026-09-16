@@ -121,6 +121,10 @@ export interface FindJobsMsg {
   type: "FIND_JOBS";
 }
 
+export interface ResetQueueAndRediscoverMsg {
+  type: "RESET_QUEUE_AND_REDISCOVER";
+}
+
 export interface GetRunOverviewMsg {
   type: "GET_RUN_OVERVIEW";
 }
@@ -145,7 +149,7 @@ export interface GetExecutorIdMsg { type: "GET_EXECUTOR_ID" }
 export interface GetJobinjaCategoriesMsg { type: "GET_JOBINJA_CATEGORIES" }
 export interface GetBoardCatalogMsg {
   type: "GET_BOARD_CATALOG";
-  board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent";
+  board: ActiveProviderId;
 }
 export interface RetryApplicationMsg { type: "RETRY_APPLICATION"; applicationId: string }
 export interface GetApplicationResumeMsg {
@@ -157,6 +161,17 @@ export interface ManageProviderMsg {
   type: "MANAGE_PROVIDER";
   board: ActiveProviderId;
   action: "pause" | "resume" | "login" | "reconnect" | "disconnect";
+}
+
+export interface UpdateExtensionMsg {
+  type: "UPDATE_EXTENSION";
+}
+
+export interface UpdateExtensionResult {
+  updateStatus: "updated" | "downloaded" | "current" | "manual";
+  latestVersion?: string;
+  downloadUrl?: string;
+  message: string;
 }
 
 /* ── background → content ──────────────────────────────────────────────── */
@@ -212,6 +227,15 @@ export interface ContentDiscoverJobinjaMsg {
   type: "CONTENT_DISCOVER_JOBINJA";
 }
 
+export interface SyncJobinjaHistoryMsg {
+  type: "SYNC_JOBINJA_HISTORY";
+}
+
+export interface VerifyJobinjaApplicationMsg {
+  type: "VERIFY_JOBINJA_APPLICATION";
+  jobUrl: string;
+}
+
 export type PopupToBackground =
   | PairMsg
   | GetIdentityMsg
@@ -228,6 +252,7 @@ export type PopupToBackground =
   | RunAutoApplyNowMsg
   | JobinjaCvidMsg
   | FindJobsMsg
+  | ResetQueueAndRediscoverMsg
   | GetRunOverviewMsg
   | MutateRunMsg
   | SetRunBackgroundMsg
@@ -239,7 +264,8 @@ export type PopupToBackground =
   | RetryApplicationMsg
   | GetApplicationResumeMsg
   | GetProviderStatesMsg
-  | ManageProviderMsg;
+  | ManageProviderMsg
+  | UpdateExtensionMsg;
 
 export type BackgroundToContent =
   | ProbeSessionMsg
@@ -247,7 +273,9 @@ export type BackgroundToContent =
   | ScrapeProfileMsg
   | ContentApplyMsg
   | CaptureStorageMsg
-  | ContentDiscoverJobinjaMsg;
+  | ContentDiscoverJobinjaMsg
+  | SyncJobinjaHistoryMsg
+  | VerifyJobinjaApplicationMsg;
 
 /** Subset of background→content messages the IMPORT content scripts handle. */
 export type BackgroundToImportContent = ScrapeProfileMsg;
@@ -279,6 +307,10 @@ export interface ContentApplyResult {
   ok: boolean;
   /** The board confirmed this application existed before this execution. */
   alreadyApplied?: boolean;
+  /** Submission was attempted but must be checked against provider history. */
+  verificationPending?: boolean;
+  /** Non-secret evidence that the provider accepted or already had the application. */
+  proof?: Record<string, unknown>;
   /** Non-secret debug trail of which steps ran. */
   ranSteps: string[];
   /** Short, non-secret reason on failure. */

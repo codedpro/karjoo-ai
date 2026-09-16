@@ -16,6 +16,7 @@ import "server-only";
 import { and, desc, eq, exists, gte, inArray, lte, or, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
+import { hasSubmissionEvidence } from "@/lib/apply/submission-proof";
 import {
   applications,
   candidateProfiles,
@@ -313,7 +314,7 @@ export async function getTaskTailoredResume(
 export interface RecordResultInput {
   taskId: string;
   userId: string;
-  status: "submitted" | "skipped" | "failed";
+  status: "submitted" | "verifying" | "skipped" | "failed";
   externalRef?: string;
   reason?: string;
   proof?: Record<string, unknown>;
@@ -322,7 +323,7 @@ export interface RecordResultInput {
 /** خروجیِ ثبتِ نتیجه. */
 export interface RecordResultOutput {
   application: ApplicationRow;
-  taskStatus: "succeeded" | "failed";
+  taskStatus: "verifying" | "succeeded" | "failed";
 }
 
 /**
@@ -331,8 +332,8 @@ export interface RecordResultOutput {
  * گام‌ها (همگی مقید به همان userId — قاعده‌ی ۴):
  *   ۱) task را با اطمینان از تعلق به این کاربر پیدا کن (۴۰۴ اگر نباشد → null).
  *   ۲) یک ردیفِ applications برای match (idempotent روی matchId) upsert کن.
- *   ۳) task را نهایی کن: submitted/skipped → succeeded (دیگر retry نشود)؛
- *      failed → failed (با گزارشِ کاربر؛ مدیریتِ retry با لایه‌ی بالاتر).
+ *   ۳) task را نهایی کن: submitted/skipped → succeeded؛ verifying → verifying
+ *      (غیرقابل claim تا تطبیق با تاریخچه)؛ failed → failed.
  *
  * هرگز خودش task‌های دیگر را جلو نمی‌برد (قاعده‌ی ۲) — فقط همین یک نتیجه‌ی گزارش‌شده.
  * در صورتِ نبودِ task یا عدمِ تعلق به کاربر، null برمی‌گرداند (فراخواننده ۴۰۴ کند).
@@ -376,8 +377,21 @@ export async function recordResult(
     .limit(1);
 
   const now = new Date();
-  const submitted = input.status === "submitted";
-  const appStatus = input.status; // submitted | skipped | failed — هم‌راستا با applicationStatusEnum
+  const unconfirmedSubmit =
+    input.status === "submitted" &&
+    !hasSubmissionEvidence({
+      board: found.board,
+      externalRef: input.externalRef,
+      proof: input.proof,
+    });
+  const appStatus = unconfirmedSubmit
+    ? "verifying"
+    : input.status;
+  const submitted = appStatus === "submitted";
+  const reason =
+    unconfirmedSubmit
+      ? `${found.board}_submission_unconfirmed: awaiting provider history verification`
+      : input.reason ?? null;
 
   // ۲) ردیفِ applications را upsert کن (یکتا روی matchId).
   const [application] = await conn
@@ -392,7 +406,7 @@ export async function recordResult(
       channel: "extension",
       matchScore: found.matchScore,
       coverLetter: found.coverLetter,
-      reason: input.reason ?? null,
+      reason,
       externalRef: input.externalRef ?? null,
       proof: input.proof ?? null,
       submittedAt: submitted ? now : null,
@@ -404,7 +418,7 @@ export async function recordResult(
         status: appStatus,
         channel: "extension",
         ...(tailored && found.board === "jobinja" ? { resumeId: tailored.id } : {}),
-        reason: input.reason ?? null,
+        reason,
         externalRef: input.externalRef ?? null,
         proof: input.proof ?? null,
         submittedAt: submitted ? now : null,
@@ -413,15 +427,22 @@ export async function recordResult(
     })
     .returning();
 
-  // ۳) task را نهایی کن. submitted/skipped → succeeded (تمام)؛ failed → failed.
-  const taskStatus: "succeeded" | "failed" =
-    input.status === "failed" ? "failed" : "succeeded";
+  // ۳) نتیجهٔ مبهم را از صف claim خارج نگه دار تا تطبیقِ تاریخچه آن را حل کند.
+  const taskStatus: "verifying" | "succeeded" | "failed" =
+    appStatus === "verifying"
+      ? "verifying"
+      : appStatus === "failed"
+        ? "failed"
+        : "succeeded";
 
   await conn
     .update(tasks)
     .set({
       status: taskStatus,
-      lastError: input.status === "failed" ? (input.reason ?? "reported failed") : null,
+      lastError:
+        appStatus === "failed" || appStatus === "verifying"
+          ? (reason ?? `reported ${appStatus}`)
+          : null,
       leasedAt: null,
       updatedAt: now,
     })

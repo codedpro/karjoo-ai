@@ -37,8 +37,8 @@ describe("deriveProviderState", () => {
 
 describe("deriveProviderState across every active provider", () => {
   const probe = { loggedIn: true } as const;
-  it("reports each of the four providers with its own board id", () => {
-    for (const board of ["jobinja", "jobvision", "e-estekhdam", "irantalent"] as const) {
+  it("reports each active provider with its own board id", () => {
+    for (const board of ["jobinja", "jobvision", "e-estekhdam", "irantalent", "karboom"] as const) {
       const state = deriveProviderState({ board, enabled: true, serverStatus: "connected", probe });
       expect(state).toMatchObject({ board, state: "connected", localSession: true });
     }

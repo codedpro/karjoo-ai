@@ -23,6 +23,8 @@ export async function POST(
           ? "این آگهی با جنسیت پروفایل سازگار نیست و دوباره صف نمی‌شود."
           : result.reason === "no_task"
             ? "برای این اپلای task قابل retry پیدا نشد."
+            : result.reason === "not_retryable"
+              ? "این اپلای با proof یا تاریخچهٔ خود سایت تأیید شده و دوباره صف نمی‌شود."
             : "اپلای ناموفق پیدا نشد.";
       return errorJson(message, result.reason === "not_found" ? 404 : 409, {
         reason: result.reason,

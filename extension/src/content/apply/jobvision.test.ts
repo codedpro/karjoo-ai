@@ -13,7 +13,10 @@ describe("JobVision native apply adapter", () => {
     });
     vi.stubGlobal("document", document);
     vi.stubGlobal("location", { pathname: "/jobs/123" });
-    await expect(executeJobvisionApply()).resolves.toMatchObject({ ok: true });
+    await expect(executeJobvisionApply()).resolves.toMatchObject({
+      ok: true,
+      proof: { provider: "jobvision", signal: "submitted_text" },
+    });
   });
 
   it("does not submit when no native apply control exists", async () => {
@@ -33,6 +36,7 @@ describe("JobVision native apply adapter", () => {
     await expect(executeJobvisionApply()).resolves.toMatchObject({
       ok: true,
       alreadyApplied: true,
+      proof: { provider: "jobvision", signal: "already_applied_text" },
     });
   });
 });

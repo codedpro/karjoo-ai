@@ -12,6 +12,10 @@
 import { applyPrefill } from "@ext/content/apply-dom";
 import type { BackgroundToContent } from "@ext/lib/messages";
 import { parseJobinjaDiscoveryPage } from "@ext/lib/jobinja-discovery";
+import {
+  syncJobinjaApplicationHistory,
+  verifyJobinjaApplicationHistory,
+} from "@ext/lib/jobinja-application-history";
 
 /** باید با CVID_MESSAGE در content/jobinja-cvid.ts (دنیای MAIN) یکسان بماند. */
 const CVID_MESSAGE = "karjoo:jobinja-cvid";
@@ -29,6 +33,23 @@ chrome.runtime.onMessage.addListener((msg: BackgroundToContent, _sender, sendRes
   }
   if (msg.type === "CONTENT_DISCOVER_JOBINJA") {
     sendResponse(parseJobinjaDiscoveryPage(document, window.location.href));
+    return true;
+  }
+  if (msg.type === "SYNC_JOBINJA_HISTORY") {
+    void syncJobinjaApplicationHistory().then(sendResponse);
+    return true;
+  }
+  if (msg.type === "VERIFY_JOBINJA_APPLICATION") {
+    void verifyJobinjaApplicationHistory(msg.jobUrl).then((proof) => sendResponse(proof ? {
+      ok: true,
+      ranSteps: ["application-history"],
+      proof,
+    } : {
+      ok: false,
+      verificationPending: true,
+      ranSteps: ["application-history"],
+      reason: "jobinja_submission_unconfirmed_after_navigation",
+    }));
     return true;
   }
   return undefined;

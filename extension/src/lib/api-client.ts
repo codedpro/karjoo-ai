@@ -12,7 +12,7 @@
  *   GET  /api/extension/me                                → { user, boards }
  *   POST /api/board-accounts/connect { board, accountLabel? } (.strict) → { account }
  *   POST /api/apply-queue/claim      { limit? }           → { count, items: ClaimedApplyItem[] }
- *   POST /api/apply-queue/:id/result { status, externalRef?, reason? } (.strict, id in PATH) → { application, taskStatus }
+ *   POST /api/apply-queue/:id/result { status, externalRef?, proof?, reason? } (.strict, id in PATH) → { application, taskStatus }
  *   POST /api/profile/import         { board, payload }    → { import, appliedFields? }
  *
  * The server schemas for connect + result are `.strict()`: any extra field (e.g.
@@ -500,6 +500,17 @@ export class KarjooApi {
     return { queued };
   }
 
+  async resetQueue(executorId: string): Promise<{
+    removed: number;
+    byBoard: Record<string, number>;
+  }> {
+    return this.request("/api/extension/queue/reset", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ executorId }),
+    });
+  }
+
   /**
    * Import the user's OWN profile DATA from one board into their Karjoo profile.
    *
@@ -524,6 +535,7 @@ export class KarjooApi {
   async pushJobinja(body: {
     applications?: unknown[];
     profile?: Record<string, unknown>;
+    historyComplete?: boolean;
   }): Promise<{ ok: boolean; applications?: number; profile?: boolean }> {
     return this.request<{ ok: boolean; applications?: number; profile?: boolean }>(
       "/api/boards/jobinja/push",
@@ -543,11 +555,13 @@ export class KarjooApi {
     const body: {
       status: ApplyResultReport["status"];
       externalRef?: string;
+      proof?: Record<string, unknown>;
       reason?: string;
       executorId?: string;
     } = {
       status: report.status,
       ...(report.externalRef ? { externalRef: report.externalRef } : {}),
+      ...(report.proof ? { proof: report.proof } : {}),
       ...(report.reason ? { reason: report.reason } : {}),
       ...(executorId ? { executorId } : {}),
     };

@@ -53,6 +53,24 @@ describe("KarjooApi.link", () => {
 });
 
 describe("KarjooApi authed calls", () => {
+  it("resets the queue with this browser's executor id", async () => {
+    const { fetchImpl, calls } = fakeFetch(() => ({
+      status: 200,
+      body: { removed: 8, byBoard: { jobinja: 8 } },
+    }));
+    const api = new KarjooApi({ origin: "http://localhost:3000", token: "t", fetchImpl });
+
+    await expect(api.resetQueue("11111111-1111-4111-8111-111111111111")).resolves.toEqual({
+      removed: 8,
+      byBoard: { jobinja: 8 },
+    });
+    expect(calls[0]).toMatchObject({
+      url: "http://localhost:3000/api/extension/queue/reset",
+      method: "POST",
+      body: { executorId: "11111111-1111-4111-8111-111111111111" },
+    });
+  });
+
   it("attaches KARJOO's own token as Bearer (not a board credential)", async () => {
     const { fetchImpl, calls } = fakeFetch(() => ({
       status: 200,

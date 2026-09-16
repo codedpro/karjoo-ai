@@ -5,8 +5,15 @@ import { sql } from "drizzle-orm";
 import { db as defaultDb } from "@/db";
 import { readExecutionRun, type ExecutionRunView } from "@/lib/apply/execution-run";
 
+const JOB_KEY_L = sql.raw(
+  `regexp_replace(l.url, '^(https?://[^/]+/companies/[^/]+/jobs/[^/?#]+).*$', '\\1')`,
+);
+const JOB_KEY_PROVIDER = sql.raw(
+  `regexp_replace(coalesce(ba.url, ''), '^(https?://[^/]+/companies/[^/]+/jobs/[^/?#]+).*$', '\\1')`,
+);
+
 export type LiveTaskStatus = "pending" | "leased";
-export type LiveApplicationStatus = "draft" | "submitted" | "skipped" | "failed";
+export type LiveApplicationStatus = "draft" | "verifying" | "submitted" | "skipped" | "failed";
 
 export interface LiveApplyCounts {
   queued: number;
@@ -101,6 +108,7 @@ export async function getLiveApplyOverview(
           from applications a
           where a.user_id = ${userId}
             and a.status = 'submitted'
+            and (a.external_ref is not null or a.proof is not null)
             and coalesce(a.submitted_at, a.created_at) >= date_trunc('day', now())
         ) as applied_today,
         (
@@ -108,19 +116,21 @@ export async function getLiveApplyOverview(
           from applications a
           where a.user_id = ${userId}
             and a.status = 'submitted'
+            and (a.external_ref is not null or a.proof is not null)
         ) as applied_total,
         (
           select count(*)::int
           from applications a
           where a.user_id = ${userId}
             and a.status = 'submitted'
+            and (a.external_ref is not null or a.proof is not null)
             and coalesce(a.submitted_at, a.created_at) >= now() - interval '30 days'
         ) as applied_last_30d
         ,(
           select count(*)::int
           from applications a
           where a.user_id = ${userId}
-            and a.status in ('failed', 'skipped')
+            and a.status in ('verifying', 'failed', 'skipped')
         ) as review_needed
       from tasks t
       inner join matches m on m.id = t.match_id
@@ -162,12 +172,22 @@ export async function getLiveApplyOverview(
       limit ${queueLimit}
     `),
     conn.execute(sql`
+      with provider_app as materialized (
+        select distinct on (ba.board, job_key) ba.id, ba.board, job_key
+        from board_applications ba
+        cross join lateral (select ${JOB_KEY_PROVIDER} as job_key) k
+        where ba.user_id = ${userId}
+          and ba.url is not null
+      )
       select
         a.id as application_id,
         a.status,
         a.channel,
         a.match_score,
         a.reason,
+        a.external_ref,
+        a.proof,
+        provider_app.id is not null as provider_confirmed,
         a.resume_id is not null as has_resume,
         a.resume_id,
         coalesce(a.submitted_at, a.created_at) as happened_at,
@@ -180,6 +200,9 @@ export async function getLiveApplyOverview(
         l.posted_at
       from applications a
       inner join job_listings l on l.id = a.listing_id
+      left join provider_app
+        on provider_app.board = l.board::text
+        and provider_app.job_key = ${JOB_KEY_L}
       where a.user_id = ${userId}
       order by coalesce(a.submitted_at, a.created_at) desc
       limit ${recentLimit}
@@ -222,7 +245,9 @@ export async function getLiveApplyOverview(
       hasResume: r.has_resume === true,
       resumeStrategy: resumeStrategyForBoard(r.board),
       resumeId: r.resume_id ? String(r.resume_id) : null,
-      retryEligible: r.status === "failed",
+      retryEligible:
+        r.status === "failed" ||
+        (r.status === "submitted" && !r.external_ref && !r.proof && r.provider_confirmed !== true),
       reason: (r.reason as string | null) ?? null,
       listing: {
         board: String(r.board),

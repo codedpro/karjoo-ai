@@ -9,6 +9,8 @@
     "deploy:web": "./scripts/deploy-web.sh deploy",
     "rollback:web": "./scripts/deploy-web.sh rollback",
     "status:web": "./scripts/deploy-web.sh status",
+    "repair:jobinja-verification": "tsx --conditions=react-server scripts/reconcile-jobinja-submissions.ts",
+    "repair:provider-failures": "tsx --conditions=react-server scripts/repair-recent-provider-failures.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

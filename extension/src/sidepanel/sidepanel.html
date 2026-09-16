@@ -36,7 +36,11 @@
           <span id="updateBannerNotes"></span>
           <span class="update-banner-hint">تا وقتی فایل افزونه را جایگزین نکنید، نسخهٔ قدیمی در حال اجراست.</span>
         </div>
-        <a id="updateBannerDownload" href="#" target="_blank" rel="noopener">دانلود و راهنما</a>
+        <div class="update-banner-actions">
+          <button id="updateBannerAction" type="button">به‌روزرسانی</button>
+          <a id="updateBannerDownload" href="#" target="_blank" rel="noopener">دانلود دستی</a>
+        </div>
+        <span id="updateBannerStatus" class="update-action-status"></span>
       </div>
         <nav class="tabs" aria-label="بخش‌های افزونه">
           <button class="tab active" data-tab="live" type="button">زنده</button>
@@ -65,6 +69,7 @@
               <button id="pauseBtn" type="button">مکث</button>
               <button id="stopBtn" class="danger" type="button">توقف</button>
               <button id="takeoverBtn" class="warning hidden" type="button">ادامه با افزونه</button>
+              <button id="resetQueueBtn" class="danger reset" type="button">پاک‌سازی صف و جست‌وجوی دوباره</button>
             </div>
           </section>
 
@@ -93,6 +98,7 @@
                 <button class="board-tab" data-board="jobvision" type="button">جاب‌ویژن</button>
                 <button class="board-tab" data-board="e-estekhdam" type="button">ای‌استخدام</button>
                 <button class="board-tab" data-board="irantalent" type="button">ایران‌تلنت</button>
+                <button class="board-tab" data-board="karboom" type="button">کاربوم</button>
               </div>
               <label class="check board-enabled"><input id="boardEnabledInput" type="checkbox" /> کشف و اپلای برای این سایت فعال باشد</label>
               <div class="board-connect"><span id="boardSessionStatus">در حال بررسی ورود…</span><button id="connectBoardBtn" type="button">بررسی و اتصال</button></div>
@@ -121,7 +127,7 @@
         <div id="historyView" class="view hidden">
           <section aria-labelledby="recentTitle">
             <div class="section-head"><h2 id="recentTitle">تاریخچه اپلای</h2><span>همگام با سرور</span></div>
-            <label class="field history-filter"><span>جست‌وجو و سایت</span><span class="history-controls"><input id="historySearch" type="search" placeholder="عنوان یا شرکت" /><select id="historyBoard"><option value="all">همه سایت‌ها</option><option value="jobinja">جابینجا</option><option value="jobvision">جاب‌ویژن</option><option value="e-estekhdam">ای‌استخدام</option><option value="irantalent">ایران‌تلنت</option></select></span></label>
+            <label class="field history-filter"><span>جست‌وجو و سایت</span><span class="history-controls"><input id="historySearch" type="search" placeholder="عنوان یا شرکت" /><select id="historyBoard"><option value="all">همه سایت‌ها</option><option value="jobinja">جابینجا</option><option value="jobvision">جاب‌ویژن</option><option value="e-estekhdam">ای‌استخدام</option><option value="irantalent">ایران‌تلنت</option><option value="karboom">کاربوم</option></select></span></label>
             <ul id="recentList" class="recent-list"></ul>
             <button id="historyMore" class="load-more hidden" type="button">نمایش موارد بیشتر</button>
             <p id="recentEmpty" class="empty">هنوز نتیجه‌ای ثبت نشده است.</p>

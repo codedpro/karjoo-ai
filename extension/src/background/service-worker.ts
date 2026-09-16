@@ -15,11 +15,12 @@ import {
   ACTIVE_PROVIDER_IDS,
   BOARDS,
   BOARD_IDS,
-  PROVIDER_JOBS_URLS,
+  DEFAULT_API_ORIGIN,
   type ActiveProviderId,
   type BoardId,
 } from "@ext/lib/config";
 import { ApiError, KarjooApi } from "@ext/lib/api-client";
+import { checkForUpdate } from "@ext/lib/update-check";
 import { buildConnectPayload } from "@ext/lib/connect-payload";
 import { buildImportPayload } from "@ext/lib/import-payload";
 import {
@@ -35,7 +36,6 @@ import {
 import { boardTabPatterns } from "@ext/lib/board-session";
 import { getOrCreateExecutorId } from "@ext/lib/storage";
 import { probeIranTalentIdentity } from "@ext/lib/irantalent-session";
-import { probeKarboomIdentity } from "@ext/lib/karboom-session";
 import {
   getApiOrigin,
   getSessionToken,
@@ -52,6 +52,7 @@ import {
   mutateRun,
   restartAfterFiltersChanged,
   runAutoApplyTick,
+  settleActiveCycleForQueueReset,
   setRunBackground,
 } from "@ext/background/auto-apply";
 import { sendToTab, waitForTabComplete } from "@ext/background/tab-utils";
@@ -59,6 +60,7 @@ import type {
   PopupToBackground,
   ProbeSessionResult,
   Result,
+  UpdateExtensionResult,
 } from "@ext/lib/messages";
 import type {
   ApplyQueueItem,
@@ -120,8 +122,9 @@ async function probeBoardSession(board: BoardId): Promise<ProbeSessionResult> {
   // IranTalent: its own profile endpoint, reachable from the background because
   // the bearer token is rebuilt from the site's cookie (see irantalent-session.ts).
   if (board === "irantalent") return probeIranTalentIdentity();
-  // کاربوم سمتِ سرور رندر می‌شود: صفحه‌ی پروفایلِ خودِ کاربر پاسخ را می‌دهد.
-  if (board === "karboom") return probeKarboomIdentity();
+  // Karboom needs a first-party tab-backed probe. Background cross-origin fetch
+  // can miss its browser cookies and report logged-out even when the tab is in.
+  if (board === "karboom") return probeKarboomSession();
   // JobVision: SPA whose JWT lives in localStorage, invisible to chrome.cookies.
   // A content script reports which KEYS exist — never their values.
   if (board === "jobvision") {
@@ -236,6 +239,68 @@ async function probeEEstekhdamSession(): Promise<ProbeSessionResult> {
   return {
     loggedIn: false,
     reason: probeSucceeded ? "session_not_found" : "probe_unavailable",
+  };
+}
+
+/** Ask Karboom's own profile page inside a karboom.io tab and return only a boolean. */
+async function probeKarboomSession(): Promise<ProbeSessionResult> {
+  const tabs = await chrome.tabs.query({ url: boardTabPatterns(BOARDS.karboom.origin) });
+  if (tabs.length === 0) return { loggedIn: false, reason: "no_tab" };
+  tabs.sort((a, b) => Number(Boolean(b.active)) - Number(Boolean(a.active)));
+  let probeSucceeded = false;
+  let sawLogout = false;
+  for (const tab of tabs) {
+    if (!tab.id) continue;
+    try {
+      const [execution] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: async () => {
+          try {
+            const response = await fetch("/profile", {
+              headers: { accept: "text/html" },
+              credentials: "include",
+              redirect: "follow",
+            });
+            if (response.status === 429) return { ok: true, loggedIn: false, reason: "security_challenge" };
+            if (!response.ok) return { ok: false, loggedIn: false };
+            if (/\/(account|auth\/(signin|signup|login))\b/.test(new URL(response.url).pathname)) {
+              return { ok: true, loggedIn: false };
+            }
+            const html = await response.text();
+            if (/ورود\s*\/\s*عضویت|name=["']?_token|\/auth\/signin|\/account/i.test(html) &&
+                !/profile|رزومه|اطلاعات\s+فردی/i.test(html)) {
+              return { ok: true, loggedIn: false };
+            }
+            const label =
+              /class="[^"]*\b(?:user-name|js-user-name|profile-name|user-full-name)\b[^"]*"[^>]*>\s*([^<]{2,60})/
+                .exec(html)?.[1]?.replace(/\s+/g, " ").trim();
+            return { ok: true, loggedIn: true, ...(label ? { label } : {}) };
+          } catch {
+            return { ok: false, loggedIn: false };
+          }
+        },
+      });
+      const result = execution?.result as
+        | { ok: boolean; loggedIn: boolean; reason?: ProbeSessionResult["reason"]; label?: string }
+        | undefined;
+      if (!result?.ok) continue;
+      probeSucceeded = true;
+      if (result.reason === "security_challenge") {
+        return { loggedIn: false, reason: "security_challenge" };
+      }
+      if (result.loggedIn) {
+        return result.label
+          ? { loggedIn: true, accountLabelHint: result.label }
+          : { loggedIn: true };
+      }
+      sawLogout = true;
+    } catch {
+      // Continue with another Karboom tab; stale tabs can reject injection.
+    }
+  }
+  return {
+    loggedIn: false,
+    reason: probeSucceeded && sawLogout ? "logged_out" : "probe_unavailable",
   };
 }
 
@@ -382,7 +447,7 @@ async function handleManageProvider(
   if (action === "login") {
     const existing = await chrome.tabs.query({ url: boardTabPatterns(BOARDS[board].origin) });
     if (existing[0]?.id) await chrome.tabs.update(existing[0].id, { active: true });
-    else await chrome.tabs.create({ url: PROVIDER_JOBS_URLS[board], active: true });
+    else await chrome.tabs.create({ url: providerLoginUrl(board), active: true });
     return handleGetProviderStates();
   }
 
@@ -399,7 +464,10 @@ async function handleManageProvider(
   }
 
   const probe = await reconnectProbe(board);
-  if (!probe.loggedIn) return handleGetProviderStates();
+  if (!probe.loggedIn) {
+    await openProviderLogin(board);
+    return handleGetProviderStates();
+  }
   await handleConnectBoard(board, probe.accountLabelHint);
   await setProviderEnabled(board, true);
   try {
@@ -427,7 +495,7 @@ async function reconnectProbe(board: ActiveProviderId): Promise<ProbeSessionResu
   const existing = await chrome.tabs.query({ url: boardTabPatterns(BOARDS[board].origin) });
   const tab = existing[0]?.id
     ? await chrome.tabs.update(existing[0].id, { active: true })
-    : await chrome.tabs.create({ url: PROVIDER_JOBS_URLS[board], active: true });
+    : await chrome.tabs.create({ url: providerLoginUrl(board), active: true });
   if (!tab?.id) return first;
   try {
     await waitForTabComplete(tab.id);
@@ -435,6 +503,20 @@ async function reconnectProbe(board: ActiveProviderId): Promise<ProbeSessionResu
     return first;
   }
   return probeBoardSession(board);
+}
+
+function providerLoginUrl(board: ActiveProviderId): string {
+  return `${BOARDS[board].origin}${BOARDS[board].profilePath}`;
+}
+
+async function openProviderLogin(board: ActiveProviderId): Promise<void> {
+  const url = providerLoginUrl(board);
+  const existing = await chrome.tabs.query({ url: boardTabPatterns(BOARDS[board].origin) });
+  if (existing[0]?.id) {
+    await chrome.tabs.update(existing[0].id, { url, active: true });
+    return;
+  }
+  await chrome.tabs.create({ url, active: true });
 }
 
 /* ── apply queue ───────────────────────────────────────────────────────── */
@@ -455,6 +537,20 @@ async function handleClaimQueue(): Promise<ApplyQueueItem[]> {
 async function handleFindJobs(): Promise<{ queued: number }> {
   const api = await apiFromStorage();
   return api.findJobs();
+}
+
+async function handleResetQueueAndRediscover(): Promise<{
+  removed: number;
+  byBoard: Record<string, number>;
+}> {
+  await settleActiveCycleForQueueReset();
+  const api = await apiFromStorage();
+  const executorId = await getOrCreateExecutorId();
+  const result = await api.resetQueue(executorId);
+  void runAutoApplyTick(true).catch((error: unknown) => {
+    console.error("[karjoo] queue rediscovery failed", error);
+  });
+  return result;
 }
 
 async function handleGetApplyFilters(): Promise<{ filters: ApplyFilters; previewUrl: string }> {
@@ -489,6 +585,55 @@ async function handleRetryApplication(applicationId: string): Promise<{ ok: bool
 
 async function handleGetApplicationResume(applicationId: string): Promise<string> {
   return (await apiFromStorage()).getApplicationResumeHtml(applicationId);
+}
+
+async function handleUpdateExtension(): Promise<UpdateExtensionResult> {
+  const current = chrome.runtime.getManifest().version;
+  const result = await checkForUpdate(DEFAULT_API_ORIGIN, current);
+  const latestVersion = result.latestVersion;
+  if (!result.updateAvailable || !result.downloadUrl) {
+    return {
+      updateStatus: "current",
+      ...(latestVersion ? { latestVersion } : {}),
+      message: "این نسخه از افزونه تازه است.",
+    };
+  }
+
+  const updateCheck = chrome.runtime.requestUpdateCheck
+    ? await chrome.runtime.requestUpdateCheck().catch(() => null)
+    : null;
+  if (updateCheck?.status === "update_available") {
+    chrome.runtime.reload();
+    return {
+      updateStatus: "updated",
+      latestVersion,
+      downloadUrl: result.downloadUrl,
+      message: "به‌روزرسانی نصب شد و افزونه دوباره بارگذاری می‌شود.",
+    };
+  }
+
+  let downloaded = false;
+  if (chrome.downloads?.download) {
+    await chrome.downloads.download({
+      url: result.downloadUrl,
+      filename: `karjoo-extension-${result.latestVersion ?? "latest"}.zip`,
+      saveAs: true,
+    });
+    downloaded = true;
+  } else {
+    await chrome.tabs.create({ url: result.downloadUrl, active: true });
+  }
+
+  await chrome.tabs.create({ url: `${DEFAULT_API_ORIGIN}/dashboard/extension`, active: true });
+  await chrome.tabs.create({ url: "chrome://extensions", active: true }).catch(() => undefined);
+  return {
+    updateStatus: downloaded ? "downloaded" : "manual",
+    latestVersion,
+    downloadUrl: result.downloadUrl,
+    message: downloaded
+      ? "فایل نسخه‌ی جدید دانلود شد. در chrome://extensions افزونه را reload/replace کنید."
+      : "صفحه‌ی دانلود باز شد. بعد از جایگزینی فایل، افزونه را reload کنید.",
+  };
 }
 
 /** Pre-fill (NEVER submit) the form in the relevant board tab. */
@@ -602,6 +747,9 @@ async function importOneBoard(api: KarjooApi, board: BoardId): Promise<BoardImpo
   if (!opened.tab?.id) return { board, ok: false, message: "نتوانستم صفحه‌ی رزومه را باز کنم." };
   try {
     await waitForTabComplete(opened.tab.id);
+    if (board === "jobinja") {
+      await syncJobinjaHistory(api, opened.tab.id).catch(() => {});
+    }
     let scraped: ScrapeProfileResult | undefined;
     try {
       scraped = (await chrome.tabs.sendMessage(opened.tab.id, {
@@ -634,6 +782,18 @@ async function importOneBoard(api: KarjooApi, board: BoardId): Promise<BoardImpo
       await chrome.tabs.remove(opened.tab.id).catch(() => {});
     }
   }
+}
+
+async function syncJobinjaHistory(api: KarjooApi, tabId: number): Promise<void> {
+  const result = await chrome.tabs.sendMessage(tabId, { type: "SYNC_JOBINJA_HISTORY" }) as {
+    applications?: unknown[];
+    complete?: boolean;
+  };
+  if (!Array.isArray(result?.applications)) return;
+  await api.pushJobinja({
+    applications: result.applications,
+    historyComplete: result.complete === true,
+  });
 }
 
 async function ensureImportTab(
@@ -701,6 +861,8 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
       return { ok: true, data: await handleClaimQueue() };
     case "FIND_JOBS":
       return { ok: true, data: await handleFindJobs() };
+    case "RESET_QUEUE_AND_REDISCOVER":
+      return { ok: true, data: await handleResetQueueAndRediscover() };
     case "PREFILL":
       return { ok: true, data: await handlePrefill(msg.item) };
     case "REPORT_RESULT":
@@ -738,6 +900,8 @@ async function route(msg: PopupToBackground): Promise<Result<unknown>> {
       return { ok: true, data: await handleRetryApplication(msg.applicationId) };
     case "GET_APPLICATION_RESUME":
       return { ok: true, data: await handleGetApplicationResume(msg.applicationId) };
+    case "UPDATE_EXTENSION":
+      return { ok: true, data: await handleUpdateExtension() };
     case "JOBINJA_CVID":
       return { ok: true, data: await handleJobinjaCvid(msg.cvId) };
     default: {

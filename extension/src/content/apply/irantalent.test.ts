@@ -121,6 +121,7 @@ describe("IranTalent apply", () => {
     const { calls } = stub();
     const result = await executeIranTalentApply(plan());
     expect(result).toMatchObject({ ok: true });
+    expect(result.proof).toEqual({ provider: "irantalent", signal: "position_is_applied" });
     expect(result.ranSteps).toContain("confirmed");
 
     expect(calls.some((c) => c.url.endsWith("/file"))).toBe(false);
@@ -144,13 +145,20 @@ describe("IranTalent apply", () => {
   it("accepts the application history as proof when the position flag lags", async () => {
     stub({ appliedAfter: false, appliedJobs: { data: [{ position: { id: 182341 } }] } });
     const result = await executeIranTalentApply(plan());
-    expect(result).toMatchObject({ ok: true });
+    expect(result).toMatchObject({
+      ok: true,
+      proof: { provider: "irantalent", signal: "application_history" },
+    });
   });
 
   it("skips a job the board already has an application for", async () => {
     const { calls } = stub({ position: { is_applied: true } });
     const result = await executeIranTalentApply(plan());
-    expect(result).toMatchObject({ ok: true, alreadyApplied: true });
+    expect(result).toMatchObject({
+      ok: true,
+      alreadyApplied: true,
+      proof: { provider: "irantalent", signal: "position_is_applied" },
+    });
     expect(calls.some((c) => c.url.endsWith("/file"))).toBe(false);
   });
 

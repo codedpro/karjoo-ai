@@ -7,10 +7,11 @@
  * changed", and the user's queue was stuck forever (observed in production: one
  * run sat blocked on `jobvision_captcha_required` for two weeks).
  */
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { PgDialect } from "drizzle-orm/pg-core";
 
-import { reclaimableRunCondition } from "@/lib/apply/execution-run";
+import { reclaimableRunCondition, STALE_RUN_MS } from "@/lib/apply/execution-run";
 
 const dialect = new PgDialect();
 
@@ -21,6 +22,7 @@ function sqlFor(executorId: string, takeover: boolean) {
 }
 
 const EXECUTOR = "8eca1c0d-611d-4f97-90c6-7de38d249ef1";
+const source = readFileSync("src/lib/apply/execution-run.ts", "utf8");
 
 describe("reclaimableRunCondition", () => {
   it("lets any browser reclaim a blocked run — the deadlock fix", () => {
@@ -56,6 +58,14 @@ describe("reclaimableRunCondition", () => {
     expect(sql.match(/'extension'/g)!.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("startExtensionExecution does not reject another-browser takeover before SQL reclaim runs", () => {
+    expect(source).toContain("current.state === \"running\" &&\n    !opts.takeover");
+  });
+
+  it("startExtensionExecution lets plain start recover stale another-browser runs", () => {
+    expect(source).toContain("!runViewHeartbeatStale(current)");
+  });
+
   it("a plain start still refuses a run another browser is actively running", () => {
     const sql = sqlFor(EXECUTOR, false);
     // `mine` still names 'extension', but only paired with this executor id.
@@ -65,8 +75,30 @@ describe("reclaimableRunCondition", () => {
 
   it("does not let a plain start seize a run another browser is actively running", () => {
     // A `running` run owned by a different executorId matches no branch: not null,
-    // not mine, and not one of the parked states.
+    // not mine, and not one of the parked states. Staleness is the one exception,
+    // and it is a heartbeat comparison rather than a state literal.
     const sql = sqlFor(EXECUTOR, false);
     expect(sql).not.toContain("'running'");
+  });
+
+  it("lets any browser reclaim a run whose heartbeat died", () => {
+    // Observed in production: a run left state=running owner=extension with a
+    // 29-minute-old heartbeat after the browser went away mid-cycle. Nobody was
+    // executing it, but only the original executorId could reclaim it, so the
+    // panel sat on «متوقف شده — اجرا در مرورگر ادامه پیدا نکرد» with no way back.
+    const sql = sqlFor(EXECUTOR, false);
+    expect(sql).toContain('"heartbeat_at" <');
+  });
+
+  it("does not reclaim a run that is still heartbeating", () => {
+    // The cutoff must be a moving window, not "any heartbeat" — otherwise a
+    // healthy second browser would be robbed of its run by a plain start.
+    const before = Date.now();
+    const sql = sqlFor(EXECUTOR, false);
+    const stamp = /"heartbeat_at" < '([^']+)'/.exec(sql)?.[1];
+    expect(stamp).toBeDefined();
+    const cutoff = new Date(stamp!).getTime();
+    expect(cutoff).toBeLessThanOrEqual(before - STALE_RUN_MS + 1_000);
+    expect(cutoff).toBeGreaterThan(before - STALE_RUN_MS - 60_000);
   });
 });

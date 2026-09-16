@@ -115,6 +115,7 @@ describe("executeKarboomApply", () => {
 
     const result = await executeKarboomApply(plan(), deps);
     expect(result.ok).toBe(true);
+    expect(result.proof).toEqual({ provider: "karboom", signal: "wizard_done" });
     expect(result.ranSteps).toContain("confirmed");
 
     const upload = calls.find((c) => c.url.endsWith("/select-resume") && c.init.method === "POST")!;
@@ -175,7 +176,11 @@ describe("executeKarboomApply", () => {
   it("آگهیِ قبلاً اپلای‌شده را موفق ولی تکراری گزارش می‌کند", async () => {
     const { deps } = karboomServer({ "POST ": JSON.stringify({ message: "شما قبلا برای این آگهی رزومه فرستاده‌اید" }) });
     const result = await executeKarboomApply(plan(), deps);
-    expect(result).toMatchObject({ ok: true, alreadyApplied: true });
+    expect(result).toMatchObject({
+      ok: true,
+      alreadyApplied: true,
+      proof: { provider: "karboom", signal: "already_applied_response" },
+    });
   });
 
   it("بدونِ شناسه‌ی عددی وارد ویزارد نمی‌شود", async () => {

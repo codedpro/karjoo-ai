@@ -18,7 +18,11 @@ import { Suspense } from "react";
 import { InterviewPrepTable } from "@/components/dashboard/interview-prep-table";
 import { getDashboardUser } from "@/components/dashboard/session";
 import { PageHeader, Skeleton, SkeletonTable } from "@/components/dashboard/ui";
-import { getInterviewPrepData } from "@/lib/apply/interview-prep";
+import {
+  getInterviewPrepData,
+  parseInterviewPrepQuery,
+  type InterviewPrepQuery,
+} from "@/lib/apply/interview-prep";
 import { SectionTabs, APPLY_TABS } from "@/components/dashboard/section-tabs";
 
 export const runtime = "nodejs";
@@ -28,9 +32,18 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function ApplyStatusPage() {
-  const user = await getDashboardUser();
+export default async function ApplyStatusPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [user, raw] = await Promise.all([getDashboardUser(), searchParams]);
   if (!user) redirect("/login");
+  const flat: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    flat[key] = Array.isArray(value) ? value[0] : value;
+  }
+  const query = parseInterviewPrepQuery(flat);
 
   return (
     <div className="space-y-8">
@@ -39,8 +52,8 @@ export default async function ApplyStatusPage() {
         subtitle="هر آگهی که برایت فرستاده شده یا در نوبتِ ارسال است، با نتیجه‌اش."
       />
       <SectionTabs tabs={APPLY_TABS} active="/dashboard/interview-prep" ariaLabel="زبانه‌های اپلای‌ها" />
-      <Suspense fallback={<ApplyStatusSkeleton />}>
-        <ApplyStatusSection userId={user.userId} />
+      <Suspense key={JSON.stringify(query)} fallback={<ApplyStatusSkeleton />}>
+        <ApplyStatusSection userId={user.userId} query={query} />
       </Suspense>
     </div>
   );
@@ -48,9 +61,15 @@ export default async function ApplyStatusPage() {
 
 /* ───────────────────────── بخشِ async (Suspense) ───────────────────────── */
 
-async function ApplyStatusSection({ userId }: { userId: string }) {
-  const data = await getInterviewPrepData(userId, { limit: 1500 });
-  return <InterviewPrepTable data={data} />;
+async function ApplyStatusSection({
+  userId,
+  query,
+}: {
+  userId: string;
+  query: InterviewPrepQuery;
+}) {
+  const data = await getInterviewPrepData(userId, query);
+  return <InterviewPrepTable data={data} query={query} />;
 }
 
 /* ───────────────────── اسکلتِ هم‌شکل (نوارِ فیلتر + جدول) ───────────────────── */

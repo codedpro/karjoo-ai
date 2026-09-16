@@ -308,7 +308,12 @@ export async function executeKarboomApply(
     return fail("karboom_login_required", ranSteps);
   }
   if (looksAlreadyApplied(started.body)) {
-    return { ok: true, alreadyApplied: true, ranSteps: [...ranSteps, "already-applied"] };
+    return {
+      ok: true,
+      alreadyApplied: true,
+      ranSteps: [...ranSteps, "already-applied"],
+      proof: { provider: "karboom", signal: "already_applied_response" },
+    };
   }
   if (started.status < 200 || started.status >= 300) {
     return fail(`karboom_apply_failed: ${started.status}`, ranSteps);
@@ -333,7 +338,11 @@ export async function executeKarboomApply(
   /* 4 — فقط `done` یعنی ثبت شد ---------------------------------------------- */
   if (current === "account") return fail("karboom_login_required", ranSteps);
   if (current !== "done") return fail(`karboom_submission_unconfirmed: ${current}`, ranSteps);
-  return { ok: true, ranSteps: [...ranSteps, "confirmed"] };
+  return {
+    ok: true,
+    ranSteps: [...ranSteps, "confirmed"],
+    proof: { provider: "karboom", signal: "wizard_done" },
+  };
 }
 
 /* ── content-script wiring (browser only) ─────────────────────────────────── */

@@ -81,6 +81,7 @@ input:focus, select:focus { outline: 2px solid #9ad3c0; outline-offset: 1px; bor
 .owner-line { border-top: 1px solid #e4e8e6; padding-top: 9px; }
 .buttons { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .buttons .warning { grid-column: 1 / -1; }
+.buttons .reset { grid-column: 1 / -1; }
 .switch { position: relative; width: 40px; height: 22px; flex: none; }
 .switch input { opacity: 0; width: 0; height: 0; min-height: 0; }
 .switch span { position: absolute; inset: 0; background: #aeb7b3; border-radius: 999px; transition: background .15s ease; }
@@ -162,10 +163,14 @@ fieldset label, .check { display: flex; align-items: center; gap: 6px; font-size
 .update-banner strong { display: block; font-size: 13px; }
 .update-banner span { display: block; font-size: 12px; line-height: 1.6; color: #7d5f16; }
 .update-banner .update-banner-hint { color: #8a6a1c; }
-.update-banner a {
+.update-banner-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.update-banner a,
+.update-banner button {
   flex: none; padding: 6px 10px; border-radius: 8px;
-  background: #6b4e07; color: #fff; font-size: 12px; text-decoration: none;
+  border: 0; background: #6b4e07; color: #fff; font-size: 12px; text-decoration: none;
+  cursor: pointer;
 }
+.update-action-status { flex-basis: 100%; color: #7d5f16 !important; }
 
 /* A run whose heartbeat has gone silent: say so instead of showing a stage
    nobody is executing. */

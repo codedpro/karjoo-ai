@@ -23,6 +23,7 @@ export interface IranTalentApplyOutcome {
   status: IranTalentApplyStatus;
   reason?: string;
   ranSteps: string[];
+  proof?: Record<string, unknown>;
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -133,7 +134,14 @@ export async function applyToIranTalent(
     return skip("irantalent_job_unavailable", ranSteps);
   }
   const data = record(record(position.body).data ?? position.body);
-  if (data.is_applied === true) return skip("irantalent_already_applied", ranSteps);
+  if (data.is_applied === true) {
+    return {
+      status: "submitted",
+      reason: "already_applied_on_board",
+      ranSteps: [...ranSteps, "already-applied"],
+      proof: { provider: "irantalent", signal: "position_is_applied" },
+    };
+  }
   const statusId = record(data.status).id;
   if (typeof statusId === "number" && !LIVE_STATUS_IDS.has(statusId)) {
     return skip("irantalent_job_unavailable", ranSteps);
@@ -157,7 +165,14 @@ export async function applyToIranTalent(
     return fail("irantalent_login_required", ranSteps);
   }
   const conditionData = record(record(conditions.body).data ?? conditions.body);
-  if (conditionData.is_applied === true) return skip("irantalent_already_applied", ranSteps);
+  if (conditionData.is_applied === true) {
+    return {
+      status: "submitted",
+      reason: "already_applied_on_board",
+      ranSteps: [...ranSteps, "already-applied"],
+      proof: { provider: "irantalent", signal: "conditions_is_applied" },
+    };
+  }
   if (conditionData.is_email_verified === false) {
     return fail("irantalent_account_unverified", ranSteps);
   }
@@ -179,17 +194,22 @@ export async function applyToIranTalent(
     return fail("irantalent_login_required", ranSteps);
   }
   if (applied.status === 409 || record(applied.body).already_applied === true) {
-    return skip("irantalent_already_applied", ranSteps);
+    return {
+      status: "submitted",
+      reason: "already_applied_on_board",
+      ranSteps: [...ranSteps, "already-applied"],
+      proof: { provider: "irantalent", signal: "apply_conflict" },
+    };
   }
   if (!(applied.status >= 200 && applied.status < 300)) {
     return fail("irantalent_apply_failed", ranSteps);
   }
 
   /* ۵ — اثباتِ ماندگار */
-  const confirmed = await confirmApplication(positionId, String(cvId), authorization, fetchImpl);
+  const proof = await confirmApplication(positionId, String(cvId), authorization, fetchImpl);
   ranSteps.push("verify");
-  if (!confirmed) return fail("irantalent_submission_unconfirmed", ranSteps);
-  return { status: "submitted", ranSteps: [...ranSteps, "confirmed"] };
+  if (!proof) return fail("irantalent_submission_unconfirmed", ranSteps);
+  return { status: "submitted", ranSteps: [...ranSteps, "confirmed"], proof };
 }
 
 async function confirmApplication(
@@ -197,25 +217,28 @@ async function confirmApplication(
   cvId: string,
   authorization: string,
   fetchImpl: typeof fetch,
-): Promise<boolean> {
+): Promise<Record<string, unknown> | null> {
   const position = await api(`employer/position/${encodeURIComponent(positionId)}`, authorization, fetchImpl);
-  if (record(record(position.body).data ?? position.body).is_applied === true) return true;
+  if (record(record(position.body).data ?? position.body).is_applied === true) {
+    return { provider: "irantalent", signal: "position_is_applied" };
+  }
   const history = await api(
     `candidate/cv/${encodeURIComponent(cvId)}/application/applied-jobs`,
     authorization,
     fetchImpl,
   );
-  if (!(history.status >= 200 && history.status < 300)) return false;
+  if (!(history.status >= 200 && history.status < 300)) return null;
   const body = record(history.body);
   const rows = Array.isArray(body.data)
     ? body.data
     : Array.isArray(record(body.data).data)
       ? record(body.data).data as unknown[]
       : [];
-  return rows.some((row) => {
+  const found = rows.some((row) => {
     const entry = record(row);
     return [entry.position_id, entry.id, record(entry.position).id].some(
       (value) => String(value ?? "") === positionId,
     );
   });
+  return found ? { provider: "irantalent", signal: "application_history" } : null;
 }

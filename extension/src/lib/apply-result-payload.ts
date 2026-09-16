@@ -6,7 +6,7 @@
  *
  *   When background auto-apply reports an outcome to
  *   POST /api/apply-queue/:id/result, the body MUST carry ONLY non-secret result
- *   metadata: { id, status, externalRef?, reason? }. It MUST NEVER carry the
+ *   metadata: { id, status, externalRef?, proof?, reason? }. It MUST NEVER carry the
  *   user's board cookie / token / session blob / password / any credential, and
  *   never the cover-letter body or other large free text (the server already has
  *   the draft; the result is just an outcome).
@@ -44,14 +44,14 @@ const FORBIDDEN_KEY_SUBSTRINGS = [
 ] as const;
 
 /** The ONLY keys allowed in the outgoing result report. */
-const ALLOWED_KEYS = new Set(["id", "status", "externalRef", "reason"]);
+const ALLOWED_KEYS = new Set(["id", "status", "externalRef", "proof", "reason"]);
 
 export class SecretLeakError extends Error {
   readonly field: string;
   constructor(field: string) {
     super(
       `refusing to send apply result: key "${field}" looks like secret material ` +
-        `(LEGITIMACY RULE 1 — the result report carries only id/status/externalRef/reason)`,
+        `(LEGITIMACY RULE 1 — the result report carries only id/status/externalRef/proof/reason)`,
     );
     this.name = "SecretLeakError";
     this.field = field;
@@ -89,6 +89,8 @@ export interface BuildApplyResultInput {
   status: ApplyResultReport["status"];
   /** Optional board-returned reference (e.g. a confirmation id). Non-secret. */
   externalRef?: string;
+  /** Optional non-secret proof summary. Secret-shaped keys are rejected recursively. */
+  proof?: Record<string, unknown>;
   /** Optional short, non-secret reason (e.g. "below threshold", "selector not found"). */
   reason?: string;
 }
@@ -108,6 +110,7 @@ export function buildApplyResultReport(input: BuildApplyResultInput): ApplyResul
       id: input.id,
       status: input.status,
       ...(input.externalRef ? { externalRef: input.externalRef } : {}),
+      ...(input.proof ? { proof: input.proof } : {}),
       ...(input.reason ? { reason: input.reason } : {}),
     }),
   ) as Record<string, unknown>;
@@ -117,6 +120,9 @@ export function buildApplyResultReport(input: BuildApplyResultInput): ApplyResul
     status: cloned.status as ApplyResultReport["status"],
     ...(typeof cloned.externalRef === "string" && cloned.externalRef.trim()
       ? { externalRef: cloned.externalRef.trim() }
+      : {}),
+    ...(cloned.proof && typeof cloned.proof === "object" && !Array.isArray(cloned.proof)
+      ? { proof: cloned.proof as Record<string, unknown> }
       : {}),
     ...(typeof cloned.reason === "string" && cloned.reason.trim()
       ? { reason: cloned.reason.trim().slice(0, 280) }

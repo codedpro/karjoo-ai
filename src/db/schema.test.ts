@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { getTableName } from "drizzle-orm";
 
 import {
+  applicationStatusEnum,
   aiModelCatalog,
   aiProviderEnum,
   appAiBudget,
@@ -82,6 +83,8 @@ describe("schema داربست کارجو", () => {
     expect(sessionShapeEnum.enumValues).toEqual(["cookie", "token"]);
     expect(taskStatusEnum.enumValues).toContain("pending");
     expect(taskStatusEnum.enumValues).toContain("leased");
+    expect(taskStatusEnum.enumValues).toContain("verifying");
+    expect(applicationStatusEnum.enumValues).toContain("verifying");
     // enumهای تازه‌ی WF1.
     expect(resumeSourceEnum.enumValues).toEqual(["upload", "board_import"]);
     expect(profileImportStatusEnum.enumValues).toEqual([

@@ -9,23 +9,25 @@ import {
   SecretLeakError,
 } from "@ext/lib/apply-result-payload";
 
-describe("buildApplyResultReport — only id/status/externalRef/reason leave", () => {
+describe("buildApplyResultReport — only id/status/externalRef/proof/reason leave", () => {
   it("builds the minimal submitted report", () => {
     const r = buildApplyResultReport({ id: "task-9", status: "submitted" });
     expect(r).toEqual({ id: "task-9", status: "submitted" });
   });
 
-  it("keeps a non-secret externalRef and reason", () => {
+  it("keeps a non-secret externalRef, proof, and reason", () => {
     const r = buildApplyResultReport({
       id: "task-9",
       status: "failed",
       externalRef: "CONF-123",
+      proof: { provider: "jobinja", signal: "flash_message" },
       reason: "selector not found",
     });
     expect(r).toEqual({
       id: "task-9",
       status: "failed",
       externalRef: "CONF-123",
+      proof: { provider: "jobinja", signal: "flash_message" },
       reason: "selector not found",
     });
   });
@@ -67,7 +69,14 @@ describe("assertNoSecrets — fail-closed on credential-shaped keys", () => {
   });
 
   it("accepts a clean object", () => {
-    expect(() => assertNoSecrets({ id: "1", status: "submitted", reason: "fine" })).not.toThrow();
+    expect(() =>
+      assertNoSecrets({
+        id: "1",
+        status: "submitted",
+        proof: { provider: "jobinja", signal: "submitted_text" },
+        reason: "fine",
+      }),
+    ).not.toThrow();
   });
 
   it("throws on nesting that is too deep (DoS guard)", () => {

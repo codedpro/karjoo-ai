@@ -26,6 +26,7 @@ const immediate = {
       value: [{ name: fileName, type: "application/pdf" }],
     });
   },
+  verifyJobinjaHistory: async () => null,
 };
 
 const TEST_PDF = "data:application/pdf;base64,JVBERi0xLjQK";
@@ -68,12 +69,48 @@ describe("executeApplyPlan — jobinja best-effort happy path", () => {
     const res = await executeApplyPlan(plan, { doc: d, ...immediate });
 
     expect(res.ok).toBe(true);
+    expect(res.proof).toEqual({ provider: "jobinja", signal: "flash_message" });
     expect(res.ranSteps.some((s) => s.includes("#apply_choice_uploaded_cv"))).toBe(true);
     expect(res.ranSteps.some((s) => s.startsWith("upload:"))).toBe(true);
     expect((d.querySelector("input[type='file']") as HTMLInputElement).files?.[0]?.name)
       .toBe("tailored-resume.pdf");
     expect(res.ranSteps.some((s) => s.startsWith("fill:"))).toBe(false);
     expect(res.ranSteps.filter((s) => s.startsWith("click:")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("uploads when the form exposes a file input without an upload-choice radio", async () => {
+    const d = doc(`
+      <form id="apply-form">
+        <input name="cv_file" type="file">
+        <button type="submit">ثبت</button>
+      </form>
+      <div class="js-flashMessageMsg">ثبت شد</div>
+    `);
+    const plan = buildApplyPlan(jobinjaItem(), applyValuesFor(jobinjaItem()))!;
+
+    const res = await executeApplyPlan(plan, { doc: d, ...immediate });
+
+    expect(res.ok).toBe(true);
+    expect((d.querySelector("input[type='file']") as HTMLInputElement).files?.[0]?.name)
+      .toBe("tailored-resume.pdf");
+  });
+
+  it("supports the alternate action-based Jobinja apply form", async () => {
+    const d = doc(`
+      <form action="/jobs/AbC123/apply">
+        <input name="cv_type" value="uploaded" type="radio">
+        <input name="cv_file" type="file">
+        <button type="submit">ثبت</button>
+      </form>
+      <div class="c-flashMessage__message">ارسال شد</div>
+    `);
+    const item = jobinjaItem();
+    const plan = buildApplyPlan(item, applyValuesFor(item))!;
+
+    const res = await executeApplyPlan(plan, { doc: d, ...immediate });
+
+    expect(res.ok).toBe(true);
+    expect(res.proof?.signal).toBe("flash_message");
   });
 
   it("skips the optional cover-letter step when there is no cover letter", async () => {
@@ -84,6 +121,90 @@ describe("executeApplyPlan — jobinja best-effort happy path", () => {
     expect(res.ok).toBe(true);
     // No fill step was planned (optional, no value).
     expect(res.ranSteps.some((s) => s.startsWith("fill:"))).toBe(false);
+  });
+
+  it("parks verification instead of reporting failure when Jobinja leaves the form open", async () => {
+    const d = doc(`
+      <form id="apply-form">
+        <input id="apply_choice_uploaded_cv" type="radio">
+        <input name="cv_file" type="file">
+        <button type="submit">ارسال رزومه</button>
+      </form>
+    `);
+    const it = jobinjaItem({ coverLetter: "" });
+    const plan = buildApplyPlan(it, applyValuesFor(it))!;
+    const res = await executeApplyPlan(plan, { doc: d, ...immediate });
+
+    expect(res.ok).toBe(false);
+    expect(res.verificationPending).toBe(true);
+    expect(res.reason).toBe("jobinja_submission_unconfirmed");
+  });
+
+  it("accepts the authenticated Jobinja application history as durable proof", async () => {
+    const d = doc(`
+      <form id="apply-form">
+        <input id="apply_choice_uploaded_cv" type="radio">
+        <input name="cv_file" type="file">
+        <button type="submit">ارسال رزومه</button>
+      </form>
+    `);
+    const it = jobinjaItem({ coverLetter: "" });
+    const plan = buildApplyPlan(it, applyValuesFor(it))!;
+    const res = await executeApplyPlan(plan, {
+      doc: d,
+      ...immediate,
+      verifyJobinjaHistory: async () => ({
+        provider: "jobinja",
+        signal: "application_history",
+        jobId: "abc123",
+      }),
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.proof?.signal).toBe("application_history");
+  });
+
+  it("reports an explicit provider rejection instead of treating its flash as success", async () => {
+    const d = doc(JOBINJA_FORM.replace("ثبت شد", "ارسال رزومه ناموفق بود"));
+    const it = jobinjaItem({ coverLetter: "" });
+    const plan = buildApplyPlan(it, applyValuesFor(it))!;
+    const res = await executeApplyPlan(plan, { doc: d, ...immediate });
+
+    expect(res.ok).toBe(false);
+    expect(res.verificationPending).toBeUndefined();
+    expect(res.reason).toContain("jobinja_provider_rejected");
+  });
+
+  it("accepts Jobinja already-applied text as durable proof", async () => {
+    const d = doc(`
+      <div class="notice">شما قبلاً برای این آگهی رزومه ارسال کرده‌اید</div>
+    `);
+    const it = jobinjaItem({ coverLetter: "" });
+    const plan = {
+      ...buildApplyPlan(it, applyValuesFor(it))!,
+      steps: [],
+    };
+    const res = await executeApplyPlan(plan, { doc: d, ...immediate });
+
+    expect(res.ok).toBe(true);
+    expect(res.proof).toEqual({ provider: "jobinja", signal: "already_applied_text" });
+  });
+
+  it("checks durable history before failing a missing form", async () => {
+    const d = doc(`<main>آگهی شغلی</main>`);
+    const item = jobinjaItem();
+    const plan = buildApplyPlan(item, applyValuesFor(item))!;
+    const res = await executeApplyPlan(plan, {
+      doc: d,
+      ...immediate,
+      verifyJobinjaHistory: async () => ({
+        provider: "jobinja",
+        signal: "application_history",
+        jobId: "abc123",
+      }),
+    });
+
+    expect(res).toMatchObject({ ok: true, alreadyApplied: true });
   });
 
   it("does not submit when the tailored resume is missing", async () => {

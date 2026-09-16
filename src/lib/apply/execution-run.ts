@@ -128,7 +128,19 @@ export function reclaimableRunCondition(executorId: string, takeover: boolean) {
         eq(applyExecutionRuns.state, "paused"),
         eq(applyExecutionRuns.state, "completed"),
         eq(applyExecutionRuns.state, "blocked"),
+        // A `running` run whose heartbeat died is not being executed by anyone —
+        // the browser that held it is gone. Without this, such a run was
+        // reclaimable ONLY by the same executorId, so anyone whose id changed
+        // (a reinstall, a new browser profile) was stuck on "متوقف شده" forever
+        // with no path back. Same reasoning as `blocked` above: nobody is
+        // running it, so any browser must be able to pick it up.
+        lt(applyExecutionRuns.heartbeatAt, new Date(Date.now() - STALE_RUN_MS)),
       );
+}
+
+function runViewHeartbeatStale(run: ExecutionRunView): boolean {
+  const heartbeat = run.heartbeatAt ? Date.parse(run.heartbeatAt) : Number.NaN;
+  return !Number.isFinite(heartbeat) || heartbeat < Date.now() - STALE_RUN_MS;
 }
 
 export async function startExtensionExecution(
@@ -147,7 +159,9 @@ export async function startExtensionExecution(
   if (
     current.owner === "extension" &&
     current.executorId !== executorId &&
-    current.state === "running"
+    current.state === "running" &&
+    !opts.takeover &&
+    !runViewHeartbeatStale(current)
   ) {
     throw new ExecutionOwnershipError(
       "another browser owns this run",

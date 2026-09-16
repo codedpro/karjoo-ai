@@ -18,10 +18,13 @@ const JOB_KEY_PROVIDER = sql.raw(
 );
 
 function safeReturnTo(value: FormDataEntryValue | null): string {
-  if (typeof value !== "string" || !value.startsWith("/dashboard/jobs")) {
-    return "/dashboard/jobs";
+  if (typeof value !== "string") {
+    return "/jobs";
   }
-  return value.slice(0, 500);
+  if (value === "/jobs" || value.startsWith("/jobs?") || value.startsWith("/dashboard/jobs")) {
+    return value.slice(0, 500);
+  }
+  return "/jobs";
 }
 
 function withResult(returnTo: string, result: string): string {
@@ -71,7 +74,8 @@ export async function queueJobApplyAction(formData: FormData): Promise<void> {
       from applications a
       where a.user_id = ${user.userId}
         and a.listing_id = ${listing.id}
-        and a.status in ('draft', 'submitted')
+        and a.status = 'submitted'
+        and (a.external_ref is not null or a.proof is not null)
       union all
       select ba.id
       from board_applications ba

@@ -20,8 +20,19 @@ async function waitForOutcome(timeoutMs = 15_000): Promise<ContentApplyResult> {
   const end = Date.now() + timeoutMs;
   while (Date.now() < end) {
     const text = pageText();
-    if (/\/post-apply(?:\/|$)/.test(location.pathname) || /رزومه.{0,20}(?:ارسال شد|ارسال شده|با موفقیت ارسال)/.test(text)) {
-      return { ok: true, ranSteps: ["native-apply", "confirmed"] };
+    if (/\/post-apply(?:\/|$)/.test(location.pathname)) {
+      return {
+        ok: true,
+        ranSteps: ["native-apply", "confirmed"],
+        proof: { provider: "jobvision", signal: "post_apply_path" },
+      };
+    }
+    if (/رزومه.{0,20}(?:ارسال شد|ارسال شده|با موفقیت ارسال)/.test(text)) {
+      return {
+        ok: true,
+        ranSteps: ["native-apply", "confirmed"],
+        proof: { provider: "jobvision", signal: "submitted_text" },
+      };
     }
     if (/captcha|کپچا|من ربات نیستم|بررسی امنیتی|تأیید کنید انسان/.test(text.toLowerCase())) {
       return { ok: false, ranSteps: ["native-apply"], reason: "jobvision_captcha_required" };
@@ -44,8 +55,21 @@ export async function executeJobvisionApply(): Promise<ContentApplyResult> {
   if (/captcha|کپچا|من ربات نیستم|بررسی امنیتی/.test(text.toLowerCase())) {
     return { ok: false, ranSteps: [], reason: "jobvision_captcha_required" };
   }
-  if (/رزومه.{0,20}(?:ارسال شد|ارسال شده)/.test(text) || /\/post-apply(?:\/|$)/.test(location.pathname)) {
-    return { ok: true, alreadyApplied: true, ranSteps: ["already-applied"] };
+  if (/رزومه.{0,20}(?:ارسال شد|ارسال شده)/.test(text)) {
+    return {
+      ok: true,
+      alreadyApplied: true,
+      ranSteps: ["already-applied"],
+      proof: { provider: "jobvision", signal: "already_applied_text" },
+    };
+  }
+  if (/\/post-apply(?:\/|$)/.test(location.pathname)) {
+    return {
+      ok: true,
+      alreadyApplied: true,
+      ranSteps: ["already-applied"],
+      proof: { provider: "jobvision", signal: "post_apply_path" },
+    };
   }
   const apply = document.querySelector<HTMLButtonElement>(APPLY_SELECTOR) ?? buttonWithText(/^ارسال رزومه$/);
   if (!apply) {

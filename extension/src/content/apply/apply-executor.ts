@@ -22,10 +22,17 @@
  * value framework-friendly and dispatches input/change so SPA frameworks register.
  */
 import type { ResolvedApplyStep, ApplyPlan } from "@ext/lib/apply-runner";
+import { verifyJobinjaApplicationHistory } from "@ext/lib/jobinja-application-history";
 
 export interface ExecuteResult {
   /** Did the flow reach (and confirm, when a confirmSelector exists) submission? */
   ok: boolean;
+  /** Non-secret evidence that the provider accepted or already had the application. */
+  proof?: Record<string, unknown>;
+  /** The provider confirmed this application existed before this execution. */
+  alreadyApplied?: boolean;
+  /** Submission was attempted but requires provider-history reconciliation. */
+  verificationPending?: boolean;
   /** Which step kinds/selectors ran (for a non-secret debug trail). */
   ranSteps: string[];
   /** Short, non-secret reason on failure (e.g. "selector not found: …"). */
@@ -45,6 +52,7 @@ export interface ExecuteOptions {
   now?: () => number;
   /** Injectable PDF attachment primitive for DOM-only tests. */
   uploadPdf?: (input: HTMLInputElement, dataUrl: string, fileName: string) => void;
+  verifyJobinjaHistory?: (jobUrl: string) => Promise<Record<string, unknown> | null>;
 }
 
 const DEFAULT_TIMEOUT = 15_000;
@@ -153,6 +161,7 @@ export async function executeApplyPlan(
     sleep: options.sleep ?? realSleep,
     now: options.now ?? (() => Date.now()),
     uploadPdf: options.uploadPdf ?? uploadPdf,
+    verifyJobinjaHistory: options.verifyJobinjaHistory ?? verifyJobinjaApplicationHistory,
   };
 
   const ranSteps: string[] = [];
@@ -177,11 +186,88 @@ export async function executeApplyPlan(
     if (!result.ok) {
       // Optional step that simply was not present → keep going.
       if (result.skipped) continue;
+      if (plan.board === "jobinja") {
+        const historyProof = await opts.verifyJobinjaHistory(plan.jobUrl);
+        if (historyProof) {
+          return {
+            ok: true,
+            alreadyApplied: true,
+            ranSteps,
+            proof: historyProof,
+          };
+        }
+      }
       return { ok: false, ranSteps, reason: result.reason ?? `step failed: ${label}` };
     }
   }
 
+  if (plan.board === "jobinja") {
+    const rejection = jobinjaSubmissionRejection(doc);
+    if (rejection) return { ok: false, ranSteps, reason: rejection };
+    const proof = jobinjaSubmissionProof(doc);
+    const historyProof = proof ? null : await opts.verifyJobinjaHistory(plan.jobUrl);
+    const acceptedProof = proof ?? historyProof;
+    if (!acceptedProof) {
+      return {
+        ok: false,
+        verificationPending: true,
+        ranSteps,
+        reason: "jobinja_submission_unconfirmed",
+      };
+    }
+    return {
+      ok: true,
+      ranSteps,
+      proof: acceptedProof,
+      ...(acceptedProof.signal === "already_applied_text" ? { alreadyApplied: true } : {}),
+    };
+  }
+
   return { ok: true, ranSteps };
+}
+
+function normalizedPageText(doc: Document): string {
+  return (doc.body?.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+function jobinjaSubmissionRejection(doc: Document): string | null {
+  const text = Array.from(
+    doc.querySelectorAll(
+      ".js-flashMessageMsg, .c-flashMessage__message, #apply-form .help-block, #apply-form .has-error, #apply-form [class*='error']",
+    ),
+  )
+    .map((el) => el.textContent ?? "")
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!/(ارسال نشد|ثبت نشد|ناموفق|خطا|امکان ارسال|الزامی|وارد کنید)/i.test(text)) return null;
+  return `jobinja_provider_rejected: ${text.slice(0, 180)}`;
+}
+
+function jobinjaSubmissionProof(doc: Document): Record<string, unknown> | null {
+  const pageText = normalizedPageText(doc);
+  const flashText = Array.from(
+    doc.querySelectorAll(".js-flashMessageMsg, .c-flashMessage__message"),
+  ).map((el) => el.textContent ?? "").join(" ");
+
+  if (/موفق|ثبت شد|ارسال شد|با موفقیت/i.test(flashText)) {
+    return { provider: "jobinja", signal: "flash_message" };
+  }
+  if (/رزومه(?:‌| )?ی? شما.*(?:ارسال|ثبت).*شد/.test(pageText)) {
+    return { provider: "jobinja", signal: "submitted_text" };
+  }
+  if (/درخواست شما.*(?:ارسال|ثبت).*شد/.test(pageText)) {
+    return { provider: "jobinja", signal: "submitted_text" };
+  }
+  if (/قبلا|قبلاً/.test(pageText) && /برای این آگهی/.test(pageText) && /رزومه/.test(pageText)) {
+    return { provider: "jobinja", signal: "already_applied_text" };
+  }
+
+  const submit = doc.querySelector("#apply-form input[type='submit'], #apply-form button[type='submit']");
+  if (!submit && !/ارسال رزومه/.test(pageText)) {
+    return { provider: "jobinja", signal: "apply_form_removed" };
+  }
+  return null;
 }
 
 interface StepResult {

@@ -4,7 +4,7 @@
  * toggle (Max/Max+, dashboard). Pure so the popup stays a thin DOM binding and the
  * wording is unit-tested.
  */
-import type { AutoApplySettings, AutoApplyStatus } from "@ext/lib/types";
+import type { AutoApplySettings, AutoApplyStatus, ExtensionRunOverview } from "@ext/lib/types";
 
 /** The on/off state line under the toggle. Browser-scoped wording. */
 export function stateLabel(settings: AutoApplySettings): string {
@@ -46,6 +46,33 @@ export function lastRunLabel(status: AutoApplyStatus | null): string {
     default:
       return when;
   }
+}
+
+/** Prefer the live run row over the cached last tick when work is currently active. */
+export function liveAwareLastRunLabel(
+  status: AutoApplyStatus | null,
+  overview: ExtensionRunOverview | null,
+): string {
+  const run = overview?.run;
+  if (!run) return lastRunLabel(status);
+  if (run.state === "running" && run.owner === "extension") {
+    const stage = typeof run.progress.stage === "string" ? run.progress.stage : "";
+    const discovered = Number(run.progress.discovered ?? 0);
+    if (stage === "discovering") {
+      return `در حال کشف آگهی‌ها${discovered > 0 ? ` — ${discovered} آگهی بررسی شد` : ""}`;
+    }
+    if (stage === "claiming") return "در حال دریافت مورد بعدی از صف";
+    if (stage === "applying" || stage === "opening_job" || stage === "uploading_resume") {
+      const title = typeof run.progress.title === "string" ? run.progress.title : "";
+      return title ? `در حال اپلای — ${title}` : "در حال اپلای";
+    }
+    if (stage === "waiting") return "روشن — منتظر آگهی یا مورد جدید";
+    return "در حال اجرا در مرورگر";
+  }
+  if (run.state === "blocked") {
+    return run.blockedReason ? `نیاز به اقدام: ${run.blockedReason}` : "نیاز به اقدام";
+  }
+  return lastRunLabel(status);
 }
 
 /** Short relative time, RTL-friendly. Injectable `now` for tests. */

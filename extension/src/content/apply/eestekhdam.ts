@@ -2,6 +2,7 @@ import type { BackgroundToContent, ContentApplyResult } from "@ext/lib/messages"
 import type { ApplyPlan } from "@ext/lib/apply-runner";
 
 const API_ROOT = "https://www.e-estekhdam.com/search-api";
+const SITE_ROOT = "https://www.e-estekhdam.com";
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? value as Record<string, unknown> : {};
@@ -200,22 +201,134 @@ function eestekhdamFiles(value: unknown): Record<string, unknown>[] {
   return Array.isArray(data.files) ? data.files.map(record) : [];
 }
 
+interface FileDeleteAction {
+  url: string;
+  method: string;
+  body?: URLSearchParams;
+}
+
+function deleteControl(value: string): boolean {
+  return /delete|remove|destroy|trash|hazf|حذف/i.test(value);
+}
+
+function formBody(form: HTMLFormElement, targetId: string): URLSearchParams {
+  const body = new URLSearchParams();
+  for (const control of form.querySelectorAll("input[name], select[name], textarea[name]")) {
+    const input = control as HTMLInputElement;
+    const name = input.getAttribute("name")?.trim();
+    if (!name || input.hasAttribute("disabled")) continue;
+    const type = input.getAttribute("type")?.toLowerCase() ?? "";
+    const value = input.value ?? input.getAttribute("value") ?? "";
+    if ((type === "checkbox" || type === "radio") && value !== targetId && !input.hasAttribute("checked")) continue;
+    if ((type === "submit" || type === "button") && !deleteControl(`${value} ${input.outerHTML}`)) continue;
+    body.append(name, value);
+  }
+  return body;
+}
+
+function csrfToken(doc: Document): string | null {
+  return doc.querySelector<HTMLInputElement>('input[name="_token"]')?.value?.trim()
+    || doc.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content?.trim()
+    || null;
+}
+
+function actionContext(node: Element): string {
+  const container = node.closest("[data-file-id], [data-id], tr, li, article, .file, .item");
+  return `${node.textContent ?? ""} ${node.outerHTML} ${container?.outerHTML ?? ""}`;
+}
+
+/** PURE: extract the authenticated file manager's own deletion controls. */
+export function discoverFileDeleteActions(doc: Document, targetId: string): FileDeleteAction[] {
+  const actions: FileDeleteAction[] = [];
+  for (const node of doc.querySelectorAll("form")) {
+    const form = node as HTMLFormElement;
+    const action = form.getAttribute("action") ?? "/panel/files";
+    const evidence = `${action} ${form.textContent ?? ""} ${form.outerHTML}`;
+    if (!deleteControl(evidence) || !evidence.includes(targetId)) continue;
+    actions.push({
+      url: new URL(action, SITE_ROOT).toString(),
+      method: (form.getAttribute("method") || "POST").toUpperCase(),
+      body: formBody(form, targetId),
+    });
+  }
+  for (const node of doc.querySelectorAll("a[href], [data-url], [data-href]")) {
+    const href = node.getAttribute("data-url")
+      || node.getAttribute("data-href")
+      || node.getAttribute("href")
+      || "";
+    const context = `${href} ${actionContext(node)}`;
+    if (!href || href === "#") continue;
+    if (!context.includes(targetId) || !deleteControl(context)) continue;
+    actions.push({
+      url: new URL(href, SITE_ROOT).toString(),
+      method: (node.getAttribute("data-method") || "GET").toUpperCase(),
+    });
+  }
+  return actions.filter(providerAction).filter((action, index) =>
+    actions.findIndex((candidate) =>
+      candidate.url === action.url && candidate.method === action.method &&
+      candidate.body?.toString() === action.body?.toString()) === index);
+}
+
+async function textRequest(url: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set("accept", "text/html,application/xhtml+xml");
+  return fetch(url, { ...init, headers, credentials: "include", redirect: "follow" });
+}
+
+async function currentStoredFiles(): Promise<{
+  response: Response;
+  files: Record<string, unknown>[];
+}> {
+  const result = await jsonRequest(`${API_ROOT}/ats/cvs`);
+  return { response: result.response, files: eestekhdamFiles(result.body) };
+}
+
+async function fileStillExists(targetId: string): Promise<boolean | null> {
+  const listed = await currentStoredFiles();
+  if (!listed.response.ok) return null;
+  return listed.files.some((file) => fileId(file) === targetId);
+}
+
+function providerAction(action: FileDeleteAction): boolean {
+  try {
+    const host = new URL(action.url).hostname.toLowerCase();
+    return host === "e-estekhdam.com" || host.endsWith(".e-estekhdam.com");
+  } catch {
+    return false;
+  }
+}
+
+async function executeDeleteAction(action: FileDeleteAction, targetId: string): Promise<Response> {
+  const headers = new Headers();
+  let body: URLSearchParams | undefined;
+  if (action.method !== "GET" && action.method !== "HEAD") {
+    body = action.body ?? new URLSearchParams({ id: targetId });
+    headers.set("content-type", "application/x-www-form-urlencoded;charset=UTF-8");
+  }
+  return textRequest(action.url, { method: action.method, headers, body });
+}
+
+async function confirmationAction(response: Response, targetId: string): Promise<FileDeleteAction | null> {
+  if (!response.ok) return null;
+  const html = await response.clone().text().catch(() => "");
+  if (!html || !deleteControl(html) || !html.includes(targetId)) return null;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return discoverFileDeleteActions(doc, targetId)[0] ?? null;
+}
+
 /**
- * Delete application-upload files from e-estekhdam, then the caller can retry
- * the tailored PDF upload. The route names are intentionally tried from most
- * likely to legacy-looking because e-estekhdam's public bundle is not available
- * to unauthenticated fetches, while the authenticated JSON payload gives us
- * only the file ids/counts.
+ * Delete application-upload files through e-estekhdam's authenticated manager,
+ * then verify against the JSON list before retrying the tailored PDF upload.
  */
 async function clearStoredApplicationFiles(): Promise<{ deleted: number; total: number; reason?: string }> {
-  const { response, body } = await jsonRequest(`${API_ROOT}/ats/cvs`);
+  const { response, files } = await currentStoredFiles();
   if (response.status === 401 || response.status === 403) {
     return { deleted: 0, total: 0, reason: "eestekhdam_login_required" };
   }
   if (!response.ok) {
     return { deleted: 0, total: 0, reason: `eestekhdam_file_cleanup_failed: list ${response.status}` };
   }
-  const files = eestekhdamFiles(body);
   const ids = [...new Set(files.map(fileId).filter((id): id is string => Boolean(id)))];
   if (files.length > 0 && ids.length === 0) {
     return { deleted: 0, total: files.length, reason: "eestekhdam_file_cleanup_failed: no file ids" };
@@ -224,30 +337,55 @@ async function clearStoredApplicationFiles(): Promise<{ deleted: number; total: 
   let deleted = 0;
   let lastStatus = "";
   for (const id of ids) {
-    const encoded = encodeURIComponent(id);
-    const candidates = [
-      `${API_ROOT}/ats/cvs/files/${encoded}`,
-      `${API_ROOT}/ats/files/${encoded}`,
-      `${API_ROOT}/ats/cvs/${encoded}`,
-      `${API_ROOT}/files/${encoded}`,
+    const managerUrl = `${SITE_ROOT}/panel/files/`;
+    const manager = await textRequest(managerUrl);
+    if (manager.status === 401 || manager.status === 403 || /\/login(?:\/|$)/.test(new URL(manager.url || managerUrl).pathname)) {
+      return { deleted, total: ids.length, reason: "eestekhdam_login_required" };
+    }
+    if (!manager.ok) {
+      return { deleted, total: ids.length, reason: `eestekhdam_file_cleanup_failed: manager ${manager.status}` };
+    }
+    const managerHtml = await manager.text();
+    const managerDoc = new DOMParser().parseFromString(managerHtml, "text/html");
+    const discovered = discoverFileDeleteActions(managerDoc, id).filter(providerAction);
+    const token = csrfToken(managerDoc);
+    const fallbackBody = (key: "id" | "file_id"): URLSearchParams => {
+      const body = new URLSearchParams({ [key]: id });
+      if (token) body.set("_token", token);
+      return body;
+    };
+    // Older panel builds expose the collection as a REST-like form without
+    // rendering a per-file action. These fallbacks remain safe because every
+    // attempt is checked by re-listing the exact id afterward.
+    const candidates: FileDeleteAction[] = [
+      ...discovered,
+      { url: managerUrl, method: "DELETE", body: fallbackBody("id") },
+      { url: `${SITE_ROOT}/panel/files/delete`, method: "POST", body: fallbackBody("file_id") },
     ];
     let removed = false;
-    for (const url of candidates) {
-      const result = await jsonRequest(url, { method: "DELETE" });
-      if (result.response.status === 404 || result.response.status === 405) {
-        lastStatus = `${result.response.status}`;
-        continue;
-      }
-      if (result.response.status === 401 || result.response.status === 403) {
+    for (const action of candidates) {
+      if (!providerAction(action)) continue;
+      const result = await executeDeleteAction(action, id);
+      if (result.status === 401 || result.status === 403 || /\/login(?:\/|$)/.test(new URL(result.url || action.url).pathname)) {
         return { deleted, total: ids.length, reason: "eestekhdam_login_required" };
       }
-      if (!result.response.ok || record(result.body).ok === false) {
-        lastStatus = failureDetail(result.response.status, result.body);
-        continue;
+      lastStatus = `${result.status}`;
+      let stillExists = await fileStillExists(id);
+      const confirmation = stillExists === true ? await confirmationAction(result, id) : null;
+      if (confirmation && providerAction(confirmation)) {
+        const confirmed = await executeDeleteAction(confirmation, id);
+        lastStatus = `${result.status}/${confirmed.status}`;
+        if (confirmed.status === 401 || confirmed.status === 403) {
+          return { deleted, total: ids.length, reason: "eestekhdam_login_required" };
+        }
+        stillExists = await fileStillExists(id);
       }
-      deleted += 1;
-      removed = true;
-      break;
+      if (stillExists === false) {
+        deleted += 1;
+        removed = true;
+        break;
+      }
+      if (stillExists === null) lastStatus = `${result.status}; verify failed`;
     }
     if (!removed) {
       return {
@@ -263,6 +401,10 @@ async function clearStoredApplicationFiles(): Promise<{ deleted: number; total: 
 /** PURE: does this refusal mean the account cannot store another file? */
 export function isFileLimitRefusal(detail: string): boolean {
   return /محدودیت تعداد فایل|ذخیره فایل|too many files|file limit/i.test(detail);
+}
+
+function isAlreadyAppliedRefusal(detail: string): boolean {
+  return /already applied|قبلا|قبلاً/i.test(detail) && /apply|درخواست|رزومه|ارسال/i.test(detail);
 }
 
 export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentApplyResult> {
@@ -336,6 +478,14 @@ export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentAp
   }
   if (!applied.response.ok || record(applied.body).ok === false) {
     const detail = failureDetail(applied.response.status, applied.body);
+    if (isAlreadyAppliedRefusal(detail)) {
+      return {
+        ok: true,
+        alreadyApplied: true,
+        ranSteps: ["session", "position", "already-applied"],
+        proof: { provider: "e-estekhdam", signal: "already_applied_api" },
+      };
+    }
     if (!isFileLimitRefusal(detail)) {
       return { ok: false, ranSteps: ["session", "upload"], reason: `eestekhdam_apply_failed: ${detail}` };
     }
@@ -357,7 +507,11 @@ export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentAp
       });
       const retrySerialized = typeof retry.body === "string" ? retry.body : JSON.stringify(retry.body);
       if (retry.response.ok && record(retry.body).ok !== false) {
-        return { ok: true, ranSteps: ["session", "position", "cleanup_files", "upload", "confirmed"] };
+        return {
+          ok: true,
+          ranSteps: ["session", "position", "cleanup_files", "upload", "confirmed"],
+          proof: { provider: "e-estekhdam", signal: "apply_after_cleanup_api_accepted" },
+        };
       }
       if (retry.response.status === 401 || retry.response.status === 403) {
         return { ok: false, ranSteps: ["session", "cleanup_files", "upload"], reason: "eestekhdam_login_required" };
@@ -383,7 +537,11 @@ export async function executeEEstekhdamApply(plan: ApplyPlan): Promise<ContentAp
         `پاک‌سازی خودکار فایل‌ها کامل نشد. ${cleanupText}`,
     };
   }
-  return { ok: true, ranSteps: ["session", "position", "upload", "confirmed"] };
+  return {
+    ok: true,
+    ranSteps: ["session", "position", "upload", "confirmed"],
+    proof: { provider: "e-estekhdam", signal: "apply_api_accepted" },
+  };
 }
 
 if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {

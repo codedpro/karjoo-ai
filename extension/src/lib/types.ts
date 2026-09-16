@@ -116,9 +116,11 @@ export interface JobinjaCategory {
  */
 export interface ApplyResultReport {
   id: string;
-  status: "submitted" | "skipped" | "failed";
+  status: "submitted" | "verifying" | "skipped" | "failed";
   /** Optional proof/reference the board returned (e.g. confirmation id). */
   externalRef?: string;
+  /** Non-secret evidence that the provider accepted or already had the application. */
+  proof?: Record<string, unknown>;
   reason?: string;
 }
 
@@ -213,7 +215,7 @@ export interface ExtensionRunOverview {
   queue: LiveQueueJob[];
   recent: Array<{
     applicationId: string;
-    status: "draft" | "submitted" | "skipped" | "failed";
+    status: "draft" | "verifying" | "submitted" | "skipped" | "failed";
     channel: "extension" | "worker" | null;
     happenedAt: string;
     reason: string | null;

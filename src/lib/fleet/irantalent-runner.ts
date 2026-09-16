@@ -120,7 +120,7 @@ export async function runIranTalentForUser(
 
     summary[outcome.status === "submitted" ? "submitted" : outcome.status === "skipped" ? "skipped" : "failed"] += 1;
     if (outcome.reason) bump(summary.reasons, outcome.reason);
-    await report(item.taskId, userId, outcome.status, outcome.reason, db, outcome.ranSteps);
+    await report(item.taskId, userId, outcome.status, outcome.reason, db, outcome.proof);
 
     // نشستی که وسطِ کار رد شد، ادامه دادن را بی‌فایده می‌کند.
     if (outcome.reason === "irantalent_login_required") break;
@@ -148,14 +148,14 @@ async function report(
   status: "submitted" | "skipped" | "failed",
   reason: string | undefined,
   db: typeof defaultDb,
-  ranSteps?: string[],
+  proof?: Record<string, unknown>,
 ): Promise<void> {
   await recordFleetResult(RUNNER_NODE, {
     taskId,
     userId,
     status,
     ...(reason ? { reason } : {}),
-    ...(ranSteps ? { proof: { ranSteps } } : {}),
+    ...(proof ? { proof } : {}),
   }, { db });
 }
 

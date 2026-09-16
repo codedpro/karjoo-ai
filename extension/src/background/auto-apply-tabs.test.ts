@@ -9,6 +9,9 @@ import {
   SESSION_FAILURE_STREAK_LIMIT,
   BOARD_FAILURE_STREAK_LIMIT,
   RESUME_FAILURE_STREAK_LIMIT,
+  timeoutFetch,
+  applicationResultStatus,
+  isAmbiguousJobinjaNavigationError,
 } from "@ext/background/auto-apply";
 
 describe("discovery after filter changes", () => {
@@ -29,6 +32,12 @@ describe("discovery after filter changes", () => {
   });
 });
 
+describe("discovery fetch timeout", () => {
+  it("exports a timeout-wrapped fetch for provider discovery", () => {
+    expect(typeof timeoutFetch(1000)).toBe("function");
+  });
+});
+
 describe("managed apply-tab lifecycle", () => {
   it("closes a tab created by the extension after a normal apply or failure", () => {
     expect(shouldCloseManagedTab(true, false)).toBe(true);
@@ -44,7 +53,25 @@ describe("managed apply-tab lifecycle", () => {
   });
 });
 
+describe("Jobinja submit navigation", () => {
+  it.each([
+    "The page keeping the extension port is moved into back/forward cache, so the message channel is closed.",
+    "The message port closed before a response was received.",
+  ])("treats %s as ambiguous until provider history is checked", (reason) => {
+    expect(isAmbiguousJobinjaNavigationError(reason)).toBe(true);
+  });
+
+  it("does not hide an ordinary content-script exception", () => {
+    expect(isAmbiguousJobinjaNavigationError("resume_upload_failed: browser rejected the file")).toBe(false);
+  });
+});
+
 describe("non-automatable job outcomes", () => {
+  it("stores provider-confirmed existing applications as submitted history", () => {
+    expect(applicationResultStatus({ ok: true, reason: "already_applied_on_board" }))
+      .toBe("submitted");
+  });
+
   it.each([
     "jobinja_login_required: sign in",
     "jobinja_security_check: challenge",
@@ -60,6 +87,14 @@ describe("non-automatable job outcomes", () => {
 
   it("keeps an ordinary transport failure visible as failed", () => {
     expect(isSkippableReason("request failed (502)")).toBe(false);
+  });
+
+  it("parks an ambiguous submit for verification instead of counting it as failed", () => {
+    expect(applicationResultStatus({
+      ok: false,
+      verificationPending: true,
+      reason: "jobinja_submission_unconfirmed",
+    })).toBe("verifying");
   });
 });
 

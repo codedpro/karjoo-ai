@@ -99,7 +99,7 @@ export const getMatchesForUser = cache(
 /** یک ردیفِ اپلای همراهِ عنوان/شرکتِ آگهی — برای فهرستِ پیگیری. */
 export interface DashboardApplication {
   id: string;
-  status: "draft" | "submitted" | "skipped" | "failed";
+  status: "draft" | "verifying" | "submitted" | "skipped" | "failed";
   channel: "extension" | "worker" | null;
   matchScore: number | null;
   externalRef: string | null;

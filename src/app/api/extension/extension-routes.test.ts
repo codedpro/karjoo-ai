@@ -15,6 +15,19 @@ const h = vi.hoisted(() => {
 
 vi.mock("@/lib/auth/pairing", () => ({ redeemPairingCode: vi.fn() }));
 vi.mock("@/lib/api/bearer-auth", () => ({ requireBearerSession: vi.fn() }));
+vi.mock("@/lib/apply/boards/jobinja", () => ({
+  buildSearchUrl: vi.fn(() => "https://jobinja.ir/jobs?sort=published_at_desc"),
+}));
+vi.mock("@/lib/apply/filters", () => ({
+  readApplyFilters: vi.fn(),
+  readJobPreferences: vi.fn(),
+}));
+vi.mock("@/lib/apply/orchestrator", () => ({
+  enqueueBrowserDiscoveredListings: vi.fn(),
+}));
+vi.mock("@/lib/apply/extension-queue-reset", () => ({
+  resetExtensionQueue: vi.fn(),
+}));
 vi.mock("@/db", () => ({
   db: {
     select: vi.fn(() => {
@@ -32,12 +45,19 @@ vi.mock("@/db", () => ({
 
 import { redeemPairingCode } from "@/lib/auth/pairing";
 import { requireBearerSession } from "@/lib/api/bearer-auth";
+import { readApplyFilters, readJobPreferences } from "@/lib/apply/filters";
 import { HttpError } from "@/lib/api/http";
+import { GET as discoveryGET } from "@/app/api/extension/discovery/route";
 import { POST as linkPOST } from "@/app/api/extension/link/route";
 import { GET as meGET } from "@/app/api/extension/me/route";
+import { POST as resetQueuePOST } from "@/app/api/extension/queue/reset/route";
+import { resetExtensionQueue } from "@/lib/apply/extension-queue-reset";
 
 const redeemMock = vi.mocked(redeemPairingCode);
 const authMock = vi.mocked(requireBearerSession);
+const readApplyFiltersMock = vi.mocked(readApplyFilters);
+const readJobPreferencesMock = vi.mocked(readJobPreferences);
+const resetQueueMock = vi.mocked(resetExtensionQueue);
 
 function pushSelect(rows: unknown[]) {
   h.selectResults.push(rows);
@@ -152,5 +172,86 @@ describe("GET /api/extension/me", () => {
     pushSelect([]); // users خالی
     const res = await meGET(getReq());
     expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /api/extension/discovery", () => {
+  function getReq() {
+    return new Request("https://k.app/api/extension/discovery", {
+      headers: { authorization: "Bearer t" },
+    });
+  }
+
+  it("returns every active discovery provider, including karboom", async () => {
+    authMock.mockResolvedValue({
+      userId: "user-3",
+      session: { kind: "extension" },
+    } as never);
+    readJobPreferencesMock.mockResolvedValue({
+      categorySlugs: ["وب،‌-برنامه‌نویسی-و-نرم‌افزار"],
+      remoteOnly: true,
+    } as never);
+    const board = {
+      enabled: true,
+      categoryKeys: ["software"],
+      cities: [],
+      employmentTypeKeys: [],
+      remoteOnly: true,
+    };
+    readApplyFiltersMock.mockResolvedValue({
+      paused: false,
+      maxAgeDays: 45,
+      boardFilters: {
+        jobinja: board,
+        jobvision: board,
+        "e-estekhdam": board,
+        irantalent: board,
+        karboom: { ...board, cities: ["تهران"] },
+      },
+    } as never);
+
+    const res = await discoveryGET(getReq());
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.boards.map((item: { board: string }) => item.board)).toEqual([
+      "jobinja",
+      "jobvision",
+      "e-estekhdam",
+      "irantalent",
+      "karboom",
+    ]);
+    expect(body.boards.at(-1)).toMatchObject({
+      board: "karboom",
+      enabled: true,
+      hasTargeting: true,
+      cities: ["تهران"],
+    });
+  });
+});
+
+describe("POST /api/extension/queue/reset", () => {
+  const executorId = "11111111-1111-4111-8111-111111111111";
+
+  it("resets only the authenticated extension user's queue", async () => {
+    authMock.mockResolvedValue({ userId: "user-3", session: { kind: "extension" } } as never);
+    resetQueueMock.mockResolvedValue({ removed: 9, byBoard: { jobinja: 9 } });
+
+    const res = await resetQueuePOST(jsonReq("https://k.app/api/extension/queue/reset", { executorId }));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, removed: 9, byBoard: { jobinja: 9 } });
+    expect(authMock).toHaveBeenCalledWith(expect.anything(), { requireKind: "extension" });
+    expect(resetQueueMock).toHaveBeenCalledWith("user-3", executorId);
+  });
+
+  it("rejects a malformed executor id before reset", async () => {
+    authMock.mockResolvedValue({ userId: "user-3", session: { kind: "extension" } } as never);
+
+    const res = await resetQueuePOST(jsonReq("https://k.app/api/extension/queue/reset", {
+      executorId: "not-a-browser-id",
+    }));
+
+    expect(res.status).toBe(400);
+    expect(resetQueueMock).not.toHaveBeenCalled();
   });
 });

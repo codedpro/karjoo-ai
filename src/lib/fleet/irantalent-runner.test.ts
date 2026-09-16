@@ -21,7 +21,12 @@ const decryptSession = vi.fn(() => "SESSION");
 const refreshSessionFromStoredCredential = vi.fn<(...a: unknown[]) => Promise<boolean>>(
   async () => false,
 );
-const applyToIranTalent = vi.fn<(...a: unknown[]) => Promise<{ status: string; reason?: string; ranSteps: string[] }>>();
+const applyToIranTalent = vi.fn<(...a: unknown[]) => Promise<{
+  status: string;
+  reason?: string;
+  ranSteps: string[];
+  proof?: Record<string, unknown>;
+}>>();
 const recordFleetResult = vi.fn<(...a: unknown[]) => Promise<unknown>>(async () => ({}));
 
 vi.mock("@/lib/apply/filters", async (importOriginal) => {
@@ -83,7 +88,11 @@ beforeEach(() => {
   claimUserApplyItems.mockResolvedValue([]);
   readSessionBlob.mockResolvedValue({ ciphertext: "c", iv: "i", keyVersion: 1 });
   refreshSessionFromStoredCredential.mockResolvedValue(false);
-  applyToIranTalent.mockResolvedValue({ status: "submitted", ranSteps: ["confirmed"] });
+  applyToIranTalent.mockResolvedValue({
+    status: "submitted",
+    ranSteps: ["confirmed"],
+    proof: { provider: "irantalent", signal: "position_is_applied" },
+  });
 });
 
 describe("provider and plan gates", () => {
@@ -134,9 +143,14 @@ describe("session acquisition", () => {
 describe("applying and reporting", () => {
   it("reports every outcome back to the queue", async () => {
     claimUserApplyItems.mockResolvedValue([ITEM]);
-    applyToIranTalent.mockResolvedValue({ status: "skipped", reason: "irantalent_already_applied", ranSteps: [] });
+    applyToIranTalent.mockResolvedValue({
+      status: "submitted",
+      reason: "already_applied_on_board",
+      ranSteps: ["already-applied"],
+      proof: { provider: "irantalent", signal: "position_is_applied" },
+    });
     const summary = await runIranTalentForUser("u1", 3, deps);
-    expect(summary.skipped).toBe(1);
+    expect(summary.submitted).toBe(1);
     expect(applyToIranTalent.mock.calls[0]![0]).toEqual({
       session: "SESSION",
       jobUrl: ITEM.listing.url,
@@ -146,8 +160,9 @@ describe("applying and reporting", () => {
     expect(recordFleetResult.mock.calls[0]![1]).toMatchObject({
       taskId: ITEM.taskId,
       userId: "u1",
-      status: "skipped",
-      reason: "irantalent_already_applied",
+      status: "submitted",
+      reason: "already_applied_on_board",
+      proof: { provider: "irantalent", signal: "position_is_applied" },
     });
   });
 

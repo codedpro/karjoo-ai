@@ -49,4 +49,14 @@ describe("claimUserApplyItems — معافیتِ انتخابِ کاربر", () 
     expect(src).toMatch(/inArray\(jobListings\.board, \[\.\.\.opts\.allowedBoards\]\)/);
     expect(src).toMatch(/eq\(jobListings\.board, "jobvision"\), eq\(jobListings\.board, "irantalent"\), tailoredResumeExists/);
   });
+
+  it("سرور submitted بدون proof معتبر هیچ provider فعالی را موفق ثبت نمی‌کند", async () => {
+    const src = await import("node:fs").then((fs) =>
+      fs.readFileSync("src/lib/apply/extension-queue.ts", "utf8"),
+    );
+    expect(src).toMatch(/unconfirmedSubmit/);
+    expect(src).toMatch(/hasSubmissionEvidence/);
+    expect(src).toMatch(/awaiting provider history verification/);
+    expect(src).toMatch(/\? "verifying"/);
+  });
 });

@@ -110,9 +110,10 @@ export const applyQueueResultBodySchema = z
   .object({
     /**
      * نتیجه‌ی ارسالِ تأییدشده. 'submitted' = کاربر تأیید و افزونه ارسال کرد؛
+     * 'verifying' = ارسال انجام شده ولی پاسخ سایت هنوز قطعی نیست؛
      * 'skipped' = کاربر رد کرد؛ 'failed' = اقدامِ تأییدشده در ارسال خطا خورد.
      */
-    status: z.enum(["submitted", "skipped", "failed"]),
+    status: z.enum(["submitted", "verifying", "skipped", "failed"]),
     /** ارجاعِ خارجیِ برگشتی از سایت (شناسه‌ی درخواست)، در صورت وجود. */
     externalRef: z.string().max(512).optional(),
     /** دلیل/یادداشت (برای skipped/failed). */
@@ -169,6 +170,12 @@ export const extensionRunActionSchema = z.discriminatedUnion("action", [
 ]);
 
 export type ExtensionRunAction = z.infer<typeof extensionRunActionSchema>;
+
+export const extensionQueueResetBodySchema = z.object({
+  executorId: executorIdSchema,
+}).strict();
+
+export type ExtensionQueueResetBody = z.infer<typeof extensionQueueResetBodySchema>;
 
 export const browserDiscoveredListingSchema = z.object({
   externalId: z.string().trim().min(1).max(160),

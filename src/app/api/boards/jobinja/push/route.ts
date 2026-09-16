@@ -16,6 +16,8 @@ import {
   upsertProfileSnapshot,
   type ParsedProfile,
 } from "@/lib/apply/boards/jobinja-read";
+import { reconcileJobinjaVerifying } from "@/lib/apply/boards/jobinja-verification";
+import { providerSyncCutoff } from "@/lib/apply/freshness";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,6 +42,7 @@ const pushSchema = z
       .max(2000)
       .optional(),
     profile: z.record(z.string(), z.unknown()).optional(),
+    historyComplete: z.boolean().optional(),
   })
   .strict();
 
@@ -65,7 +68,18 @@ export async function POST(request: Request): Promise<Response> {
           appliedAt: a.appliedAt ?? null,
         };
       });
-      applications = await upsertApplications(userId, "jobinja", apps);
+      applications = await upsertApplications(userId, "jobinja", apps, {
+        reconcileVerification: false,
+      });
+      await reconcileJobinjaVerifying(userId, apps, {
+        completeWindow: body.historyComplete === true,
+        windowStart: providerSyncCutoff(),
+      });
+    } else if (body.historyComplete) {
+      await reconcileJobinjaVerifying(userId, [], {
+        completeWindow: true,
+        windowStart: providerSyncCutoff(),
+      });
     }
 
     let profile = false;

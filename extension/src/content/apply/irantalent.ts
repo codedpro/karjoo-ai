@@ -157,7 +157,12 @@ async function runIranTalentApply(plan: ApplyPlan): Promise<ContentApplyResult> 
   }
   const positionData = record(record(position.body).data ?? position.body);
   if (positionData.is_applied === true) {
-    return { ok: true, alreadyApplied: true, ranSteps: [...ranSteps, "already-applied"] };
+    return {
+      ok: true,
+      alreadyApplied: true,
+      ranSteps: [...ranSteps, "already-applied"],
+      proof: { provider: "irantalent", signal: "position_is_applied" },
+    };
   }
   const statusId = record(positionData.status).id;
   if (typeof statusId === "number" && !LIVE_STATUS_IDS.has(statusId)) {
@@ -187,7 +192,12 @@ async function runIranTalentApply(plan: ApplyPlan): Promise<ContentApplyResult> 
   }
   const conditionData = record(record(conditions.body).data ?? conditions.body);
   if (conditionData.is_applied === true) {
-    return { ok: true, alreadyApplied: true, ranSteps: [...ranSteps, "already-applied"] };
+    return {
+      ok: true,
+      alreadyApplied: true,
+      ranSteps: [...ranSteps, "already-applied"],
+      proof: { provider: "irantalent", signal: "conditions_is_applied" },
+    };
   }
   if (conditionData.is_email_verified === false) {
     return fail("irantalent_account_unverified", ranSteps);
@@ -211,17 +221,22 @@ async function runIranTalentApply(plan: ApplyPlan): Promise<ContentApplyResult> 
   }
   if (looksLikeChallenge(applied.raw)) return fail("irantalent_security_challenge", ranSteps);
   if (applied.status === 409 || record(applied.body).already_applied === true) {
-    return { ok: true, alreadyApplied: true, ranSteps: [...ranSteps, "already-applied"] };
+    return {
+      ok: true,
+      alreadyApplied: true,
+      ranSteps: [...ranSteps, "already-applied"],
+      proof: { provider: "irantalent", signal: "apply_conflict" },
+    };
   }
   if (!(applied.status >= 200 && applied.status < 300)) {
     return fail("irantalent_apply_failed", ranSteps);
   }
 
   /* 5 — durable proof, never inferred from the submit call alone ----------- */
-  const confirmed = await confirmApplication(positionId, String(cvId), authorization);
+  const proof = await confirmApplication(positionId, String(cvId), authorization);
   ranSteps.push("verify");
-  if (!confirmed) return fail("irantalent_submission_unconfirmed", ranSteps);
-  return { ok: true, ranSteps: [...ranSteps, "confirmed"] };
+  if (!proof) return fail("irantalent_submission_unconfirmed", ranSteps);
+  return { ok: true, ranSteps: [...ranSteps, "confirmed"], proof };
 }
 
 /** Re-read the board's own state: the position flag first, the history second. */
@@ -229,27 +244,30 @@ async function confirmApplication(
   positionId: string,
   cvId: string,
   authorization: string,
-): Promise<boolean> {
+): Promise<Record<string, unknown> | null> {
   const position = await api(`employer/position/${encodeURIComponent(positionId)}`, authorization);
   const positionData = record(record(position.body).data ?? position.body);
-  if (positionData.is_applied === true) return true;
+  if (positionData.is_applied === true) {
+    return { provider: "irantalent", signal: "position_is_applied" };
+  }
 
   const history = await api(
     `candidate/cv/${encodeURIComponent(cvId)}/application/applied-jobs`,
     authorization,
   );
-  if (!(history.status >= 200 && history.status < 300)) return false;
+  if (!(history.status >= 200 && history.status < 300)) return null;
   const body = record(history.body);
   const rows = Array.isArray(body.data)
     ? body.data
     : Array.isArray(record(body.data).data)
       ? record(body.data).data as unknown[]
       : [];
-  return rows.some((row) => {
+  const found = rows.some((row) => {
     const entry = record(row);
     const candidates = [entry.position_id, entry.id, record(entry.position).id];
     return candidates.some((value) => String(value ?? "") === positionId);
   });
+  return found ? { provider: "irantalent", signal: "application_history" } : null;
 }
 
 /* ── content-script wiring (browser only) ─────────────────────────────────── */

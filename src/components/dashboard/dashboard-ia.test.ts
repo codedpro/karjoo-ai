@@ -28,6 +28,11 @@ function routesOnDisk(dir = DASHBOARD_DIR, prefix = "/dashboard"): string[] {
   return out;
 }
 
+function routeExists(href: string): boolean {
+  if (href.startsWith("/dashboard")) return routesOnDisk().includes(href);
+  return existsSync(join("src/app", href.replace(/^\//, ""), "page.tsx"));
+}
+
 /** A page whose whole job is redirecting an old URL somewhere current. */
 function isRedirectStub(href: string): boolean {
   const file = join(DASHBOARD_DIR, href.replace("/dashboard", "").replace(/^\//, ""), "page.tsx");
@@ -59,9 +64,8 @@ describe("navigation shape", () => {
   });
 
   it("points only at routes that actually exist", () => {
-    const routes = routesOnDisk();
     for (const href of [...navHrefs, ...tabHrefs]) {
-      expect(routes, href).toContain(href);
+      expect(routeExists(href), href).toBe(true);
     }
   });
 });
@@ -84,6 +88,7 @@ describe("no orphan pages", () => {
   it("each tab bar's own pages all carry that bar, so a tab is never a dead end", () => {
     for (const [name, tabs] of [["apply", APPLY_TABS], ["account", ACCOUNT_TABS]] as const) {
       for (const tab of tabs) {
+        if (!tab.href.startsWith("/dashboard/")) continue;
         const file = join(DASHBOARD_DIR, tab.href.replace("/dashboard/", ""), "page.tsx");
         const source = readFileSync(file, "utf8");
         expect(source, `${name}: ${tab.href}`).toContain("SectionTabs");

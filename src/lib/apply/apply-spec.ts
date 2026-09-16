@@ -99,7 +99,7 @@ const JOBINJA_SPEC: BoardApplySpec = {
   // بازکردن اختیاری است. submit همان input[type=submit]ِ داخلِ فرم است.
   applyButtonSelector: ".c-slideToggle__mobileFormToggler button.c-btn--primary, .c-sticky-button__holder button.c-btn--primary",
   // jobinja فیلدِ انگیزه‌نامه ندارد — عمداً تعریف نشده (به‌جایش رزومه‌ی سفارشی آپلود می‌شود، فاز ۵).
-  submitSelector: "#apply-form input[type='submit'], #apply-form button[type='submit']",
+  submitSelector: "#apply-form input[type='submit'], #apply-form button[type='submit'], form[action*='/apply'] input[type='submit'], form[action*='/apply'] button[type='submit']",
   confirmSelector: ".js-flashMessageMsg, .c-flashMessage__message",
   steps: [
     {
@@ -110,34 +110,20 @@ const JOBINJA_SPEC: BoardApplySpec = {
     },
     {
       kind: "waitFor",
-      selector: "#apply-form",
+      selector: "#apply-form, form[action*='/apply']",
       note: "انتظار تا رندرِ فرمِ اپلای (#apply-form).",
     },
     {
-      // مسیرِ پایه: رزومه‌ی پروفایلِ jobinja. اگر رزومه‌ی سفارشی (resumeFile) داشته باشیم،
-      // فاز ۵ به‌جای این، رادیوی apply_choice_uploaded_cv را می‌زند و فایل را آپلود می‌کند.
       kind: "click",
-      selector: "#apply_choice_jobinja_profile",
-      optional: true,
-      note: "پیش‌فرض: ارسال با رزومه‌ی جابینجا.",
-    },
-    {
-      // مسیرِ رزومه‌ی سفارشی: اگر resumeFile داشتیم، به «آپلودِ رزومه» سوییچ کن (رویِ رادیوی
-      // پیش‌فرضِ بالا را می‌گیرد چون بعد از آن کلیک می‌شود) و فایلِ PDFِ هدف‌گیری‌شده را بگذار.
-      kind: "click",
-      selector: "#apply_choice_uploaded_cv",
+      selector: "#apply_choice_uploaded_cv, input[name='apply_choice'][value='uploaded_cv'], input[name='cv_type'][value='uploaded'], label[for='apply_choice_uploaded_cv']",
       requiresValueKey: "resumeFile",
-      // NOT every Jobinja job exposes an upload radio (~a third don't — many accept only the
-      // Jobinja-profile résumé). Optional → if it's absent, skip this + the upload step and
-      // fall back to #apply_choice_jobinja_profile (clicked above), rather than fail the apply.
       optional: true,
-      note: "انتخابِ «آپلودِ رزومه» (فقط وقتی رزومه‌ی سفارشی داریم و رادیوی آپلود روی این آگهی هست).",
+      note: "انتخابِ «آپلودِ رزومه»؛ بعضی فرم‌ها ورودی فایل را مستقیم نمایش می‌دهند.",
     },
     {
       kind: "upload",
-      selector: "#apply-form input[type='file']",
+      selector: "#apply-form input[type='file'], form[action*='/apply'] input[type='file']",
       valueKey: "resumeFile",
-      optional: true,
       note: "آپلودِ رزومه‌ی سفارشیِ هدف‌گیری‌شده‌ی این آگهی (PDF).",
     },
     {
@@ -149,13 +135,12 @@ const JOBINJA_SPEC: BoardApplySpec = {
     },
     {
       kind: "click",
-      selector: "#apply-form input[type='submit'], #apply-form button[type='submit']",
+      selector: "#apply-form input[type='submit'], #apply-form button[type='submit'], form[action*='/apply'] input[type='submit'], form[action*='/apply'] button[type='submit']",
       note: "ثبتِ نهاییِ اپلای («ارسال رزومه»).",
     },
     {
-      // فلشِ تأیید همیشه رندر نمی‌شود (زنده تأیید شد ۱۴۰۵/۰۴/۳۰) — یک ثبتِ واقعی ممکن است بی‌فلش
-      // بماند. optional تا نبودِ فلش «submitted/تأییدنشده» شود (confirmed=false از confirmSelector)
-      // نه «failed»ِ کاذب که می‌تواند retry → اپلایِ تکراری بسازد.
+      // این گام optional می‌ماند تا executor بتواند بعد از submit خودش تصمیم بگیرد؛ اما
+      // Jobinja دیگر بدون proof متنی/حذف فرم `submitted` گزارش نمی‌شود.
       kind: "waitFor",
       selector: ".js-flashMessageMsg, .c-flashMessage__message",
       optional: true,
@@ -164,8 +149,8 @@ const JOBINJA_SPEC: BoardApplySpec = {
   ],
   notes: [
     "نشستِ کوکیِ خودِ کاربر استفاده می‌شود (sessionShape=cookie).",
-    "سلکتورها روی حسابِ زنده اعتبارسنجی شدند (۲۰۲۶-۰۷-۱۸)؛ jobinja انگیزه‌نامه ندارد. تأییدِ end-to-end submit باقی است.",
-    "مسیرِ رزومه‌ی سفارشیِ هر شغل (آپلود) در فاز ۵ اضافه می‌شود (apply_choice_uploaded_cv + upload resumeFile).",
+    "سلکتورها روی حسابِ زنده اعتبارسنجی شدند (۲۰۲۶-۰۷-۱۸)؛ jobinja انگیزه‌نامه ندارد. executor بعد از submit proof لازم دارد.",
+    "رزومه‌ی سفارشی هر آگهی اجباری است؛ نبودن ورودی فایل قبل از submit خطا می‌دهد.",
   ],
 };
 

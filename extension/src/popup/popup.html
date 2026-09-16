@@ -29,9 +29,11 @@
         </span>
       </div>
       <div class="update-banner-actions">
-        <a id="update-download" class="btn btn-primary btn-sm" href="#" target="_blank" rel="noopener">دانلود نسخه‌ی جدید</a>
+        <button id="update-action" class="btn btn-primary btn-sm" type="button">به‌روزرسانی افزونه</button>
+        <a id="update-download" class="link-btn" href="#" target="_blank" rel="noopener">دانلود دستی</a>
         <a id="update-steps" class="link-btn" href="#" target="_blank" rel="noopener">راهنمای بارگذاری</a>
       </div>
+      <p id="update-action-status" class="update-action-status" hidden></p>
     </div>
 
     <!-- View: not paired → onboarding/pairing -->
@@ -109,9 +111,11 @@
         <div class="queue-toolbar">
           <button id="find-jobs" class="btn btn-primary btn-sm">پیدا کردن شغل‌ها</button>
           <button id="refresh-queue" class="btn btn-ghost btn-sm">به‌روزرسانی صف</button>
+          <button id="reset-queue" class="btn btn-danger-ghost btn-sm">پاک‌سازی صف و جست‌وجوی دوباره</button>
           <a id="apply-filters-link" class="link-btn" href="#" target="_blank" rel="noopener">تنظیم فیلترهای اپلای ↗</a>
         </div>
         <p id="find-jobs-status" class="notice" hidden></p>
+        <p id="reset-queue-status" class="notice" hidden></p>
         <p class="hint">
           کارجو بر اساسِ <strong>فیلترهایی که در داشبورد انتخاب می‌کنید</strong> (دسته، شهر، نوعِ همکاری،
           مرتب‌سازی) شغل‌ها را پیدا می‌کند و <strong>به همه‌ی آن‌ها</strong> اپلای می‌کند — بدونِ نیاز به AI.

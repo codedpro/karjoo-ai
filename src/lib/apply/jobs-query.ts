@@ -60,7 +60,7 @@ export interface UnifiedJobRow {
   matchStatus: JobMatchStatus | null;
   matchReason: string | null;
   applicationId: string | null;
-  applicationStatus: "draft" | "submitted" | "skipped" | "failed" | null;
+  applicationStatus: "draft" | "verifying" | "submitted" | "skipped" | "failed" | null;
   providerApplicationId: string | null;
   providerStatus: string | null;
   providerAppliedAt: Date | null;
@@ -87,7 +87,7 @@ export function parseJobsQuery(params: Record<string, string | undefined>): Pars
     ? (params.status as JobMatchStatus)
     : null;
   const applied =
-    params.applied === "applied" || params.applied === "all" ? params.applied : "not_applied";
+    params.applied === "applied" || params.applied === "not_applied" ? params.applied : "all";
   const sort = (JOB_SORTS as readonly string[]).includes(params.sort ?? "")
     ? (params.sort as JobSort)
     : "newest";
@@ -107,7 +107,29 @@ const JOB_KEY_PROVIDER = sql.raw(
   `regexp_replace(coalesce(ba.url, ''), '^(https?://[^/]+/companies/[^/]+/jobs/[^/?#]+).*$', '\\1')`,
 );
 
-function whereSql(userId: string, query: ParsedJobsQuery) {
+/**
+ * The user's provider-side applications, keyed once by normalized job URL.
+ *
+ * Matching each listing with a per-row regex over every provider application was
+ * listings × applications regex calls (minutes for an active user); an equality
+ * join on a precomputed key is a single hash join. Identical URLs produce
+ * identical keys, so this still covers the exact-URL match.
+ */
+function providerAppsCte(userId: string | null) {
+  return sql`
+    with provider_app as materialized (
+      select distinct on (ba.board, job_key)
+        ba.id, ba.board, ba.status_category, ba.applied_at, job_key
+      from board_applications ba
+      cross join lateral (select ${JOB_KEY_PROVIDER} as job_key) k
+      where ba.user_id = ${userId}
+        and ba.url is not null
+      order by ba.board, job_key, ba.last_seen_at desc
+    )
+  `;
+}
+
+function whereSql(query: ParsedJobsQuery) {
   const filters = [
     sql`l.posted_at >= now() - (${MAX_PROVIDER_SYNC_AGE_DAYS}::text || ' days')::interval`,
   ];
@@ -145,7 +167,7 @@ function orderSql(query: ParsedJobsQuery) {
 }
 
 export async function listUnifiedJobsPage(
-  userId: string,
+  userId: string | null,
   query: JobsQuery = {},
   deps: { db?: Database } = {},
 ): Promise<UnifiedJobsPage> {
@@ -161,26 +183,27 @@ export async function listUnifiedJobsPage(
     page: String(query.page ?? 1),
     pageSize: String(query.pageSize ?? DEFAULT_JOB_PAGE_SIZE),
   });
-  const where = whereSql(userId, parsed);
+  const where = whereSql(parsed);
+
+  const providerApps = providerAppsCte(userId);
 
   const [{ n: filteredTotal } = { n: 0 }] = (await conn.execute<{ n: number }>(sql`
+    ${providerApps}
     select count(*)::int as n
     from job_listings l
     left join matches m on m.user_id = ${userId} and m.listing_id = l.id
-    left join applications app on app.user_id = ${userId} and app.listing_id = l.id and app.status in ('draft', 'submitted')
-    left join lateral (
-      select ba.id, ba.status_category, ba.applied_at
-      from board_applications ba
-      where ba.user_id = ${userId}
-        and ba.board = l.board::text
-        and (ba.url = l.url or ${JOB_KEY_PROVIDER} = ${JOB_KEY_L})
-      order by ba.last_seen_at desc
-      limit 1
-    ) provider_app on true
+    left join applications app on app.user_id = ${userId}
+      and app.listing_id = l.id
+      and app.status = 'submitted'
+      and (app.external_ref is not null or app.proof is not null)
+    left join provider_app
+      on provider_app.board = l.board::text
+      and provider_app.job_key = ${JOB_KEY_L}
     where ${where}
   `)) as unknown as { n: number }[];
 
   const rows = (await conn.execute(sql`
+    ${providerApps}
     select
       l.id,
       l.board::text as board,
@@ -206,16 +229,13 @@ export async function listUnifiedJobsPage(
       acct.status::text as account_status
     from job_listings l
     left join matches m on m.user_id = ${userId} and m.listing_id = l.id
-    left join applications app on app.user_id = ${userId} and app.listing_id = l.id and app.status in ('draft', 'submitted')
-    left join lateral (
-      select ba.id, ba.status_category, ba.applied_at, ba.url, ba.last_seen_at
-      from board_applications ba
-      where ba.user_id = ${userId}
-        and ba.board = l.board::text
-        and (ba.url = l.url or ${JOB_KEY_PROVIDER} = ${JOB_KEY_L})
-      order by ba.last_seen_at desc
-      limit 1
-    ) provider_app on true
+    left join applications app on app.user_id = ${userId}
+      and app.listing_id = l.id
+      and app.status = 'submitted'
+      and (app.external_ref is not null or app.proof is not null)
+    left join provider_app
+      on provider_app.board = l.board::text
+      and provider_app.job_key = ${JOB_KEY_L}
     left join board_accounts acct on acct.user_id = ${userId} and acct.board = l.board
     where ${where}
     order by ${orderSql(parsed)}

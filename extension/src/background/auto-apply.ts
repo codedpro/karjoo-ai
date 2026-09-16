@@ -107,6 +107,13 @@ export function abortActiveCycle(): void {
   cycleGeneration += 1;
 }
 
+/** Stop at the next safe checkpoint and wait before deleting queue rows. */
+export async function settleActiveCycleForQueueReset(): Promise<void> {
+  abortActiveCycle();
+  const previous = activeCycle;
+  if (previous) await previous.catch(logTickFailure);
+}
+
 /** Stop work based on old filters, then force a fresh discovery/drain pass. */
 export function restartAfterFiltersChanged(): void {
   abortActiveCycle();
@@ -132,6 +139,9 @@ const DISCOVERY_QUEUE_CEILING = 300;
 
 /** Wall-clock slice one tick may spend discovering, across ALL boards. */
 const DISCOVERY_BUDGET_MS = 45_000;
+
+/** One provider request may not outlive the heartbeat-stale window. */
+const DISCOVERY_FETCH_TIMEOUT_MS = 25_000;
 
 /** Listings one board may collect in a single pass. */
 const DISCOVERY_LISTING_CEILING = 300;
@@ -212,10 +222,16 @@ async function discoverAndDrain(
   // applying; the next tick picks discovery up again.
   const discoveryDeadline = Date.now() + DISCOVERY_BUDGET_MS;
   const discovery = options.discoverDue ? await api.getDiscoveryConfig() : null;
+  const discoveryFetch = timeoutFetch(DISCOVERY_FETCH_TIMEOUT_MS);
   if (discovery && !discovery.paused) {
     for (const board of discovery.boards) {
       if (options.aborted() || Date.now() >= discoveryDeadline) break;
       if (!board.enabled || !board.hasTargeting) continue;
+      await heartbeatDiscovery(api, executorId, {
+        board: board.board,
+        discovered,
+        lastDiscoveryAt,
+      });
       if (board.board === "jobinja" && board.searchUrl) {
         const result = await discoverJobinja(api, executorId, board.searchUrl, discovery.maxAgeDays);
         discovered += result.discovered;
@@ -229,7 +245,12 @@ async function discoverAndDrain(
           maxAgeDays: discovery.maxAgeDays,
           deadlineAt: discoveryDeadline,
           maxListings: DISCOVERY_LISTING_CEILING,
-        }, fetch, async (count) => {
+        }, discoveryFetch, async (count) => {
+          await heartbeatDiscovery(api, executorId, {
+            board: "jobvision",
+            discovered: discovered + count,
+            lastDiscoveryAt,
+          });
           await api.mutateExecutionRun({
             action: "progress",
             executorId,
@@ -249,7 +270,12 @@ async function discoverAndDrain(
           maxAgeDays: discovery.maxAgeDays,
           deadlineAt: discoveryDeadline,
           maxListings: DISCOVERY_LISTING_CEILING,
-        }, fetch, async (count) => {
+        }, discoveryFetch, async (count) => {
+          await heartbeatDiscovery(api, executorId, {
+            board: "e-estekhdam",
+            discovered: discovered + count,
+            lastDiscoveryAt,
+          });
           await api.mutateExecutionRun({
             action: "progress",
             executorId,
@@ -279,7 +305,12 @@ async function discoverAndDrain(
           authorization,
           deadlineAt: discoveryDeadline,
           maxListings: DISCOVERY_LISTING_CEILING,
-        }, fetch, async (count) => {
+        }, discoveryFetch, async (count) => {
+          await heartbeatDiscovery(api, executorId, {
+            board: "irantalent",
+            discovered: discovered + count,
+            lastDiscoveryAt,
+          });
           await api.mutateExecutionRun({
             action: "progress",
             executorId,
@@ -308,7 +339,12 @@ async function discoverAndDrain(
           maxAgeDays: discovery.maxAgeDays,
           deadlineAt: discoveryDeadline,
           maxListings: DISCOVERY_LISTING_CEILING,
-        }, fetch, async (count) => {
+        }, discoveryFetch, async (count) => {
+          await heartbeatDiscovery(api, executorId, {
+            board: "karboom",
+            discovered: discovered + count,
+            lastDiscoveryAt,
+          });
           await api.mutateExecutionRun({
             action: "progress",
             executorId,
@@ -451,19 +487,22 @@ async function discoverAndDrain(
       failed,
       lastDiscoveryAt,
     });
-    const skipped = result.alreadyApplied || (!result.ok && isSkippableReason(result.reason));
+    const reportStatus = applicationResultStatus(result);
+    const skipped = reportStatus === "skipped";
+    const verifying = reportStatus === "verifying";
     sessionFailureStreak =
       !result.ok && isSessionLevelReason(result.reason) ? sessionFailureStreak + 1 : 0;
     // Only genuine failures count — a skip means we chose not to submit.
-    const hardFailure = !result.ok && !skipped;
+    const hardFailure = !result.ok && !skipped && !verifying;
     boardFailureStreak.set(
       item.board,
       hardFailure ? (boardFailureStreak.get(item.board) ?? 0) + 1 : 0,
     );
     const report = buildApplyResultReport({
       id: item.id,
-      status: skipped ? "skipped" : result.ok ? "submitted" : "failed",
+      status: reportStatus,
       ...(result.alreadyApplied ? { reason: "already_applied_on_board" } : {}),
+      ...(result.proof ? { proof: result.proof } : {}),
       // A SUCCESS can carry a reason too: e-estekhdam may accept the application
       // with the account's own CV when its file limit blocks the tailored PDF.
       // Recording that is the difference between an honest history and one that
@@ -472,7 +511,7 @@ async function discoverAndDrain(
     });
     await api.reportResult(report, executorId);
     if (result.ok && !result.alreadyApplied) submitted += 1;
-    else if (!result.ok) failed += 1;
+    else if (!result.ok && !verifying) failed += 1;
 
     // The board is refusing everything we send it. Park THAT board for the rest
     // of this run and carry on with the others — stopping the whole run meant one
@@ -497,6 +536,38 @@ async function discoverAndDrain(
     }
     await new Promise((resolve) => setTimeout(resolve, politenessDelayMs()));
   }
+}
+
+async function heartbeatDiscovery(
+  api: KarjooApi,
+  executorId: string,
+  progress: { board: string; discovered: number; lastDiscoveryAt: number },
+): Promise<void> {
+  await api.mutateExecutionRun({
+    action: "progress",
+    executorId,
+    progress: {
+      stage: "discovering",
+      board: progress.board,
+      discovered: progress.discovered,
+      lastDiscoveryAt: progress.lastDiscoveryAt || Date.now(),
+    },
+  });
+}
+
+export function timeoutFetch(ms: number): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    try {
+      return await fetch(input, { ...init, signal: init?.signal ?? controller.signal });
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error(`discovery_fetch_timeout: ${ms}ms`);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 }
 
 async function discoverJobinja(
@@ -600,6 +671,22 @@ async function applyOne(
     return result;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
+    if (item.board === "jobinja" && managed?.tab.id && isAmbiguousJobinjaNavigationError(reason)) {
+      await waitForTabComplete(managed.tab.id);
+      try {
+        return await sendToTab<ContentApplyResult>(managed.tab.id, {
+          type: "VERIFY_JOBINJA_APPLICATION",
+          jobUrl: item.jobUrl,
+        });
+      } catch {
+        return {
+          ok: false,
+          verificationPending: true,
+          ranSteps: ["submit-navigation"],
+          reason: "jobinja_submission_unconfirmed_after_navigation",
+        };
+      }
+    }
     return {
       ok: false,
       ranSteps: [],
@@ -610,6 +697,11 @@ async function applyOne(
       await chrome.tabs.remove(managed.tab.id).catch(() => undefined);
     }
   }
+}
+
+/** Chrome closes the original message port when Jobinja navigates after submit. */
+export function isAmbiguousJobinjaNavigationError(reason: string): boolean {
+  return /back\/forward cache|message (?:channel|port) (?:is )?closed|port closed before a response/i.test(reason);
 }
 
 /**
@@ -628,6 +720,14 @@ export function isSessionLevelReason(reason?: string): boolean {
         reason,
       ),
   );
+}
+
+export function applicationResultStatus(
+  result: Pick<ContentApplyResult, "ok" | "reason" | "verificationPending">,
+): "submitted" | "verifying" | "skipped" | "failed" {
+  if (result.ok) return "submitted";
+  if (result.verificationPending) return "verifying";
+  return isSkippableReason(result.reason) ? "skipped" : "failed";
 }
 
 /**

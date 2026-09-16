@@ -8,7 +8,7 @@ import type {
   BoardFilter,
   ProviderState,
 } from "@ext/lib/types";
-import type { PopupToBackground, Result } from "@ext/lib/messages";
+import type { PopupToBackground, Result, UpdateExtensionResult } from "@ext/lib/messages";
 import type { ProbeSessionResult } from "@ext/lib/messages";
 import { checkForUpdate } from "@ext/lib/update-check";
 import {
@@ -63,7 +63,7 @@ let selectedCategories = new Set<string>();
 let filtersLoaded = false;
 let filtersDirty = false;
 let filtersState: ApplyFilters | null = null;
-type FilterBoard = "jobinja" | "jobvision" | "e-estekhdam" | "irantalent";
+type FilterBoard = "jobinja" | "jobvision" | "e-estekhdam" | "irantalent" | "karboom";
 let filterBoard: FilterBoard = "jobinja";
 const catalogs = new Map<string, BoardCatalog>();
 const connectedBoards = new Set<string>();
@@ -194,7 +194,10 @@ function render(overview: ExtensionRunOverview): void {
   // A run row keeps its last progress forever, so a service worker that Chrome
   // killed mid-discovery leaves the panel claiming "discovering" with nobody
   // executing. Trust the heartbeat over the stored stage.
-  const stalled = run.state === "running" && heartbeatAgeMs(run) > STALE_HEARTBEAT_MS;
+  const heartbeatStale = run.state === "running" && heartbeatAgeMs(run) > STALE_HEARTBEAT_MS;
+  const hasRecoverableWork = Boolean(run.currentTaskId) || counts.queued > 0 || overview.queue.length > 0;
+  const stalled = heartbeatStale && hasRecoverableWork;
+  const staleIdle = heartbeatStale && !hasRecoverableWork;
   $("queued").textContent = String(counts.queued);
   $("today").textContent = String(counts.appliedToday);
   $("total").textContent = String(counts.appliedTotal);
@@ -205,15 +208,17 @@ function render(overview: ExtensionRunOverview): void {
   });
 
   const pill = $("statusPill");
-  pill.textContent = stateLabels[run.state] ?? run.state;
-  pill.className = `status-pill ${run.state}`;
+  pill.textContent = staleIdle ? "آماده" : (stateLabels[run.state] ?? run.state);
+  pill.className = `status-pill ${staleIdle ? "paused" : run.state}`;
   ($("backgroundToggle") as HTMLInputElement).checked = run.backgroundEnabled;
   // "extension" alone does not mean THIS browser. Comparing the executor ids is
   // the difference between an honest line and one that told a locked-out user
   // they owned a run they could not touch.
   const ownedHere = run.owner === "extension" && run.executorId === myExecutorId;
   const ownedByOtherBrowser = run.owner === "extension" && !ownedHere;
-  $("ownerLine").textContent = run.owner === "server"
+  $("ownerLine").textContent = staleIdle
+    ? "کاری برای اجرا وجود ندارد؛ با اضافه شدن مورد جدید، می‌توانید شروع کنید."
+    : run.owner === "server"
     ? "صف اکنون روی سرور اجرا می‌شود. برای اجرا در مرورگر، مالکیت را منتقل کنید."
     : ownedHere
       ? "این مرورگر مالک اجرای صف است."
@@ -222,7 +227,7 @@ function render(overview: ExtensionRunOverview): void {
         : "صف در حال حاضر مالک فعال ندارد.";
   $("startBtn").classList.toggle(
     "hidden",
-    run.owner === "server" || ownedByOtherBrowser || (run.state === "running" && ownedHere && !stalled),
+    run.owner === "server" || ownedByOtherBrowser || (run.state === "running" && ownedHere && !heartbeatStale),
   );
   // Pause and stop act on OUR run; offering them for someone else's was a lie.
   $("pauseBtn").classList.toggle("hidden", run.state !== "running" || !ownedHere);
@@ -236,10 +241,12 @@ function render(overview: ExtensionRunOverview): void {
   );
 
   const alert = $("alert");
-  const showAlert = run.state === "blocked" || run.owner === "server" || stalled;
+  const showAlert = run.state === "blocked" || run.owner === "server" || ownedByOtherBrowser || stalled;
   alert.classList.toggle("hidden", !showAlert);
   alert.textContent = stalled
     ? "اجرای صف در این مرورگر متوقف شده است. «توقف» و سپس «شروع» را بزنید تا دوباره راه بیفتد."
+    : ownedByOtherBrowser
+      ? "اجرای صف در یک مرورگر دیگر مانده است. برای آزاد کردن صف و ادامه در همین مرورگر، «ادامه با افزونه» را بزنید."
     : run.blockedReason === "ai_maintenance"
       ? "سقف ماهانهٔ سرویس هوش مصنوعی پر شده است؛ تا افزایش آن، رزومهٔ اختصاصی ساخته نمی‌شود. صف دست‌نخورده باقی می‌ماند."
       : run.state === "blocked"
@@ -253,11 +260,13 @@ function render(overview: ExtensionRunOverview): void {
   const stage = typeof run.progress.stage === "string" ? run.progress.stage : run.state;
   $("stage").textContent = stalled
     ? "متوقف شده — اجرا در مرورگر ادامه پیدا نکرد"
+    : staleIdle
+      ? "آماده — کاری در حال انجام نیست"
     : (stageLabels[stage] ?? stage);
   $("stage").classList.toggle("stalled", stalled);
   $("currentJob").textContent = [run.progress.title, run.progress.company].filter(Boolean).join(" · ") ||
     (run.blockedReason ?? "هنوز کاری در حال انجام نیست.");
-  document.querySelector(".pulse")?.classList.toggle("running", run.state === "running");
+  document.querySelector(".pulse")?.classList.toggle("running", run.state === "running" && !heartbeatStale);
   ($("currentJobButton") as HTMLButtonElement).disabled = !run.currentTaskId || busy;
 
   renderQueue();
@@ -452,10 +461,10 @@ function historyRow(item: ExtensionRunOverview["recent"][number]): HTMLLIElement
   const title = document.createElement("strong");
   const subtitle = document.createElement("span");
   const actions = document.createElement("small");
-  const label = item.status === "submitted" ? "ارسال شد" : item.status === "failed" ? "ناموفق" : item.status === "skipped" ? "رد شد" : item.status;
+  const label = item.status === "submitted" ? "ارسال شد" : item.status === "verifying" ? "در حال بررسی" : item.status === "failed" ? "ناموفق" : item.status === "skipped" ? "رد شد" : item.status;
   title.textContent = item.listing.title;
   subtitle.textContent = `${label} · ${new Date(item.happenedAt).toLocaleString("fa-IR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
-  subtitle.className = item.status === "submitted" ? "result-ok" : item.status === "failed" ? "result-fail" : "";
+  subtitle.className = item.status === "submitted" ? "result-ok" : item.status === "verifying" ? "result-wait" : item.status === "failed" ? "result-fail" : "";
   actions.textContent = [
     item.resumeStrategy === "native_profile_resume" ? "رزومه پروفایل" : item.hasResume ? "PDF ارسال‌شده" : null,
     item.retryEligible ? "تلاش دوباره" : null,
@@ -486,7 +495,11 @@ function renderDetail(): void {
   const listing = item.listing;
   $("detailTitle").textContent = listing.title;
   $("detailCompany").textContent = [listing.company, listing.city].filter(Boolean).join(" · ");
-  $("detailStatus").textContent = queueItem ? (queueItem.status === "leased" ? "در حال اجرا" : "در صف") : (historyItem?.status ?? "");
+  $("detailStatus").textContent = queueItem
+    ? (queueItem.status === "leased" ? "در حال اجرا" : "در صف")
+    : historyItem?.status === "verifying"
+      ? "در حال بررسی در سایت"
+      : (historyItem?.status ?? "");
   $("detailDescription").textContent = listing.description?.trim() || "شرح کامل آگهی ذخیره نشده است.";
   $("detailMeta").replaceChildren(
     meta("سایت", listing.board),
@@ -557,27 +570,49 @@ async function refreshUpdateBanner(): Promise<void> {
     $("updateBannerNotes").textContent = result.notes ?? "";
     ($("updateBannerDownload") as HTMLAnchorElement).href = result.downloadUrl ?? "#";
     banner.classList.remove("hidden");
+    wireUpdateActionButton();
   } catch {
     // A failed check must never hide working UI behind an error.
     banner.classList.add("hidden");
   }
 }
 
+function wireUpdateActionButton(): void {
+  const button = $("updateBannerAction") as HTMLButtonElement;
+  if (button.dataset.wired === "1") return;
+  button.dataset.wired = "1";
+  button.addEventListener("click", async () => {
+    const status = $("updateBannerStatus");
+    button.disabled = true;
+    status.textContent = "در حال بررسی و دریافت نسخه...";
+    try {
+      const result = await send<UpdateExtensionResult>({ type: "UPDATE_EXTENSION" });
+      status.textContent = result.message;
+    } catch (error) {
+      status.textContent = error instanceof Error ? error.message : String(error);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 async function loadFilters(force = false): Promise<void> {
   if (filtersDirty && !force) return;
   try {
-    const [response, jobinjaCatalog, jobvisionCatalog, eEstekhdamCatalog, iranTalentCatalog] =
+    const [response, jobinjaCatalog, jobvisionCatalog, eEstekhdamCatalog, iranTalentCatalog, karboomCatalog] =
       await Promise.all([
         send<{ filters: ApplyFilters; previewUrl: string }>({ type: "GET_APPLY_FILTERS" }),
         send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "jobinja" }),
         send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "jobvision" }),
         send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "e-estekhdam" }),
         send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "irantalent" }),
+        send<BoardCatalog>({ type: "GET_BOARD_CATALOG", board: "karboom" }),
       ]);
     catalogs.set("jobinja", jobinjaCatalog);
     catalogs.set("jobvision", jobvisionCatalog);
     catalogs.set("e-estekhdam", eEstekhdamCatalog);
     catalogs.set("irantalent", iranTalentCatalog);
+    catalogs.set("karboom", karboomCatalog);
     filtersState = response.filters;
     fillFilters(response.filters);
     filtersLoaded = true;
@@ -614,7 +649,7 @@ function fillFilters(filters: ApplyFilters): void {
 }
 
 /** Boards whose discovery actually filters by city. */
-const BOARDS_WITH_CITY_TARGETING = new Set<FilterBoard>(["jobinja", "e-estekhdam"]);
+const BOARDS_WITH_CITY_TARGETING = new Set<FilterBoard>(["jobinja", "e-estekhdam", "karboom"]);
 
 function missingSessionLabel(status: ProbeSessionResult): string {
   if (status.reason === "no_tab") return "صفحهٔ سایت در مرورگر باز نیست";
@@ -737,6 +772,11 @@ function employmentKeys(board: FilterBoard): {
     // IranTalent filters by lookup id (type 17), not by slug.
     return { fulltime: "186", parttime: "187", project: "189" };
   }
+  if (board === "karboom") {
+    // کاربوم نوعِ همکاری را به‌صورت مسیر می‌گیرد؛ «پروژه‌ای» آن `project` است نه
+    // `project-based` (که مالِ جاب‌ویژن است).
+    return { fulltime: "full-time", parttime: "part-time", project: "project" };
+  }
   return { fulltime: "full-time", parttime: "part-time", project: "project-based" };
 }
 
@@ -838,6 +878,23 @@ $("startBtn").addEventListener("click", () => void action("start"));
 $("takeoverBtn").addEventListener("click", () => void action("takeover"));
 $("pauseBtn").addEventListener("click", () => void action("pause"));
 $("stopBtn").addEventListener("click", () => void action("stop"));
+$("resetQueueBtn").addEventListener("click", async () => {
+  if (busy || !window.confirm(
+    "همهٔ کارهای ناتمام صف پاک شوند و جست‌وجو با فیلترهای فعلی از ابتدا شروع شود؟ تاریخچهٔ ارسال‌ها و موارد در حال بررسی حفظ می‌شوند.",
+  )) return;
+  setBusy(true);
+  clearError();
+  try {
+    const result = await send<{ removed: number }>({ type: "RESET_QUEUE_AND_REDISCOVER" });
+    await refresh();
+    $("ownerLine").textContent =
+      `${result.removed.toLocaleString("fa-IR")} کار ناتمام پاک شد؛ جست‌وجوی تازه شروع شد.`;
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(false);
+  }
+});
 $("backgroundToggle").addEventListener("change", async () => {
   try { await send({ type: "SET_RUN_BACKGROUND", enabled: ($("backgroundToggle") as HTMLInputElement).checked }); }
   catch (error) { showError(error); }

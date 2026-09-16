@@ -6,9 +6,10 @@ import {
   stateLabel,
   thresholdLabel,
   lastRunLabel,
+  liveAwareLastRunLabel,
   formatWhen,
 } from "@ext/lib/auto-apply-view";
-import type { AutoApplyStatus } from "@ext/lib/types";
+import type { AutoApplyStatus, ExtensionRunOverview } from "@ext/lib/types";
 
 describe("stateLabel / thresholdLabel", () => {
   it("reflects the ON/OFF toggle", () => {
@@ -49,6 +50,50 @@ describe("lastRunLabel", () => {
     const l = lastRunLabel(base({ outcome: "applied", submitted: 3, failed: 1 }));
     expect(l).toContain("3");
     expect(l).toContain("1");
+  });
+});
+
+describe("liveAwareLastRunLabel", () => {
+  const status: AutoApplyStatus = {
+    ranAt: Date.now() - 60_000,
+    outcome: "disabled",
+    submitted: 0,
+    failed: 0,
+  };
+  const overview = (progress: ExtensionRunOverview["run"]["progress"]): ExtensionRunOverview => ({
+    run: {
+      state: "running",
+      owner: "extension",
+      executorId: "executor",
+      board: "jobinja",
+      currentTaskId: null,
+      progress,
+      blockedReason: null,
+      backgroundEnabled: true,
+      heartbeatAt: new Date().toISOString(),
+      startedAt: new Date().toISOString(),
+      blockedAt: null,
+      updatedAt: new Date().toISOString(),
+    },
+    counts: {
+      queued: 0,
+      applying: 0,
+      appliedToday: 0,
+      appliedTotal: 0,
+      appliedLast30d: 0,
+      reviewNeeded: 0,
+    },
+    applying: [],
+    queue: [],
+    recent: [],
+    updatedAt: new Date().toISOString(),
+  });
+
+  it("does not show cached disabled status while discovery is live", () => {
+    const label = liveAwareLastRunLabel(status, overview({ stage: "discovering", discovered: 120 }));
+    expect(label).toContain("در حال کشف");
+    expect(label).toContain("120");
+    expect(label).not.toContain("خاموش");
   });
 });
 

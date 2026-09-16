@@ -116,6 +116,14 @@ body {
   color: var(--text);
   border-color: var(--border);
 }
+.btn-danger-ghost {
+  background: transparent;
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+}
+.btn-danger-ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
 .btn-approve {
   background: var(--ok);
   color: #04210f;
@@ -180,6 +188,12 @@ body {
   align-items: center;
   gap: 10px;
   flex: 0 0 auto;
+}
+.update-action-status {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* identity */

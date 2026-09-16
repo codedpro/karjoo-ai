@@ -100,7 +100,7 @@ const JOBINJA_SPEC: BoardApplySpec = {
   urlPattern: /^https:\/\/jobinja\.ir\/companies\/[^/]+\/jobs\/[A-Za-z0-9]+/,
   applyButtonSelector: ".c-slideToggle__mobileFormToggler button.c-btn--primary, .c-sticky-button__holder button.c-btn--primary",
   // jobinja انگیزه‌نامه ندارد — عمداً حذف شد (رزومه‌ی سفارشیِ هر شغل جایگزینش می‌شود، فاز ۵).
-  submitSelector: "#apply-form input[type='submit'], #apply-form button[type='submit']",
+  submitSelector: "#apply-form input[type='submit'], #apply-form button[type='submit'], form[action*='/apply'] input[type='submit'], form[action*='/apply'] button[type='submit']",
   confirmSelector: ".js-flashMessageMsg, .c-flashMessage__message",
   steps: [
     {
@@ -111,18 +111,19 @@ const JOBINJA_SPEC: BoardApplySpec = {
     },
     {
       kind: "waitFor",
-      selector: "#apply-form",
+      selector: "#apply-form, form[action*='/apply']",
       note: "انتظار تا رندرِ فرمِ اپلای (#apply-form).",
     },
     {
       kind: "click",
-      selector: "#apply_choice_uploaded_cv",
+      selector: "#apply_choice_uploaded_cv, input[name='apply_choice'][value='uploaded_cv'], input[name='cv_type'][value='uploaded'], label[for='apply_choice_uploaded_cv']",
       requiresValueKey: "resumeFile",
-      note: "انتخابِ «آپلودِ رزومه»؛ نبودن این مسیر اپلای را متوقف می‌کند.",
+      optional: true,
+      note: "انتخابِ «آپلودِ رزومه»؛ بعضی فرم‌ها ورودی فایل را مستقیم نمایش می‌دهند.",
     },
     {
       kind: "upload",
-      selector: "#apply-form input[type='file']",
+      selector: "#apply-form input[type='file'], form[action*='/apply'] input[type='file']",
       valueKey: "resumeFile",
       note: "آپلودِ رزومه‌ی سفارشیِ هدف‌گیری‌شده‌ی این آگهی (PDF).",
     },
@@ -135,13 +136,12 @@ const JOBINJA_SPEC: BoardApplySpec = {
     },
     {
       kind: "click",
-      selector: "#apply-form input[type='submit'], #apply-form button[type='submit']",
+      selector: "#apply-form input[type='submit'], #apply-form button[type='submit'], form[action*='/apply'] input[type='submit'], form[action*='/apply'] button[type='submit']",
       note: "ثبتِ نهاییِ اپلای («ارسال رزومه»).",
     },
     {
-      // فلشِ تأیید همیشه رندر نمی‌شود (زنده تأیید شد ۱۴۰۵/۰۴/۳۰) — یک ثبتِ واقعی ممکن است بی‌فلش
-      // بماند. optional تا نبودِ فلش «submitted/تأییدنشده» شود (confirmed=false از confirmSelector)
-      // نه «failed»ِ کاذب که می‌تواند retry → اپلایِ تکراری بسازد.
+      // این گام optional می‌ماند تا executor بتواند بعد از submit خودش تصمیم بگیرد؛ اما
+      // Jobinja دیگر بدون proof متنی/حذف فرم `submitted` گزارش نمی‌شود.
       kind: "waitFor",
       selector: ".js-flashMessageMsg, .c-flashMessage__message",
       optional: true,
@@ -150,8 +150,8 @@ const JOBINJA_SPEC: BoardApplySpec = {
   ],
   notes: [
     "نشستِ کوکیِ خودِ کاربر استفاده می‌شود (sessionShape=cookie).",
-    "سلکتورها روی حسابِ زنده اعتبارسنجی شدند (۲۰۲۶-۰۷-۱۸)؛ jobinja انگیزه‌نامه ندارد.",
-    "مسیرِ رزومه‌ی سفارشیِ هر شغل (آپلود) در فاز ۵ اضافه می‌شود.",
+    "سلکتورها روی حسابِ زنده اعتبارسنجی شدند (۲۰۲۶-۰۷-۱۸)؛ jobinja انگیزه‌نامه ندارد. executor بعد از submit proof لازم دارد.",
+    "رزومه‌ی سفارشی هر آگهی اجباری است؛ نبودن ورودی فایل قبل از submit خطا می‌دهد.",
   ],
 };
 

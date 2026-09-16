@@ -97,3 +97,20 @@ describe("BUG 5 — update-available banner is present but hidden by default", (
     expect(popupTs).toContain("update-banner");
   });
 });
+
+describe("queue reset and rediscovery", () => {
+  it("ships the reset action in the popup with an explicit confirmation", () => {
+    expect(dom().getElementById("reset-queue")).not.toBeNull();
+    expect(popupTs).toContain("RESET_QUEUE_AND_REDISCOVER");
+    expect(popupTs).toContain("window.confirm");
+    expect(popupTs).toContain("موارد در حال بررسی حفظ می‌شوند");
+  });
+
+  it("ships the same action in the operational side panel", () => {
+    const panelHtml = read("../sidepanel/sidepanel.html");
+    const panelTs = read("../sidepanel/sidepanel.ts");
+    expect(parseHTML(panelHtml).document.getElementById("resetQueueBtn")).not.toBeNull();
+    expect(panelTs).toContain("RESET_QUEUE_AND_REDISCOVER");
+    expect(panelTs).toContain("window.confirm");
+  });
+});

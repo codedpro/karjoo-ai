@@ -72,7 +72,7 @@ export interface JobListing {
 /** نتیجه‌ی تلاش برای اپلای روی یک آگهی. */
 export interface ApplicationResult {
   job: JobListing;
-  status: "submitted" | "skipped" | "failed";
+  status: "submitted" | "verifying" | "skipped" | "failed";
   /** امتیاز تطبیق (۰ تا ۱) که موتور هوش مصنوعی محاسبه کرده. */
   matchScore?: number;
   /** انگیزه‌نامه‌ی تولیدشده برای این آگهی. */

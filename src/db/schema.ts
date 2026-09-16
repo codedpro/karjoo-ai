@@ -77,6 +77,7 @@ export const matchStatusEnum = pgEnum("match_status", [
 /** وضعیت یک تلاش اپلای — هم‌راستا با ApplicationResult.status. */
 export const applicationStatusEnum = pgEnum("application_status", [
   "draft",
+  "verifying",
   "submitted",
   "skipped",
   "failed",
@@ -89,6 +90,7 @@ export const applyChannelEnum = pgEnum("apply_channel", ["extension", "worker"])
 export const taskStatusEnum = pgEnum("task_status", [
   "pending",
   "leased", // توسط یک مصرف‌کننده قفل شده (FOR UPDATE SKIP LOCKED)
+  "verifying", // submit clicked; waiting for authoritative provider history
   "succeeded",
   "failed",
   "dead", // بیش از حد تلاش، رهاشده

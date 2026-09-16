@@ -11,7 +11,7 @@ import "server-only";
  * در هر دو حالت این تنها راهِ پیشرفتِ یک آیتمِ صف است و هر نتیجه یک ردیفِ audit_events
  * می‌نویسد (قاعده‌ی ۱، §۱۰). قاعده‌ی ۴: task باید به match‌ای از همین کاربر تعلق داشته باشد، وگرنه ۴۰۴.
  *
- * بدنه (JSON): { status: 'submitted'|'skipped'|'failed', externalRef?, reason?, proof? }
+ * بدنه (JSON): { status: 'submitted'|'verifying'|'skipped'|'failed', externalRef?, reason?, proof? }
  */
 import { json, parseJsonBody, withErrorHandling } from "@/lib/api/http";
 import { requireBearerSession } from "@/lib/api/bearer-auth";
