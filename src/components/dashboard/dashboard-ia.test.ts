@@ -10,7 +10,7 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { ADMIN_ITEMS, NAV_GROUPS } from "@/components/dashboard/dashboard-nav";
+import { ADMIN_ITEMS, NAV_GROUPS, SETUP_GUIDE_HREF } from "@/components/dashboard/dashboard-nav";
 import { APPLY_TABS, ACCOUNT_TABS } from "@/components/dashboard/section-tabs";
 
 const DASHBOARD_DIR = "src/app/(dashboard)/dashboard";
@@ -78,6 +78,7 @@ describe("no orphan pages", () => {
       ...navHrefs,
       ...tabHrefs,
       ...ADMIN_ITEMS.map((item) => item.href),
+      SETUP_GUIDE_HREF,
     ]);
     const orphans = routesOnDisk().filter(
       (href) => !reachable.has(href) && !isRedirectStub(href),

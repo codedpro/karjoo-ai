@@ -6,11 +6,10 @@ import { getIranTalentCatalog } from "@/lib/apply/boards/irantalent-catalog";
 import { getJobinjaCategories } from "@/lib/apply/boards/jobinja-categories";
 import { getJobvisionCatalog } from "@/lib/apply/boards/jobvision-catalog";
 import { getKarboomCatalog } from "@/lib/apply/boards/karboom-catalog";
-import { readApplyFilters } from "@/lib/apply/filters";
+import { ACTIVE_APPLY_BOARDS, readApplyFilters } from "@/lib/apply/filters";
 
 interface CatalogRow { key: string; label: string; englishLabel?: string }
 
-const ACTIVE_APPLY_BOARDS = ["jobinja", "jobvision", "e-estekhdam", "irantalent", "karboom"] as const;
 const JOBINJA_EMPLOYMENT_TYPES = [
   { key: "is_fulltime", label: "تمام‌وقت" },
   { key: "is_parttime", label: "پاره‌وقت" },

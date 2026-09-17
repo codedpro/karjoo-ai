@@ -24,7 +24,6 @@
  */
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { ChevronDown } from "lucide-react";
 
 import { getDashboardUser } from "@/components/dashboard/session";
 import {
@@ -34,23 +33,11 @@ import {
 import { BoardCredentialsPanel } from "@/components/dashboard/board-credentials-panel";
 import { readCredentialPanelData } from "@/components/dashboard/board-credentials-data";
 import {
-  IconBolt,
-  IconDownload,
-  IconShield,
-  IconSparkle,
-  IconWarn,
-} from "@/components/dashboard/icons";
-import {
-  Badge,
-  Callout,
-  Card,
-  PageHeader,
-  toFaDigits,
-} from "@/components/dashboard/ui";
-import {
-  KARJOO_EXTENSION_DOWNLOAD_PATH,
-  KARJOO_EXTENSION_VERSION,
-} from "@/lib/extension/version";
+  DownloadButton,
+  InstallGuide,
+} from "@/components/dashboard/extension-install-guide";
+import { IconShield, IconWarn } from "@/components/dashboard/icons";
+import { Callout, PageHeader } from "@/components/dashboard/ui";
 
 // راستی‌آزماییِ نشست → اجرای Node.
 export const runtime = "nodejs";
@@ -59,9 +46,6 @@ export const metadata: Metadata = {
   title: "افزونه‌ی مرورگر",
   robots: { index: false, follow: false },
 };
-
-/** آدرسِ فایلِ افزونه در public — دانلودِ یک‌کلیکی. */
-const EXTENSION_ZIP = KARJOO_EXTENSION_DOWNLOAD_PATH;
 
 export default async function ExtensionPage() {
   const user = await getDashboardUser();
@@ -100,195 +84,5 @@ export default async function ExtensionPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-/* ───────────────────────────── دکمه‌ی دانلود ───────────────────────────── */
-
-/**
- * تنها دکمه‌ی دانلودِ صفحه. لینکِ مستقیم به فایلِ استاتیکِ `public/` است (نه ناوبریِ
- * برنامه‌ای)، پس `<a download>` خام و نه `next/link`.
- */
-function DownloadButton() {
-  return (
-    <a
-      href={EXTENSION_ZIP}
-      download
-      className="focus-ring inline-flex items-center justify-center gap-2 whitespace-nowrap bg-brand px-5 py-2.5 text-sm font-semibold text-brand-foreground shadow-xs transition-[transform,opacity] duration-150 hover:bg-persimmon-soft active:translate-y-px"
-    >
-      <IconDownload className="h-4 w-4" />
-      دانلودِ افزونه (ZIP)
-    </a>
-  );
-}
-
-/* ───────────────────────────── راهنمای نصب ───────────────────────────── */
-
-/**
- * گام‌های نصبِ «بارگذاریِ باز» — هر گام دقیقاً یک جمله‌ی امری. کروم و اِج فقط در نشانیِ
- * صفحه‌ی افزونه‌ها فرق دارند؛ بقیه یکسان است. روی macOS و Windows تفاوتی نیست.
- */
-const BROWSERS: Array<{
-  id: string;
-  name: string;
-  tone: "brand" | "accent";
-  defaultOpen: boolean;
-  steps: string[];
-}> = [
-  {
-    id: "chrome",
-    name: "Google Chrome",
-    tone: "brand",
-    defaultOpen: true,
-    steps: [
-      "فایلِ karjoo-extension.zip را از حالتِ فشرده خارج کنید تا یک پوشه ساخته شود.",
-      "در نوارِ آدرسِ کروم عبارتِ chrome://extensions را بنویسید و Enter بزنید.",
-      "کلیدِ Developer mode را روشن کنید.",
-      "روی Load unpacked کلیک کنید.",
-      "همان پوشه‌ی گامِ یک را انتخاب کنید.",
-      "آیکنِ کارجو را در نوارِ ابزارِ مرورگر سنجاق کنید.",
-    ],
-  },
-  {
-    id: "edge",
-    name: "Microsoft Edge",
-    tone: "accent",
-    defaultOpen: false,
-    steps: [
-      "فایلِ karjoo-extension.zip را از حالتِ فشرده خارج کنید تا یک پوشه ساخته شود.",
-      "در نوارِ آدرسِ اِج عبارتِ edge://extensions را بنویسید و Enter بزنید.",
-      "کلیدِ Developer mode را روشن کنید.",
-      "روی Load unpacked کلیک کنید.",
-      "همان پوشه‌ی گامِ یک را انتخاب کنید.",
-      "آیکنِ کارجو را در نوارِ ابزارِ مرورگر سنجاق کنید.",
-    ],
-  },
-];
-
-function InstallGuide() {
-  return (
-    <Card padded className="h-full">
-      <div className="flex items-center gap-3">
-        <span
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"
-          aria-hidden
-        >
-          <IconDownload className="h-5 w-5" />
-        </span>
-        <h2 className="text-base font-bold">نصب در ۶ گام</h2>
-      </div>
-      <p className="mt-1.5 text-sm leading-7 text-muted">
-        مرورگرِ خود را انتخاب کنید؛ فقط گام‌های همان مرورگر را ببینید.
-      </p>
-
-      <div className="mt-5 space-y-3">
-        {BROWSERS.map((b) => (
-          <BrowserSteps key={b.id} {...b} />
-        ))}
-      </div>
-
-      <VersionRow />
-    </Card>
-  );
-}
-
-/**
- * یک مرورگر = یک `<details>`. `name` مشترک ⇒ آکاردئونِ انحصاری (رفتارِ بومیِ HTML):
- * باز کردنِ یکی، دیگری را می‌بندد. در مرورگرهای قدیمی‌تر بدترین حالت این است که هر دو
- * باز بمانند — یعنی همان رفتارِ قبلی، نه خرابی.
- */
-function BrowserSteps({
-  name,
-  steps,
-  tone,
-  defaultOpen,
-}: {
-  name: string;
-  steps: string[];
-  tone: "brand" | "accent";
-  defaultOpen: boolean;
-}) {
-  return (
-    <details
-      name="karjoo-browser"
-      open={defaultOpen}
-      className="group rounded-xl border border-border bg-surface/40 open:bg-surface/70"
-    >
-      <summary className="focus-ring flex cursor-pointer list-none items-center gap-2.5 rounded-xl px-4 py-3 text-sm font-bold [&::-webkit-details-marker]:hidden">
-        <Badge tone={tone}>{name}</Badge>
-        <span className="text-muted">{toFaDigits(steps.length)} گام</span>
-        <ChevronDown
-          className="me-auto h-4 w-4 shrink-0 text-muted transition-transform duration-200 group-open:rotate-180"
-          aria-hidden
-        />
-      </summary>
-      <ol className="space-y-3 border-t border-border/70 px-4 py-4">
-        {steps.map((step, i) => (
-          <li key={i} className="flex items-start gap-3">
-            <span
-              className="ltr-nums grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/10 text-xs font-bold text-brand"
-              aria-hidden
-            >
-              {toFaDigits(i + 1)}
-            </span>
-            <p className="text-pretty text-sm leading-7 text-foreground/90">
-              {highlightCode(step)}
-            </p>
-          </li>
-        ))}
-      </ol>
-    </details>
-  );
-}
-
-/** نسخه‌ی منتشرشده — یک خط، چون افزونه خودش به‌روزرسانی را یادآوری می‌کند. */
-function VersionRow() {
-  return (
-    <p className="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-foreground/2 px-4 py-3 text-xs text-muted">
-      <IconSparkle className="h-4 w-4 text-brand" aria-hidden />
-      آخرین نسخه‌ی افزونه:
-      <span
-        dir="ltr"
-        className="ltr-nums rounded-md bg-brand/10 px-1.5 py-0.5 font-mono text-[0.7rem] font-semibold text-brand"
-      >
-        v{KARJOO_EXTENSION_VERSION}
-      </span>
-      <IconBolt className="h-3.5 w-3.5" aria-hidden />
-      برای به‌روزرسانی، نسخه‌ی تازه را دانلود و روی همان پوشه جایگزین کنید.
-    </p>
-  );
-}
-
-/* ───────────────────────────── کمک‌کننده‌های محلی ───────────────────────────── */
-
-/**
- * قطعه‌های شبیهِ آدرس/دستور (مثلِ chrome://extensions یا Load unpacked) را به‌صورتِ
- * inline-code با فونتِ mono و جهتِ چپ‌به‌راست نمایش می‌دهد تا در متنِ RTL خوانا بمانند.
- */
-const CODE_TOKENS = [
-  "chrome://extensions",
-  "edge://extensions",
-  "Load unpacked",
-  "Developer mode",
-  "karjoo-extension.zip",
-];
-function highlightCode(text: string) {
-  const pattern = new RegExp(
-    `(${CODE_TOKENS.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
-    "g",
-  );
-  const parts = text.split(pattern);
-  return parts.map((part, i) =>
-    CODE_TOKENS.includes(part) ? (
-      <code
-        key={i}
-        dir="ltr"
-        className="mx-0.5 inline-block rounded-md bg-foreground/6 px-1.5 py-0.5 align-middle font-mono text-xs text-foreground"
-      >
-        {part}
-      </code>
-    ) : (
-      part
-    ),
   );
 }

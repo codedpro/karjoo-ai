@@ -5,95 +5,23 @@ import "server-only";
  * تازه‌وارد. سه گامِ لازمِ محصول را تشخیص می‌دهد و تا وقتی همه کامل نشده‌اند، یک کارتِ
  * فشرده در بالای داشبورد نشان می‌دهد؛ به‌محضِ کاملِ‌شدنِ هر سه گام، هیچ‌چیز رندر نمی‌کند.
  *
- * گام‌ها (ترتیبِ منطقی، ولی تشخیصِ هر کدام مستقل):
- *   ۱) رزومه/پروفایل — یک فایلِ رزومه‌ی آپلودشده، یا مهارت‌ها + نامِ واقعی (نه استابِ
- *      «کاربر کارجو» که writeApplyFilters هنگامِ ستِ فیلترها می‌سازد).
- *   ۲) فیلترهای اپلای — دسته‌های شغلی (categorySlugs) لنگرِ جریانِ پیش‌فرضِ اپلای انبوه‌اند.
- *   ۳) اتصالِ افزونه + سایتِ کاریابی — یک board_accounts با status='connected' هم‌زمان
- *      اثباتِ جفت‌شدنِ افزونه و اتصالِ برد است (چون /connect نشستِ Bearerِ افزونه می‌خواهد).
- *
- * لینک‌های عمیق باید به *مقصدِ واقعی* بروند، نه به مسیرهای قدیمی: `/dashboard/resume` و
- * `/dashboard/apply-filters` امروز فقط redirectِ سه‌خطی‌اند؛ پس مستقیم به
- * `/dashboard/profiles` و `/dashboard/auto-apply` می‌رویم (یک پرشِ کمتر، و برچسبِ گام
- * همان نامی است که کاربر در ناوبری می‌بیند).
- *
- * تاب‌آوری (قاعده‌ی طلایی): getterهای data/resume-data و readApplyFilters خطاها را به
- * فراخواننده می‌دهند (swallow نمی‌کنند). پس هر تشخیص را در Promise.allSettled می‌بندیم؛
- * settleِ rejected → آن گام «ناتمام» رندر می‌شود، نه کرشِ کلِ چک‌لیست. هر سه تشخیص
- * round-tripِ DBِ مستقلند و هم‌زمان (concurrent) شلیک می‌شوند.
+ * تشخیصِ گام‌ها در `lib/onboarding/setup-status.ts` است (مشترک با صفحه‌ی «شروع»)؛ هر CTA
+ * به همان گام در راهنمای گام‌به‌گامِ `/dashboard/start` می‌رود.
  *
  * توکن‌محور و RTL: فقط پرایمیتیوهای مشترک (Card/ButtonLink/Badge) + آیکن‌های معنایی +
  * توکن‌های تم. هیچ hexِ سخت، هیچ hookِ کلاینتی؛ یک Server componentِ خالص.
  */
-import { getBoardAccountsForUser } from "@/components/dashboard/data";
-import {
-  getResumeFiles,
-  getResumeProfile,
-} from "@/components/dashboard/resume-data";
-import { readApplyFilters } from "@/lib/apply/filters";
+import { getSetupStatus } from "@/lib/onboarding/setup-status";
 import { IconChevronEnd, IconCheck } from "@/components/dashboard/icons";
 import { Badge, ButtonLink, Card, cn, toFaDigits } from "@/components/dashboard/ui";
 
-/* ───────────────────────────────  مدلِ گام  ─────────────────────────────── */
-
-/** یک گامِ راه‌اندازی — برچسبِ فارسی، وضعیتِ تکمیل، و لینکِ عمیقِ صفحه‌ی مربوط. */
+/** یک گامِ راه‌اندازی — برچسبِ فارسی، وضعیتِ تکمیل، و گامِ مربوط در راهنمای شروع. */
 interface OnboardingStep {
   key: "resume" | "apply-filters" | "connect-board";
   label: string;
   cta: string;
   deepLink: string;
   done: boolean;
-}
-
-/* ─────────────────────────  predicateهای تشخیص (خالص)  ────────────────────── */
-/*
- * نکته‌ی حیاتیِ استاب‌پروفایل: نوشتنِ فیلترها *پیش از* گامِ رزومه یک candidate_profiles
- * با fullName = 'کاربر کارجو' و skills خالی می‌سازد. پس صرفِ «وجودِ ردیفِ پروفایل»
- * done نیست؛ محتوایِ واقعی لازم است: فایلِ آپلودشده، یا مهارت + نامِ غیرِ فالبک.
- */
-
-const STUB_FULL_NAME = "کاربر کارجو";
-
-/** گامِ ۱ done است اگر رزومه‌ی واقعی وجود داشته باشد (فایل، یا محتوایِ واقعیِ پروفایل). */
-function isResumeDone(
-  profile: Awaited<ReturnType<typeof getResumeProfile>>,
-  files: Awaited<ReturnType<typeof getResumeFiles>>,
-): boolean {
-  if (files.length > 0) return true;
-  if (!profile) return false;
-  const hasRealName =
-    profile.fullName.trim() !== "" && profile.fullName !== STUB_FULL_NAME;
-  return hasRealName && profile.skills.length > 0;
-}
-
-/** گامِ ۲ done است اگر هدف‌گیری ست شده باشد؛ لنگرِ اصلی categorySlugs است. */
-function isFiltersDone(
-  filters: Awaited<ReturnType<typeof readApplyFilters>>,
-): boolean {
-  return (
-    filters.categorySlugs.length > 0 ||
-    filters.cities.length > 0 ||
-    filters.jobTypes.length > 0
-  );
-}
-
-/** گامِ ۳ done است اگر دستِ‌کم یک برد با وضعیتِ 'connected' وصل باشد. */
-function isBoardDone(
-  accounts: Awaited<ReturnType<typeof getBoardAccountsForUser>>,
-): boolean {
-  return accounts.some((a) => a.status === "connected");
-}
-
-/**
- * یک Promise را به «done: boolean» تبدیل می‌کند و هر شکست (rejected settle یا throw)
- * را به `false` می‌نگارد — تا یک کوئریِ خطادار نتواند کلِ چک‌لیست را زمین بزند.
- */
-async function detect(compute: () => Promise<boolean>): Promise<boolean> {
-  try {
-    return await compute();
-  } catch {
-    return false;
-  }
 }
 
 /* ───────────────────────────  کامپوننتِ اصلی  ────────────────────────────── */
@@ -103,40 +31,29 @@ async function detect(compute: () => Promise<boolean>): Promise<boolean> {
  * برمی‌گرداند (چیزی رندر نمی‌شود)، وگرنه کارتِ «شروعِ کار» را بالای داشبورد نشان می‌دهد.
  */
 export async function OnboardingChecklist({ userId }: { userId: string }) {
-  // هر سه، round-tripِ مستقلِ DB — هم‌زمان و هر کدام fail-safe (شکست → ناتمام).
-  const [resumeDone, filtersDone, boardDone] = await Promise.all([
-    detect(async () => {
-      const [profile, files] = await Promise.all([
-        getResumeProfile(userId),
-        getResumeFiles(userId),
-      ]);
-      return isResumeDone(profile, files);
-    }),
-    detect(async () => isFiltersDone(await readApplyFilters(userId))),
-    detect(async () => isBoardDone(await getBoardAccountsForUser(userId))),
-  ]);
+  const status = await getSetupStatus(userId);
 
   const steps: OnboardingStep[] = [
     {
       key: "resume",
       label: "رزومه و پروفایلت را کامل کن",
-      cta: "رزومه و پروفایل",
-      deepLink: "/dashboard/profiles",
-      done: resumeDone,
+      cta: "آپلودِ رزومه",
+      deepLink: "/dashboard/start?step=resume",
+      done: status.resume,
     },
     {
       key: "apply-filters",
       label: "بگو دنبالِ چه شغلی هستی (شهر، زمینه، دورکاری)",
-      cta: "تنظیمِ اپلای خودکار",
-      deepLink: "/dashboard/auto-apply",
-      done: filtersDone,
+      cta: "انتخابِ شغل‌ها",
+      deepLink: "/dashboard/start?step=jobs",
+      done: status.targeting,
     },
     {
       key: "connect-board",
       label: "افزونه‌ی مرورگر را نصب کن و حسابِ سایتِ کاریابی‌ات را وصل کن",
       cta: "اتصالِ افزونه",
-      deepLink: "/dashboard/extension",
-      done: boardDone,
+      deepLink: "/dashboard/start?step=connect",
+      done: status.connected,
     },
   ];
 

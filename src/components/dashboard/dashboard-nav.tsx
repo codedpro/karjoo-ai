@@ -113,6 +113,24 @@ export const NAV_GROUPS: NavGroupDef[] = [
 ];
 
 /**
+ * راهنمای شروعِ کارجو — عمداً خارج از منوی شش‌تایی، به‌صورتِ یک لینکِ کوچک زیرِ منو؛ کاربرِ
+ * تازه خودکار به آن فرستاده می‌شود و بقیه هر وقت خواستند از همین‌جا برمی‌گردند.
+ */
+export const SETUP_GUIDE_HREF = "/dashboard/start";
+
+function SetupGuideLink({ onNavigate }: { onNavigate?: () => void }) {
+  return (
+    <Link
+      href={SETUP_GUIDE_HREF}
+      onClick={onNavigate}
+      className="focus-ring block px-3 py-2 text-sm text-muted hover:text-foreground"
+    >
+      راهنمای شروعِ کارجو
+    </Link>
+  );
+}
+
+/**
  * آیتم‌های بخشِ «مدیریت» — عمداً *در همین ماژولِ کلاینت* تعریف شده‌اند.
  *
  * چرا این‌جا و نه در `admin-nav.tsx` (که سروری است)؟ چون `icon` یک *تابعِ* کامپوننت
@@ -249,8 +267,11 @@ export function SidebarNav({ children }: { children?: React.ReactNode }) {
         ))}
         {children}
       </nav>
-      {/* پای ستون: سوییچِ تمِ تیره/روشن (همان کنترلِ 1xAi) */}
-      <div className="mt-6 border-t border-hairline-soft px-3 pt-4">
+      {/* پای ستون: راهنمای شروع + سوییچِ تمِ تیره/روشن (همان کنترلِ 1xAi) */}
+      <div className="mt-6 border-t border-hairline-soft pt-2">
+        <SetupGuideLink />
+      </div>
+      <div className="px-3 pt-2">
         <ThemeSwitch variant="row" />
       </div>
     </div>
@@ -360,6 +381,7 @@ export function MobileNav({ children }: { children?: React.ReactNode }) {
                 />
               ))}
               {children}
+              <SetupGuideLink onNavigate={close} />
             </div>
             <div className="shrink-0 border-t border-hairline-soft px-4 py-3">
               <ThemeSwitch variant="row" />

@@ -18,6 +18,7 @@
  *     می‌توانند جدا استریم شوند بدونِ اینکه کوئری دو بار اجرا شود.
  */
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import type { ReactNode } from "react";
@@ -36,6 +37,10 @@ import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist
 import { PairExtensionPanel } from "@/components/dashboard/pair-extension-panel";
 import { getDashboardUser } from "@/components/dashboard/session";
 import { getLiveApplyOverview } from "@/lib/apply/live-overview";
+import {
+  getSetupStatus,
+  ONBOARDING_DONE_COOKIE,
+} from "@/lib/onboarding/setup-status";
 import {
   IconBolt,
   IconChevronEnd,
@@ -68,6 +73,14 @@ export default async function DashboardHomePage() {
 
   const userId = user.userId;
   const fallbackName = user.fullName ?? user.name;
+
+  // کاربرِ کاملاً تازه (معمولاً از 1xai.ir) اول راهنمای شروع را می‌بیند، نه داشبوردی که
+  // هنوز چیزی برای نشان‌دادن ندارد. «بعداً» در راهنما این کوکی را می‌گذارد.
+  const store = await cookies();
+  if (!store.has(ONBOARDING_DONE_COOKIE)) {
+    const setup = await getSetupStatus(userId);
+    if (setup.completed === 0) redirect("/dashboard/start");
+  }
 
   return (
     <div className="space-y-8">

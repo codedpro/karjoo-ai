@@ -82,6 +82,15 @@ export interface BoardApplyFilters {
 
 export type ActiveApplyBoard = keyof BoardApplyFilters;
 
+/** سایت‌هایی که کاربر می‌تواند برایشان هدف‌گیری کند، به ترتیبِ نمایش. */
+export const ACTIVE_APPLY_BOARDS = [
+  "jobinja",
+  "jobvision",
+  "e-estekhdam",
+  "irantalent",
+  "karboom",
+] as const satisfies readonly ActiveApplyBoard[];
+
 /** Active provider ids used by discovery, resume preparation, and queue claims. */
 export function enabledApplyBoards(filters: ApplyFilters): ActiveApplyBoard[] {
   return (Object.keys(filters.boardFilters) as ActiveApplyBoard[]).filter(
