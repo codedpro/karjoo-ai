@@ -91,6 +91,16 @@ export async function loginAndStoreSession(
     expiresAt: result.expiresAt,
   }, conn);
 
+  // نشستِ تازه ⇒ مکثِ «نشست رد شد» دیگر معنا ندارد؛ صف همین حالا آزاد شود.
+  // fail-soft: برداشته‌نشدنِ مکث نباید ورودِ موفق را شکست بدهد (بدترین حالت: صف
+  // تا پایانِ مکث صبر می‌کند).
+  try {
+    const { clearBoardCooldown } = await import("@/lib/apply/board-cooldown");
+    await clearBoardCooldown(userId, board, conn as never);
+  } catch {
+    /* ignore */
+  }
+
   // نشستِ تازه ⇒ حساب دوباره قابلِ استفاده است.
   await conn
     .update(boardAccounts)

@@ -99,6 +99,16 @@ export async function POST(request: Request): Promise<Response> {
       throw err;
     }
 
+    // نشستِ تازه از افزونه رسید ⇒ اگر صفِ این سایت به‌خاطرِ ردِ نشست (یا کپچا) عقب
+    // افتاده بود، همین‌جا آزادش کن. بدونِ این، کاربر حساب را دوباره وصل می‌کرد و
+    // اپلای‌ها تا پایانِ مکث بی‌دلیل معطل می‌ماندند.
+    try {
+      const { clearBoardCooldown } = await import("@/lib/apply/board-cooldown");
+      await clearBoardCooldown(userId, body.board);
+    } catch {
+      /* fail-soft: مکث حداکثر تا انقضای خودش می‌ماند. */
+    }
+
     // ۶) پاسخ — فقط متادیتا (هرگز ciphertext/iv/secret در بدنه).
     return json(
       {

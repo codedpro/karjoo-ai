@@ -25,7 +25,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import { prepareNextTailoredResumeForQueue } from "@/lib/resume/queue-prep";
-import { applications, candidateProfiles, resumes, tasks, users } from "@/db/schema";
+import { applications, candidateProfiles, jobListings, resumes, tasks, users } from "@/db/schema";
 import type { Entitlements } from "@/lib/billing/entitlements";
 import { readEntitlements } from "@/lib/billing/subscription";
 import {
@@ -51,6 +51,7 @@ import {
   markServerExecutionRunning,
 } from "@/lib/apply/execution-run";
 import { enabledApplyBoards, readApplyFilters } from "@/lib/apply/filters";
+import { classifyBoardRefusal, deferBoardQueue } from "@/lib/apply/board-cooldown";
 import { isWorkerApplyBoard } from "@/lib/apply/apply-channels";
 
 /** هندلِ DB که این لایه نیاز دارد — کلاینتِ کاملِ Drizzle. */
@@ -456,7 +457,43 @@ export async function recordFleetResult(
     db,
   );
 
+  // ۳) اگر سایت ما را پس زد (کپچا/۴۲۹/نشستِ رد‌شده)، صفِ همین (کاربر، سایت) را عقب
+  // بینداز. بدونِ این، تیکِ بعدی — ۶۰ ثانیه بعد برای ورکر، ۵ دقیقه بعد برای سرور —
+  // دقیقاً همان کار را تکرار می‌کند، و همین اصرارِ پیاپی است که حسابِ کاربر را به
+  // چشم می‌آورد، نه خودِ اپلای. fail-soft: مکث نگرفتن نباید ثبتِ نتیجه را بشکند.
+  const refusal = classifyBoardRefusal(input.reason);
+  if (refusal) {
+    try {
+      const board = await boardOfListing(result.application.listingId, db);
+      if (board) {
+        const deferred = await deferBoardQueue(input.userId, board, refusal, db);
+        logger.info("board cooldown applied", {
+          path: "fleet/dispatch",
+          userId: input.userId,
+          board,
+          refusal,
+          deferredTasks: deferred,
+        });
+      }
+    } catch (err) {
+      logger.warn("board cooldown could not be applied", {
+        path: "fleet/dispatch",
+        userId: input.userId,
+        err: err instanceof Error ? err : new Error(String(err)),
+      });
+    }
+  }
+
   return { ...result, application: { ...result.application, channel: "worker" } };
+}
+
+/** سایتِ یک آگهی — برای گرفتنِ مکث لازم است و روی نتیجه نمی‌آید. */
+async function boardOfListing(listingId: string, db: FleetDispatchDb): Promise<string | null> {
+  const row = await db.query.jobListings.findFirst({
+    where: eq(jobListings.id, listingId),
+    columns: { board: true },
+  });
+  return row?.board ?? null;
 }
 
 /**
