@@ -9,17 +9,15 @@
  * WHICH BOARDS REACH THIS FILE (see src/lib/apply/apply-channels.ts — the control
  * plane's routing table):
  *   • jobinja   — the only board the spec path actually runs. "best-effort real".
- *   • jobvision — NEVER uses a spec. It is an SPA with no form to fill, so it has a
- *     written flow instead (jobvision-flow.ts) and the processor routes it there.
- *     Its entry below is inert and kept only so the ApplyBoardId union still lines
- *     up with the control plane's.
- *   • e-estekhdam / irantalent — NEVER dispatched to a worker node at all. Their
- *     apply is a pure HTTP transaction, so it runs on the control plane. Their
- *     entries below are likewise inert.
+ *   • jobvision — an SPA with no form to fill, so it has a written flow
+ *     (jobvision-flow.ts) and the processor routes it there before the spec path.
+ *     Its entry below is inert; it stays so the union still names every board the
+ *     BROWSER path knows about.
  *
- * So "scaffold" here now means "no worker ever runs this", not "unverified". The
- * runner still refuses to submit on a scaffold board, which keeps that fail-closed
- * if the routing table and this file ever disagree.
+ * Karboom, e-estekhdam and IranTalent are deliberately absent: their application
+ * is a plain HTTP transaction (http-apply.ts), so they never reach a spec. They
+ * used to have scaffold entries here, which were dead weight pretending to be a
+ * capability.
  *
  * §10 FIRM LINE: nothing here defeats bot-detection. These are just the public
  * form selectors, filled with the user's OWN drafted data, submitted with the
@@ -30,7 +28,7 @@
  */
 
 /** Board ids that have an APPLY_SPEC — aligned with the control-plane registry. */
-export type ApplyBoardId = "jobinja" | "jobvision" | "e-estekhdam" | "irantalent";
+export type ApplyBoardId = "jobinja" | "jobvision";
 
 /** The kind of an interactive step in the apply flow. */
 export type ApplyStepKind = "click" | "fill" | "select" | "upload" | "waitFor";
@@ -193,66 +191,13 @@ const JOBVISION_SPEC: BoardApplySpec = {
 };
 
 /* ────────────────────────────  e-estekhdam  ─────────────────────────────── */
-const E_ESTEKHDAM_SPEC: BoardApplySpec = {
-  board: "e-estekhdam",
-  maturity: "scaffold",
-  urlPattern: /^https:\/\/(www\.)?e-estekhdam\.com\/.+/,
-  // TODO(real-account): real e-estekhdam apply-form selectors.
-  applyButtonSelector: ".job-apply-btn",
-  coverLetterFieldSelector: "textarea[name='message']",
-  submitSelector: "form.apply-form button[type='submit']",
-  confirmSelector: ".apply-success",
-  steps: [
-    { kind: "click", selector: ".job-apply-btn", note: "TODO(real-account): start apply (structured listing)." },
-    {
-      kind: "fill",
-      selector: "textarea[name='message']",
-      valueKey: "coverLetter",
-      optional: true,
-      note: "TODO(real-account): message/cover letter.",
-    },
-    { kind: "click", selector: "form.apply-form button[type='submit']", note: "TODO(real-account): submit." },
-  ],
-  notes: [
-    "Many listings are contact-in-text (applyType=contact); this flow does not apply to them.",
-    "TODO(real-account): verify selectors against a real account.",
-  ],
-};
 
 /* ────────────────────────────  irantalent  ─────────────────────────────── */
-const IRANTALENT_SPEC: BoardApplySpec = {
-  board: "irantalent",
-  maturity: "scaffold",
-  urlPattern: /^https:\/\/(www\.)?irantalent\.com\/.+/,
-  // TODO(real-account): real irantalent apply-form selectors.
-  applyButtonSelector: "[data-qa='apply-button']",
-  coverLetterFieldSelector: "[data-qa='cover-letter']",
-  submitSelector: "[data-qa='apply-submit']",
-  confirmSelector: "[data-qa='apply-success']",
-  steps: [
-    { kind: "click", selector: "[data-qa='apply-button']", note: "TODO(real-account): start apply." },
-    { kind: "waitFor", selector: "[data-qa='apply-form']", note: "TODO(real-account): wait for form." },
-    {
-      kind: "fill",
-      selector: "[data-qa='cover-letter']",
-      valueKey: "coverLetter",
-      optional: true,
-      note: "TODO(real-account): cover letter.",
-    },
-    { kind: "click", selector: "[data-qa='apply-submit']", note: "TODO(real-account): submit." },
-  ],
-  notes: [
-    "Session/form shape TBD (architecture §7).",
-    "TODO(real-account): verify all selectors against a real account.",
-  ],
-};
 
 /** The full board → spec map (source of truth for the node's executor). */
 export const APPLY_SPEC: Record<ApplyBoardId, BoardApplySpec> = {
   jobinja: JOBINJA_SPEC,
   jobvision: JOBVISION_SPEC,
-  "e-estekhdam": E_ESTEKHDAM_SPEC,
-  irantalent: IRANTALENT_SPEC,
 };
 
 /** Return a board's apply spec, or undefined when unsupported. */

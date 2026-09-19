@@ -10,7 +10,7 @@ import {
   applyToIranTalent,
   authorizationFromSession,
   positionIdFromUrl,
-} from "@/lib/apply/boards/irantalent-apply";
+} from "./irantalent-apply.js";
 
 const ENVELOPE = encodeURIComponent(JSON.stringify({ token_type: "Bearer", access_token: "AT" }));
 const SESSION = JSON.stringify({

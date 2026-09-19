@@ -15,7 +15,7 @@ import {
   fileInputName,
   formBlocks,
   stripTags,
-} from "@/lib/apply/boards/html-forms";
+} from "./html-forms.js";
 
 describe("attribute", () => {
   it("نقلِ دوتایی، تکی و بدونِ نقل را می‌خواند", () => {

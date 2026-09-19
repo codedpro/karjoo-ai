@@ -1,5 +1,3 @@
-import "server-only";
-
 /**
  * اپلایِ سمتِ سرورِ ای‌استخدام — کاملاً HTTP، بدونِ مرورگر.
  *
@@ -26,8 +24,8 @@ import {
   redirectedToLogin,
   type BoardHttpOptions,
   type BoardHttpResponse,
-} from "@/lib/apply/boards/board-session-http";
-import { attribute, collectFormFields, csrfTokenFromHtml, formBlocks, stripTags } from "@/lib/apply/boards/html-forms";
+} from "./board-session-http.js";
+import { attribute, collectFormFields, csrfTokenFromHtml, formBlocks, stripTags } from "./html-forms.js";
 
 const SITE_ROOT = "https://www.e-estekhdam.com";
 const API_ROOT = "/search-api";
@@ -448,7 +446,7 @@ function applyForm(input: EEstekhdamApplyInput, jobId: string, workId: string, e
   if (coverLetter) form.append("description", coverLetter);
   form.append(
     "file",
-    new File([input.resumePdf as BlobPart], input.resumeFileName || "resume.pdf", {
+    new File([input.resumePdf], input.resumeFileName || "resume.pdf", {
       type: "application/pdf",
     }),
   );

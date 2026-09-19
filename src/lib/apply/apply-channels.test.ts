@@ -12,7 +12,7 @@ import {
   APPLY_CHANNELS,
   applyChannelOf,
   boardsForChannel,
-  isControlPlaneApplyBoard,
+  isHttpApplyBoard,
   isServerApplyBoard,
   isWorkerApplyBoard,
   serverApplyBoards,
@@ -41,20 +41,28 @@ describe("APPLY_CHANNELS", () => {
   it("برای هر مقدارِ یونیونِ JobBoardId دقیقاً یک کانال دارد", () => {
     expect(Object.keys(APPLY_CHANNELS).sort()).toEqual([...ALL_BOARDS].sort());
     for (const id of ALL_BOARDS) {
-      expect(["control_plane", "worker", "extension"]).toContain(APPLY_CHANNELS[id]);
+      expect(["worker_browser", "worker_http", "extension"]).toContain(APPLY_CHANNELS[id]);
     }
   });
 
-  it("سایت‌های HTTP روی کنترل‌پلین و سایت‌های DOM روی ورکرند", () => {
-    expect(boardsForChannel("control_plane").sort()).toEqual(
+  it("سایت‌های HTTP و سایت‌های DOM جدا هستند — ولی هر دو روی نود", () => {
+    expect(boardsForChannel("worker_http").sort()).toEqual(
       ["e-estekhdam", "irantalent", "karboom"].sort(),
     );
-    expect(boardsForChannel("worker").sort()).toEqual(["jobinja", "jobvision"].sort());
+    expect(boardsForChannel("worker_browser").sort()).toEqual(["jobinja", "jobvision"].sort());
   });
 
-  it("هر سایت فقط در یک کانال است (کنترل‌پلین و ورکر هم‌پوشانی ندارند)", () => {
+  it("هیچ سایتی روی کنترل‌پلین اجرا نمی‌شود — همه‌ی اپلای‌ها از IPِ نود می‌روند", () => {
+    // این نکته‌ی اصلیِ کلِ این جدول است: سایت‌های پشتِ ArvanCloud از IPِ غیرِایرانی
+    // پاسخ نمی‌دهند، پس هر سایتِ سرور-اجراشدنی باید به نود دیسپچ شود.
+    for (const id of serverApplyBoards()) {
+      expect(isWorkerApplyBoard(id), id).toBe(true);
+    }
+  });
+
+  it("سایتِ HTTPی هم‌زمان سایتِ مرورگری نیست", () => {
     for (const id of ALL_BOARDS) {
-      expect(isControlPlaneApplyBoard(id) && isWorkerApplyBoard(id)).toBe(false);
+      if (isHttpApplyBoard(id)) expect(applyChannelOf(id)).toBe("worker_http");
     }
   });
 
@@ -70,7 +78,8 @@ describe("APPLY_CHANNELS", () => {
   it("شناسه‌ی ناشناخته fail-closed است — سرور خودسرانه اجرا نمی‌کند", () => {
     expect(applyChannelOf("monster")).toBe("extension");
     expect(isServerApplyBoard("monster")).toBe(false);
-    expect(isControlPlaneApplyBoard("monster")).toBe(false);
+    expect(isHttpApplyBoard("monster")).toBe(false);
+    expect(isWorkerApplyBoard("monster")).toBe(false);
   });
 
   it("گیتِ اپلایِ رجیستری دقیقاً همین جدول را بازتاب می‌دهد", () => {

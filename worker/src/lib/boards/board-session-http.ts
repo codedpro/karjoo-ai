@@ -1,5 +1,3 @@
-import "server-only";
-
 /**
  * یک نشستِ HTTPِ کوکی‌دار برای اپلایِ سمتِ سرور.
  *
@@ -13,8 +11,8 @@ import "server-only";
  * بسته UA نداشته باشد یک UAِ معمولیِ کروم می‌نشیند (شناسه‌ی صادقانه‌ی یک کلاینت، نه
  * دور زدنِ تشخیص). نشست هرگز لاگ نمی‌شود و از این ماژول بیرون نمی‌رود.
  */
-import { sessionBundleSchema } from "@/lib/api/session-schemas";
-import { CookieJar } from "@/lib/apply/login/cookie-jar";
+import { parseSessionBundle } from "../session-inject.js";
+import { CookieJar } from "./cookie-jar.js";
 
 /** UAِ پیش‌فرض وقتی بسته‌ی نشست UAِ خودِ کاربر را ندارد. */
 const FALLBACK_USER_AGENT =
@@ -59,15 +57,17 @@ export class BoardHttpSession {
     bundleJson: string,
     options: BoardHttpOptions = {},
   ): BoardHttpSession | null {
-    let parsedJson: unknown;
+    // همان parserی که مسیرِ مرورگر استفاده می‌کند — یک تعریف از «بسته‌ی نشست» برای
+    // هر دو مسیرِ نود، و بدونِ کشاندنِ اعتبارسنجیِ کنترل‌پلین به این‌جا.
+    let bundle: ReturnType<typeof parseSessionBundle>;
     try {
-      parsedJson = JSON.parse(bundleJson);
+      bundle = parseSessionBundle(bundleJson);
     } catch {
       return null;
     }
-    const parsed = sessionBundleSchema.safeParse(parsedJson);
-    if (!parsed.success) return null;
-    const cookies = parsed.data.cookies ?? [];
+    const cookies = (bundle.cookies ?? []).filter(
+      (cookie) => typeof cookie?.name === "string" && typeof cookie?.value === "string",
+    );
     if (cookies.length === 0) return null;
 
     const host = (() => {
@@ -82,7 +82,7 @@ export class BoardHttpSession {
 
     return new BoardHttpSession(
       origin.replace(/\/+$/, ""),
-      parsed.data.userAgent?.trim() || FALLBACK_USER_AGENT,
+      bundle.userAgent?.trim() || FALLBACK_USER_AGENT,
       jar,
       options.fetchImpl ?? fetch,
     );

@@ -10,16 +10,19 @@
  *   2. filter    — has the user switched this board on? (default is jobinja only)
  *   3. queue     — are there pending tasks, and do they have a tailored résumé?
  *   4. session   — is there a vaulted session, and has it expired?
- *   5. network   — can this host even reach the board?
+ *   5. fleet     — is a node online to run it, and does the user have one?
  *
  * Why it exists: every one of these fails QUIETLY by design (a disabled board or
  * a closed gate must not break the tick for other users), so a run that does
  * nothing looks identical to a run with nothing to do. Reading a summary of
  * `{"attempted":0}` tells you nothing about which of the five it was.
  *
- * (5) is the one that is easy to forget on a non-Iranian host: the boards behind
- * ArvanCloud refuse connections from outside Iran, so a perfectly configured
- * account still applies to nothing.
+ * NOTE ON THE NETWORK COLUMN: applies do not run here. Every board request —
+ * browser or HTTP — goes out from a fleet node, which is the thing with an
+ * Iranian IP. A board being unreachable from THIS host is therefore expected and
+ * is NOT a blocker; the column is printed only because it is the first thing
+ * anyone reaches for when nothing is being submitted. What matters is that an
+ * online node exists and the user is assigned to one.
  *
  *   npm run preflight:server-apply -- --email=user@example.com
  */
@@ -146,7 +149,8 @@ async function main(): Promise<void> {
       : expired
         ? `EXPIRED (${expiresAt!.toISOString().slice(0, 10)})`
         : `ok (expires ${expiresAt ? expiresAt.toISOString().slice(0, 10) : "n/a"})`;
-    const network = networkByBoard.get(board) ?? "unknown";
+    // Informational only — see the note at the top of this file.
+    const network = `${networkByBoard.get(board) ?? "unknown"} [from control plane; node is what applies]`;
     const pending = Number(queue?.pending ?? 0);
     const pendingWithResume = Number(queue?.with_resume ?? 0);
 
@@ -158,7 +162,6 @@ async function main(): Promise<void> {
     if (!enabled.has(board)) blockers.push("board switched off in apply filters");
     if (!account?.has_session && !account?.has_credential) blockers.push("no session and no stored credential");
     else if (expired && !account?.has_credential) blockers.push("session expired, no credential to renew it");
-    if (network.startsWith("UNREACHABLE")) blockers.push("board unreachable from this host");
     if (pending === 0) blockers.push("nothing queued");
 
     return {
@@ -191,17 +194,36 @@ async function main(): Promise<void> {
     console.log(`     => ${report.verdict}\n`);
   }
 
-  // The PDF renderer is a hard dependency of the two boards that upload a
-  // per-ad résumé; if it cannot start, those applies skip rather than submit.
-  process.stdout.write("résumé PDF renderer: ");
-  try {
-    const { renderResumePdf } = await import("@/lib/resume/pdf-renderer");
-    const pdf = await renderResumePdf("<html><body><h1>preflight</h1></body></html>");
-    const header = Buffer.from(pdf.subarray(0, 5)).toString("latin1");
-    console.log(header === "%PDF-" ? `OK (${pdf.length} bytes)` : `BAD OUTPUT (${header})`);
-  } catch (err) {
-    console.log(`FAILED — ${err instanceof Error ? err.message : String(err)}`);
+  // Without an online node assigned to this user, nothing runs at all — no
+  // browser job and no HTTP job. This replaced a local PDF-render check, which
+  // tested the wrong machine: the résumé is rendered by the node's Chromium.
+  const nodes = (await db.execute(sql`
+    select n.node_key,
+           n.region,
+           n.health,
+           extract(epoch from (now() - n.last_heartbeat))::int as heartbeat_age_s,
+           count(wa.id) filter (where wa.user_id = ${user.id})  as assigned_to_user
+      from worker_nodes n
+      left join worker_assignments wa on wa.node_id = n.id
+     group by n.id
+     order by n.created_at
+  `)) as unknown as {
+    node_key: string;
+    region: string | null;
+    health: string;
+    heartbeat_age_s: number | null;
+    assigned_to_user: string;
+  }[];
+
+  console.log("fleet nodes (every apply runs on one of these):");
+  for (const node of nodes) {
+    const age = node.heartbeat_age_s === null ? "never" : `${node.heartbeat_age_s}s ago`;
+    const mine = Number(node.assigned_to_user) > 0 ? "  <- THIS USER" : "";
+    console.log(`     ${node.node_key} [${node.region ?? "?"}] ${node.health}, heartbeat ${age}${mine}`);
   }
+  const usersNode = nodes.find((node) => Number(node.assigned_to_user) > 0);
+  if (!usersNode) console.log("     => this user is assigned to NO node; nothing will run");
+  else if (usersNode.health !== "online") console.log(`     => their node is ${usersNode.health}`);
 
   const ready = reports.filter((report) => report.verdict === "READY").map((report) => report.board);
   console.log(`\nREADY TO APPLY NOW: ${ready.length > 0 ? ready.join(", ") : "(none)"}`);

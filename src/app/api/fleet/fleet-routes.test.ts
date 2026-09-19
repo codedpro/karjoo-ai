@@ -251,6 +251,7 @@ describe("POST /api/fleet/claim", () => {
         userId: USER_ID,
         board: "jobinja",
         listingUrl: "https://jobinja.ir/j/1",
+        listingTitle: "برنامه‌نویس بک‌اند",
         coverLetter: "سلام",
         resumeHtml: null,
         session: "DECRYPTED-SESSION-JSON",

@@ -15,7 +15,7 @@
  */
 
 /** The job-board ids the fleet can apply on — same string values as the control plane. */
-export type BoardId = "jobinja" | "jobvision" | "e-estekhdam" | "irantalent";
+export type BoardId = "jobinja" | "jobvision" | "e-estekhdam" | "irantalent" | "karboom";
 
 /**
  * One claimed apply job, returned by POST /api/fleet/claim. Mirrors
@@ -29,6 +29,12 @@ export interface FleetJob {
   board: string;
   /** The job listing page the node navigates to and fills/submits. */
   listingUrl: string;
+  /**
+   * The ad's title. e-estekhdam hangs several distinct job titles off ONE ad and
+   * the application has to name which one, so the node cannot pick without it.
+   * Optional because older control planes did not send it.
+   */
+  listingTitle?: string | null;
   /** The drafted cover letter to pre-fill (when the board has a field). */
   coverLetter: string | null;
   /**

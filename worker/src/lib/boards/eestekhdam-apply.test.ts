@@ -14,7 +14,7 @@ import {
   failureDetail,
   isFileLimitRefusal,
   uuidFromUrl,
-} from "@/lib/apply/boards/eestekhdam-apply";
+} from "./eestekhdam-apply.js";
 
 const SESSION = JSON.stringify({
   cookies: [{ name: "ee_session", value: "SECRET", domain: ".e-estekhdam.com" }],

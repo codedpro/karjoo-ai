@@ -69,6 +69,11 @@ export interface FleetJob {
   board: string;
   /** URLِ صفحه‌ی آگهی که نود باید به آن برود و فرم را پر/ثبت کند. */
   listingUrl: string;
+  /**
+   * عنوانِ آگهی. ای‌استخدام چند «عنوانِ شغلی» را زیرِ یک آگهی می‌گذارد و درخواست باید
+   * بگوید کدام‌یک؛ بدونِ این، نود نمی‌تواند انتخاب کند و باید متوقف شود.
+   */
+  listingTitle: string;
   /** انگیزه‌نامه‌ی درفت‌شده برای پیش‌پُرکردنِ فرم (در صورتِ وجود). */
   coverLetter: string | null;
   /**
@@ -361,6 +366,7 @@ export async function claimFleetJobs(
         userId,
         board: item.board,
         listingUrl: item.listing.url,
+        listingTitle: item.listing.title,
         coverLetter: item.coverLetter,
         resumeHtml,
         resumeFileName: await buildResumeFileName(userId, item.listing.company, db),

@@ -1,8 +1,15 @@
 /**
- * IranTalent is extension-only in this release: a server-owned fleet run must
- * skip its tasks WITHOUT leasing them, while still draining the other enabled
- * providers. This drives the real default claim path (no injected claimItems)
- * and inspects the options the fleet hands to the queue.
+ * Which boards a server-owned fleet run is allowed to lease.
+ *
+ * This used to assert the opposite: IranTalent was excluded from the fleet
+ * because its apply ran on the control plane. That arrangement could never have
+ * worked — the control plane is not in Iran and those boards never answer it —
+ * so every board that applies server-side is now dispatched to the node, HTTP
+ * ones included. What is still gated is the EXTENSION-only boards, which have no
+ * server adapter at all and must never be leased by a node.
+ *
+ * This drives the real default claim path (no injected claimItems) and inspects
+ * the options the fleet hands to the queue.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -59,8 +66,8 @@ beforeEach(() => {
   prepareNextTailoredResumeForQueue.mockResolvedValue({ status: "empty" });
 });
 
-describe("server-owned runs and IranTalent", () => {
-  it("drops IranTalent from the allowed boards while keeping the others", async () => {
+describe("server-owned runs and board routing", () => {
+  it("leases every server-apply board, HTTP ones included", async () => {
     readApplyFilters.mockResolvedValue(filtersWith("jobinja", "jobvision", "irantalent"));
     await runFleet();
     expect(claimUserApplyItems).toHaveBeenCalledTimes(1);
@@ -68,8 +75,10 @@ describe("server-owned runs and IranTalent", () => {
       allowedBoards: string[];
       requireTailoredResume: boolean;
     };
-    expect(options.allowedBoards).toEqual(["jobinja", "jobvision"]);
-    expect(options.allowedBoards).not.toContain("irantalent");
+    // IranTalent belongs here now: the node runs its HTTP apply from an Iranian IP.
+    expect([...options.allowedBoards].sort()).toEqual(
+      ["irantalent", "jobinja", "jobvision"].sort(),
+    );
     expect(options.requireTailoredResume).toBe(true);
   });
 
@@ -84,11 +93,20 @@ describe("server-owned runs and IranTalent", () => {
     expect(claimUserApplyItems).toHaveBeenCalledTimes(2);
   });
 
-  it("leases nothing when IranTalent is the only enabled provider", async () => {
+  it("leases IranTalent when it is the only enabled provider", async () => {
     readApplyFilters.mockResolvedValue(filtersWith("irantalent"));
-    const jobs = await runFleet();
+    await runFleet();
     const options = claimUserApplyItems.mock.calls[0]![3] as { allowedBoards: string[] };
-    expect(options.allowedBoards).toEqual([]);
-    expect(jobs).toEqual([]);
+    expect(options.allowedBoards).toEqual(["irantalent"]);
+  });
+
+  it("never leases an extension-only board", async () => {
+    // These have no server adapter at all. A node that claimed one would have
+    // nothing to run it with, and the task would sit leased until it expired.
+    readApplyFilters.mockResolvedValue(filtersWith("jobinja", "karboom"));
+    await runFleet();
+    const options = claimUserApplyItems.mock.calls[0]![3] as { allowedBoards: string[] };
+    expect(options.allowedBoards).not.toContain("linkedin");
+    expect(options.allowedBoards).not.toContain("divar");
   });
 });

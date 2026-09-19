@@ -1,28 +1,34 @@
 import "server-only";
 
 /**
- * «اپلایِ هر سایت از کجا اجرا می‌شود؟» — ماژولِ برگ (leaf).
+ * «اپلایِ هر سایت چطور اجرا می‌شود؟» — ماژولِ برگ (leaf).
  *
- * سه کانال داریم و هر سایت دقیقاً در یکی می‌نشیند:
+ * **همه‌ی** اپلای‌های سمتِ سرور روی نودِ ناوگان اجرا می‌شوند، نه روی کنترل‌پلین. دلیلش
+ * شبکه است، نه معماری: سایت‌های پشتِ ArvanCloud اتصالِ TCP را از یک IPِ غیرِایرانی
+ * می‌پذیرند و بعد هرگز به دست‌دادنِ TLS پاسخ نمی‌دهند. نود همان چیزی است که IPِ
+ * ایرانی دارد، پس هر درخواستی به سایت‌های کاریابی باید از آن‌جا برود — چه مرورگر
+ * لازم داشته باشد چه نه. (پیش‌تر کاربوم/ایران‌تلنت/ای‌استخدام روی کنترل‌پلین اجرا
+ * می‌شدند؛ دقیقاً جایی که هیچ‌وقت نمی‌توانستند کار کنند.)
  *
- *   • `control_plane` — اپلای یک تراکنشِ HTTP است (ایران‌تلنت، کاربوم، ای‌استخدام).
- *     همین‌جا روی وبِ کارجو اجرا می‌شود: بدونِ مرورگر، بدونِ نودِ ورکر.
- *   • `worker`        — اپلای یک فرم/جریانِ واقعیِ DOM است (جابینجا، جاب‌ویژن). نودِ
- *     ناوگان با Playwright نشستِ کاربر را replay می‌کند.
- *   • `extension`     — هنوز هیچ مسیرِ سروری ندارد؛ فقط افزونه روی مرورگرِ خودِ کاربر.
+ * پس تفاوتِ واقعیِ سایت‌ها «کجا» نیست، «چطور» است:
  *
- * چرا ماژولِ جداگانه و چرا برگ؟ چون هم `fleet/dispatch` (که باید بداند چه چیزی را به
- * نودِ ورکر *ندهد*) و هم `fleet/server-apply-runner` (که باید بداند چه چیزی را خودش
- * اجرا کند) به همین جدول نیاز دارند، و آن دو به هم import دارند. اگر جدول داخلِ یکی
- * از آن‌ها می‌ماند، چرخه‌ی import شکل می‌گرفت — همان دلیلی که `apply/registry.ts` هم
- * از `apply/index.ts` جدا شد.
+ *   • `worker_browser` — فرم/جریانِ واقعیِ DOM دارد (جابینجا، جاب‌ویژن). نود با
+ *     Playwright نشستِ کاربر را replay می‌کند.
+ *   • `worker_http`    — کلِ اپلای چند درخواستِ HTTP است (کاربوم، ای‌استخدام،
+ *     ایران‌تلنت). نود همان آداپتورها را بدونِ مرورگر اجرا می‌کند؛ مرورگر فقط اگر
+ *     رزومه‌ی اختصاصیِ آگهی باید رندر شود بالا می‌آید.
+ *   • `extension`      — هنوز هیچ مسیرِ سروری ندارد؛ فقط افزونه روی مرورگرِ خودِ کاربر.
+ *
+ * چرا ماژولِ جداگانه و چرا برگ؟ چون `fleet/dispatch` و لایه‌های UI هر دو به همین جدول
+ * نیاز دارند و نباید برای یک نگاشتِ ساده به هم وابسته شوند — همان دلیلی که
+ * `apply/registry.ts` هم از `apply/index.ts` جدا شد.
  *
  * این فایل عمداً **هیچ** وابستگیِ سنگینی ندارد (نه DB، نه شبکه) تا هر لایه‌ای بتواند
  * بدونِ هزینه واردش کند.
  */
 import type { JobBoardId } from "@/lib/apply/types";
 
-export type ApplyChannel = "control_plane" | "worker" | "extension";
+export type ApplyChannel = "worker_browser" | "worker_http" | "extension";
 
 /**
  * کانالِ اپلایِ هر سایت — **تنها منبعِ حقیقت**.
@@ -32,15 +38,15 @@ export type ApplyChannel = "control_plane" | "worker" | "extension";
  * (fail-safe: هیچ سایتی به‌طور ضمنی «سرور اجرا می‌کند» نمی‌شود).
  */
 export const APPLY_CHANNELS: Record<JobBoardId, ApplyChannel> = {
-  // فرمِ DOM دارد → ورکر.
-  jobinja: "worker",
-  // SPA است؛ تأیید با تغییرِ مسیر و رزومه از پروفایلِ خودِ سایت → ورکر (جریانِ نوشته‌شده).
-  jobvision: "worker",
-  // APIِ JSON → کنترل‌پلین.
-  "e-estekhdam": "control_plane",
-  irantalent: "control_plane",
-  // ویزاردِ سرورگردان، کاملاً HTTP → کنترل‌پلین.
-  karboom: "control_plane",
+  // فرمِ DOM دارد → مرورگرِ نود.
+  jobinja: "worker_browser",
+  // SPA است؛ تأیید با تغییرِ مسیر و رزومه از پروفایلِ خودِ سایت → جریانِ نوشته‌شده‌ی مرورگر.
+  jobvision: "worker_browser",
+  // APIِ JSON → HTTPِ نود.
+  "e-estekhdam": "worker_http",
+  irantalent: "worker_http",
+  // ویزاردِ سرورگردان، کاملاً HTTP → HTTPِ نود.
+  karboom: "worker_http",
   // هنوز آداپتورِ سروری ندارند.
   linkedin: "extension",
   iranestekhdam: "extension",
@@ -58,20 +64,25 @@ export function applyChannelOf(board: string): ApplyChannel {
   return APPLY_CHANNELS[board as JobBoardId] ?? "extension";
 }
 
-/** آیا اپلایِ این سایت روی خودِ کنترل‌پلین اجرا می‌شود؟ */
-export function isControlPlaneApplyBoard(board: string): boolean {
-  return applyChannelOf(board) === "control_plane";
+/** آیا اپلایِ این سایت بدونِ مرورگر و فقط با HTTP انجام می‌شود؟ */
+export function isHttpApplyBoard(board: string): boolean {
+  return applyChannelOf(board) === "worker_http";
 }
 
-/** آیا اپلایِ این سایت روی نودِ ورکرِ ناوگان اجرا می‌شود؟ */
+/**
+ * آیا این سایت به نودِ ناوگان دیسپچ می‌شود؟
+ *
+ * هر دو کانالِ نود را می‌گیرد: نود هم کارِ مرورگری اجرا می‌کند و هم کارِ HTTPی. این
+ * همان گیتی است که dispatch استفاده می‌کند تا فقط سایت‌های «سرور-اجراشدنی» claim شوند.
+ */
 export function isWorkerApplyBoard(board: string): boolean {
-  return applyChannelOf(board) === "worker";
+  const channel = applyChannelOf(board);
+  return channel === "worker_browser" || channel === "worker_http";
 }
 
 /** آیا کارجو می‌تواند این سایت را **بدونِ** مرورگرِ کاربر اپلای کند؟ */
 export function isServerApplyBoard(board: string): boolean {
-  const channel = applyChannelOf(board);
-  return channel === "control_plane" || channel === "worker";
+  return isWorkerApplyBoard(board);
 }
 
 /** سایت‌های یک کانال. */

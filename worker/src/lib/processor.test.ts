@@ -94,21 +94,44 @@ describe("processJob — happy path (jobinja best-effort)", () => {
   });
 });
 
-describe("processJob — §10 scaffold guardrail", () => {
-  // e-estekhdam is the scaffold example now that jobvision has a written flow.
-  // This board is never dispatched to a node at all (its apply runs on the control
-  // plane), so reaching the spec path means the routing table and the spec
-  // disagreed — and the guardrail must still refuse to submit.
-  it("does NOT launch a browser or submit on a scaffold board; records 'skipped'", async () => {
+describe("processJob — HTTP boards never touch the browser path", () => {
+  // Karboom, e-estekhdam and IranTalent apply over plain HTTP. The invariant that
+  // matters is that they never reach the APPLY_SPEC runner: driving DOM selectors
+  // against a board that has no form would "fail" for entirely fictional reasons.
+
+  it("skips a résumé-uploading HTTP board without a tailored résumé, launching nothing", async () => {
     const { launcher, record } = makeFakeBrowser();
     const report = await processJob(
-      jobinjaJob({ board: "e-estekhdam", listingUrl: "https://www.e-estekhdam.com/kab12x-y" }),
+      jobinjaJob({
+        board: "e-estekhdam",
+        listingUrl: "https://www.e-estekhdam.com/kab12x-y",
+        resumeHtml: null,
+      }),
       baseOpts(launcher),
     );
     expect(report.status).toBe("skipped");
-    expect(report.reason).toContain("scaffold");
-    // No browser launched — we refuse to blind-submit on an unverified form.
+    expect(report.reason).toBe("tailored_resume_missing");
+    // Chromium exists on the node ONLY to render that PDF; with no résumé to
+    // render there is nothing for it to do.
     expect(record.launched).toBe(0);
+  });
+
+  it("never launches a browser for a board that sends its own profile résumé", async () => {
+    const { launcher, record } = makeFakeBrowser();
+    const report = await processJob(
+      jobinjaJob({
+        board: "irantalent",
+        listingUrl: "https://www.irantalent.com/job/dev/1",
+        resumeHtml: null,
+      }),
+      baseOpts(launcher),
+    );
+    // The live call fails on an invalid session, which is fine — the point is
+    // that it went down the HTTP path and started no browser.
+    expect(record.launched).toBe(0);
+    expect(["skipped", "failed"]).toContain(report.status);
+    expect(report.reason).not.toContain("scaffold");
+    expect(report.reason).not.toContain("apply-spec");
   });
 });
 

@@ -99,10 +99,15 @@ describe("worker apply-spec stays in sync with the control plane", () => {
     expect(control).toContain(spec.coverLetterFieldSelector!);
   });
 
-  it("marks jobinja best-effort and the others scaffold", () => {
+  it("holds specs ONLY for the boards the browser path actually drives", () => {
+    // Karboom, e-estekhdam and IranTalent apply over plain HTTP, so they have no
+    // form to describe. They used to carry scaffold entries here, which looked
+    // like a capability and were never reachable; a spec map that lists a board
+    // it cannot drive is worse than one that omits it.
+    expect(Object.keys(APPLY_SPEC).sort()).toEqual(["jobinja", "jobvision"]);
     expect(APPLY_SPEC.jobinja.maturity).toBe("best-effort");
+    // JobVision's entry is inert — the written flow intercepts it before the
+    // spec path — but scaffold keeps it fail-closed if that routing ever breaks.
     expect(APPLY_SPEC.jobvision.maturity).toBe("scaffold");
-    expect(APPLY_SPEC["e-estekhdam"].maturity).toBe("scaffold");
-    expect(APPLY_SPEC.irantalent.maturity).toBe("scaffold");
   });
 });

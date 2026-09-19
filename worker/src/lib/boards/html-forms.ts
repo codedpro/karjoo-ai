@@ -1,5 +1,3 @@
-import "server-only";
-
 /**
  * خواندنِ فرم‌های HTML **بدونِ DOM**.
  *

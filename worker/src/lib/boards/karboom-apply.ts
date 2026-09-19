@@ -1,5 +1,3 @@
-import "server-only";
-
 /**
  * اپلایِ سمتِ سرورِ کاربوم — کاملاً HTTP، بدونِ مرورگر.
  *
@@ -29,12 +27,12 @@ import {
   isAuthFailure,
   type BoardHttpOptions,
   type BoardHttpResponse,
-} from "@/lib/apply/boards/board-session-http";
+} from "./board-session-http.js";
 import {
   collectFormFields,
   csrfTokenFromHtml,
   fileInputName,
-} from "@/lib/apply/boards/html-forms";
+} from "./html-forms.js";
 
 const ORIGIN = "https://karboom.io";
 /** سقفِ مرحله‌ها؛ ویزارد ۱۹ مرحله دارد، این مرز فقط جلوی حلقه‌ی بی‌پایان را می‌گیرد. */
@@ -186,7 +184,7 @@ async function submitStep(
     }
     form.append(
       fileField,
-      new File([ctx.input.resumePdf as BlobPart], ctx.input.resumeFileName || "resume.pdf", {
+      new File([ctx.input.resumePdf], ctx.input.resumeFileName || "resume.pdf", {
         type: "application/pdf",
       }),
     );

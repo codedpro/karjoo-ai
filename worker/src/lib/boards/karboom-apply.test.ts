@@ -14,7 +14,7 @@ import {
   karboomCodeFromUrl,
   karboomJobIdFromHtml,
   looksAlreadyApplied,
-} from "@/lib/apply/boards/karboom-apply";
+} from "./karboom-apply.js";
 
 const SESSION = JSON.stringify({
   cookies: [{ name: "karboom_session", value: "SECRET", domain: ".karboom.io" }],

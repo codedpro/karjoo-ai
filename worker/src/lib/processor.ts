@@ -22,13 +22,19 @@
  * The browser is injected (BrowserLauncher) so this is fully unit-tested with a
  * fake browser — no real Chromium, no network.
  */
-import { writeFile, unlink } from "node:fs/promises";
+import { writeFile, unlink, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import type { Browser, BrowserContext, BrowserLauncher, BrowserPage } from "./browser.js";
 import { applyValuesFor, buildApplyPlan, type ApplyPlan } from "./apply-plan.js";
 import { runJobvisionApply } from "./jobvision-flow.js";
+import {
+  httpBoardNeedsResume,
+  isHttpApplyBoard,
+  runHttpApply,
+  type RenderedResume,
+} from "./http-apply.js";
 import { prepareSession } from "./session-inject.js";
 import { parseSessionBundle } from "./session-inject.js";
 import type { FleetJob, FleetResultReport } from "./types.js";
@@ -85,6 +91,13 @@ export async function processJob(
   opts: ProcessOptions,
 ): Promise<FleetResultReport> {
   const log = opts.logger ?? defaultLogger;
+
+  // Boards whose application is plain HTTP (Karboom, e-estekhdam, IranTalent)
+  // never touch the DOM. They run here rather than on the control plane because
+  // this node is the thing with an Iranian IP.
+  if (isHttpApplyBoard(job.board)) {
+    return processHttpJob(job, opts);
+  }
 
   // Boards with a written flow (JobVision) never go through the spec path.
   const boardFlow = BOARD_FLOWS[job.board];
@@ -231,6 +244,99 @@ export async function processJob(
       /* ignore */
     }
     // Discard the rendered résumé PDF from disk (never persisted).
+    if (resumePdfPath) {
+      try {
+        await unlink(resumePdfPath);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+/**
+ * Process one job on a board that applies over HTTP.
+ *
+ * The only reason a browser appears here at all is the per-ad résumé: Karboom and
+ * e-estekhdam upload a PDF, and rendering one needs Chromium. IranTalent sends the
+ * résumé from its own profile, so its jobs never launch anything.
+ *
+ * A failed render does NOT fall back to another résumé — the job is skipped, so
+ * the employer never receives a file that was not written for their ad.
+ */
+async function processHttpJob(job: FleetJob, opts: ProcessOptions): Promise<FleetResultReport> {
+  const log = opts.logger ?? defaultLogger;
+  let resume: RenderedResume | null = null;
+  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
+  let resumePdfPath: string | null = null;
+
+  try {
+    if (httpBoardNeedsResume(job.board)) {
+      if (!job.resumeHtml?.trim()) {
+        log.info("no tailored résumé for http board; skipping", {
+          board: job.board,
+          taskId: job.taskId,
+        });
+        return {
+          taskId: job.taskId,
+          userId: job.userId,
+          status: "skipped",
+          reason: "tailored_resume_missing",
+        };
+      }
+      browser = await opts.launchBrowser({
+        headless: opts.headless,
+        executablePath: opts.executablePath,
+      });
+      context = await browser.newContext({});
+      resumePdfPath = await renderResumePdf(context, job.resumeHtml, job.taskId, job.resumeFileName);
+      resume = {
+        pdf: await readFile(resumePdfPath),
+        fileName: basename(resumePdfPath),
+      };
+    }
+
+    const outcome = await runHttpApply(job, resume);
+
+    if (outcome.status === "submitted") {
+      log.info("job submitted", { taskId: job.taskId, board: job.board });
+    } else {
+      log.info("job not submitted", {
+        taskId: job.taskId,
+        board: job.board,
+        status: outcome.status,
+        reason: outcome.reason,
+      });
+    }
+
+    return {
+      taskId: job.taskId,
+      userId: job.userId,
+      status: outcome.status,
+      ...(outcome.reason ? { reason: outcome.reason } : {}),
+      // Proof carries the board's own confirmation signal — never session material.
+      proof: { board: job.board, ranSteps: outcome.ranSteps, ...(outcome.proof ?? {}) },
+    };
+  } catch (err) {
+    log.error("http job processing error", { taskId: job.taskId, error: errMessage(err) });
+    return {
+      taskId: job.taskId,
+      userId: job.userId,
+      status: "failed",
+      reason: errMessage(err),
+    };
+  } finally {
+    try {
+      if (context) await context.close();
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (browser) await browser.close();
+    } catch {
+      /* ignore */
+    }
     if (resumePdfPath) {
       try {
         await unlink(resumePdfPath);
