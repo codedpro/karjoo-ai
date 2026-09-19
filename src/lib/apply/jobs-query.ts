@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 
 import { db as defaultDb, type Database } from "@/db";
 import type { JobBoardId } from "@/lib/apply/types";
-import { isBoardLive, PROVIDER_CAPABILITIES } from "@/lib/apply/registry";
+import { isBoardApplyable, PROVIDER_CAPABILITIES } from "@/lib/apply/registry";
 import { MAX_PROVIDER_SYNC_AGE_DAYS } from "@/lib/apply/freshness";
 
 export const JOB_SORTS = ["newest", "score", "company", "provider"] as const;
@@ -274,7 +274,7 @@ export async function listUnifiedJobsPage(
       providerStatus: (row.provider_status as string | null) ?? null,
       providerAppliedAt: row.provider_applied_at ? new Date(row.provider_applied_at as string) : null,
       accountStatus,
-      canEasyApply: isBoardLive(board) && accountStatus === "connected" && !alreadyApplied,
+      canEasyApply: isBoardApplyable(board) && accountStatus === "connected" && !alreadyApplied,
       alreadyApplied,
     };
   });

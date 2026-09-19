@@ -150,7 +150,12 @@ describe("runTick — site security challenge", () => {
 describe("runTick — scaffold board", () => {
   it("reports a scaffold-board job as skipped (never submitted)", async () => {
     const { api, reported } = fakeApi({
-      jobs: [jobinjaJob("t1", { board: "jobvision", listingUrl: "https://jobvision.ir/jobs/1" })],
+      jobs: [
+        jobinjaJob("t1", {
+          board: "e-estekhdam",
+          listingUrl: "https://www.e-estekhdam.com/kab12x-y",
+        }),
+      ],
     });
     const res = await runTick(deps(api));
     expect(res.skipped).toBe(1);

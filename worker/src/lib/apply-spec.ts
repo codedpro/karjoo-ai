@@ -4,10 +4,22 @@
  *
  * This is a PURE DATA map (no network/DB/secret): "where to click / what field to
  * fill" as CSS selectors. The actual fill/submit is the executor's job (the
- * Playwright runner). jobinja is "best-effort real"; the others are SCAFFOLD with
- * TODO(real-account) — their authenticated submit form can't be verified without a
- * real account, so the runner refuses to submit on scaffold boards (records a
- * 'skipped' instead of blindly clicking).
+ * Playwright runner).
+ *
+ * WHICH BOARDS REACH THIS FILE (see src/lib/apply/apply-channels.ts — the control
+ * plane's routing table):
+ *   • jobinja   — the only board the spec path actually runs. "best-effort real".
+ *   • jobvision — NEVER uses a spec. It is an SPA with no form to fill, so it has a
+ *     written flow instead (jobvision-flow.ts) and the processor routes it there.
+ *     Its entry below is inert and kept only so the ApplyBoardId union still lines
+ *     up with the control plane's.
+ *   • e-estekhdam / irantalent — NEVER dispatched to a worker node at all. Their
+ *     apply is a pure HTTP transaction, so it runs on the control plane. Their
+ *     entries below are likewise inert.
+ *
+ * So "scaffold" here now means "no worker ever runs this", not "unverified". The
+ * runner still refuses to submit on a scaffold board, which keeps that fail-closed
+ * if the routing table and this file ever disagree.
  *
  * §10 FIRM LINE: nothing here defeats bot-detection. These are just the public
  * form selectors, filled with the user's OWN drafted data, submitted with the

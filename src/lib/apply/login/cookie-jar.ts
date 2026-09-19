@@ -67,6 +67,22 @@ export class CookieJar {
     }
   }
 
+  /**
+   * یک کوکی را مستقیم می‌نشاند — برای *پُرکردنِ اولیه‌ی* jar از بسته‌ی نشستِ خزانه
+   * (اپلایِ سمتِ سرور با نشستی که قبلاً گرفته شده، نه با یک ورودِ تازه).
+   */
+  set(name: string, value: string, attrs: Omit<JarCookie, "name" | "value"> = {}): void {
+    this.cookies.set(name, {
+      name,
+      value,
+      domain: attrs.domain ?? this.defaultDomain,
+      path: attrs.path ?? "/",
+      ...(attrs.secure === undefined ? {} : { secure: attrs.secure }),
+      ...(attrs.httpOnly === undefined ? {} : { httpOnly: attrs.httpOnly }),
+      ...(attrs.expirationDate === undefined ? {} : { expirationDate: attrs.expirationDate }),
+    });
+  }
+
   /** هدرِ Cookie برای درخواستِ بعدی. */
   header(): string {
     return [...this.cookies.values()].map((c) => `${c.name}=${c.value}`).join("; ");

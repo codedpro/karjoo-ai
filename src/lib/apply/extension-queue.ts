@@ -82,7 +82,14 @@ export interface ClaimOptions {
   allowedBoards?: readonly ActiveApplyBoard[];
 }
 
-function isNativeProfileResumeBoard(board: string): boolean {
+/**
+ * سایت‌هایی که رزومه را از پروفایلِ خودِ سایت می‌فرستند، نه به‌صورتِ PDFِ آپلودی.
+ *
+ * برای این‌ها «رزومه‌ی اختصاصیِ این آگهی» اصلاً وارد ارسال نمی‌شود؛ پس نه در claim شرط
+ * می‌شود و نه در دیسپچِ ناوگان باعثِ رد شدنِ کار می‌شود. export شده چون ناوگان هم باید
+ * همین تعریف را بخواند — نه یک کپیِ دوم از همین شرط.
+ */
+export function isNativeProfileResumeBoard(board: string): boolean {
   return board === "jobvision" || board === "irantalent";
 }
 

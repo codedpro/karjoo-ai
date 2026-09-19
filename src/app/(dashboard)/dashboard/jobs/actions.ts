@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { boardAccounts, jobListings, matches } from "@/db/schema";
 import { getDashboardUser } from "@/components/dashboard/session";
-import { isBoardLive } from "@/lib/apply/registry";
+import { isBoardApplyable } from "@/lib/apply/registry";
 import { isFreshProviderDate } from "@/lib/apply/freshness";
 import { enqueue } from "@/lib/queue";
 
@@ -55,7 +55,10 @@ export async function queueJobApplyAction(formData: FormData): Promise<void> {
     .limit(1);
 
   if (!listing) redirect(withResult(returnTo, "missing"));
-  if (!isBoardLive(listing.board)) redirect(withResult(returnTo, "provider"));
+  // گیتِ درست این‌جا «می‌توان اپلای کرد؟» است، نه «کشفِ سرور پیاده است؟». کاربوم،
+  // ای‌استخدام، ایران‌تلنت و جاب‌ویژن کشفِ سرور ندارند ولی اپلای‌شان از سمتِ سرور اجرا
+  // می‌شود؛ با گیتِ قبلی کاربر نمی‌توانست همان آگهی‌ها را اصلاً به صف بگذارد.
+  if (!isBoardApplyable(listing.board)) redirect(withResult(returnTo, "provider"));
   if (!isFreshProviderDate(listing.postedAt)) redirect(withResult(returnTo, "stale"));
 
   const [account] = await db

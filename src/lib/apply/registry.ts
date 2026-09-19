@@ -13,6 +13,7 @@ import { eEstekhdam } from "@/lib/apply/boards/e-estekhdam";
 import { irantalent } from "@/lib/apply/boards/irantalent";
 import { jobinja } from "@/lib/apply/boards/jobinja";
 import { jobvision } from "@/lib/apply/boards/jobvision";
+import { isServerApplyBoard } from "@/lib/apply/apply-channels";
 import type { JobBoardConnector, JobBoardId } from "@/lib/apply/types";
 
 /**
@@ -37,21 +38,28 @@ export function getConnector(id: JobBoardId): JobBoardConnector | undefined {
  * کار می‌کند؟». عمداً اینجا (نه داخلِ لیترالِ هر کانکتور در boards/*.ts) نگه داشته
  * می‌شود تا افزودنِ این پرچم به تداخلِ فایل با ترک‌های دیگر نینجامد.
  *
- *   • `live`           — search()/apply()ِ سمتِ سرور واقعاً پیاده شده‌اند (فقط جابینجا).
- *   • `extension_only` — کانکتورِ سرور داربست است، اما آداپتورِ افزونه روی نشستِ
- *                        خودِ کاربر کار می‌کند؛ پس اتصال معنا دارد.
+ *   • `live`           — هم کشفِ سمتِ سرور (search/scrapePublic) و هم اپلای پیاده‌اند.
+ *                        فقط جابینجا.
+ *   • `server_apply`   — اپلای از سمتِ سرور اجرا می‌شود (کنترل‌پلین یا نودِ ناوگان)،
+ *                        اما کشفِ سمتِ سرور هنوز پیاده نشده؛ آگهی‌ها از افزونه/ورود
+ *                        دستیِ کاربر می‌آیند.
+ *   • `extension_only` — هیچ مسیرِ سروری ندارد، اما آداپتورِ افزونه روی نشستِ خودِ
+ *                        کاربر کار می‌کند؛ پس اتصال معنا دارد.
  *   • `coming_soon`    — نه سرور نه افزونه؛ اتصال رد می‌شود.
  *
  * `Record<JobBoardId, …>` عمداً روی کلِ یونیونِ JobBoardId جامع است؛ اگر شناسه‌ی
  * تازه‌ای به یونیون اضافه شود، TypeScript تا زمانِ افزودنِ وضعیتِ آن اینجا کامپایل
  * نمی‌شود (fail-safe: پیش‌فرضِ ضمنی «زنده» وجود ندارد).
  */
-export const BOARD_STATUS: Record<JobBoardId, "live" | "extension_only" | "coming_soon"> = {
+export const BOARD_STATUS: Record<
+  JobBoardId,
+  "live" | "server_apply" | "extension_only" | "coming_soon"
+> = {
   jobinja: "live",
-  jobvision: "extension_only",
-  "e-estekhdam": "extension_only",
-  irantalent: "extension_only",
-  karboom: "extension_only",
+  jobvision: "server_apply",
+  "e-estekhdam": "server_apply",
+  irantalent: "server_apply",
+  karboom: "server_apply",
   linkedin: "coming_soon",
   iranestekhdam: "coming_soon",
   divar: "coming_soon",
@@ -104,7 +112,7 @@ export const PROVIDER_CAPABILITIES: Record<JobBoardId, ProviderCapability> = {
     easyApply: true,
     autoApply: true,
     sessionShape: "token",
-    note: "مسیر افزونه فعال است و تا تأیید کامل سرور در حال تکمیل می‌ماند.",
+    note: "اپلای از سمتِ سرور انجام می‌شود (رزومه‌ی پروفایلِ خودِ جاب‌ویژن)؛ کشفِ آگهی هنوز از افزونه می‌آید.",
   },
   "e-estekhdam": {
     id: "e-estekhdam",
@@ -117,7 +125,7 @@ export const PROVIDER_CAPABILITIES: Record<JobBoardId, ProviderCapability> = {
     easyApply: true,
     autoApply: true,
     sessionShape: "cookie",
-    note: "جریان افزونه فعال است و مسیر کامل ارائه‌دهنده مرحله‌ای تکمیل می‌شود.",
+    note: "اپلای از سمتِ سرور انجام می‌شود و رزومه‌ی اختصاصیِ هر آگهی ارسال می‌شود؛ کشفِ آگهی هنوز از افزونه می‌آید.",
   },
   irantalent: {
     id: "irantalent",
@@ -130,7 +138,7 @@ export const PROVIDER_CAPABILITIES: Record<JobBoardId, ProviderCapability> = {
     easyApply: true,
     autoApply: true,
     sessionShape: "cookie",
-    note: "با رزومه‌ی پروفایل خود ایران‌تلنت ارسال می‌شود و مسیر افزونه/سرور در حال تکمیل است.",
+    note: "اپلای از سمتِ سرور انجام می‌شود (رزومه‌ی پروفایلِ خودِ ایران‌تلنت)؛ کشفِ آگهی هنوز از افزونه می‌آید.",
   },
   karboom: {
     id: "karboom",
@@ -143,7 +151,7 @@ export const PROVIDER_CAPABILITIES: Record<JobBoardId, ProviderCapability> = {
     easyApply: true,
     autoApply: true,
     sessionShape: "cookie",
-    note: "مسیر افزونه فعال است؛ رزومه‌ی اختصاصیِ هر آگهی در ویزارد کاربوم آپلود می‌شود.",
+    note: "اپلای از سمتِ سرور انجام می‌شود؛ رزومه‌ی اختصاصیِ هر آگهی در ویزارد کاربوم آپلود می‌شود.",
   },
   iranestekhdam: {
     id: "iranestekhdam",
@@ -265,18 +273,34 @@ export const PROVIDER_CAPABILITIES: Record<JobBoardId, ProviderCapability> = {
 };
 
 /**
- * آیا سایتِ داده‌شده واقعاً کار می‌کند؟ ورودی `string` است (نه JobBoardId) تا در
+ * آیا **کشفِ سمتِ سرور** برای این سایت پیاده است؟ یعنی orchestrator می‌تواند
+ * `scrapePublic/search` را صدا بزند. ورودی `string` است (نه JobBoardId) تا در
  * مرزهای اعتبارسنجی (مثلِ بدنه‌ی درخواست) بدونِ cast قابلِ استفاده باشد؛ شناسه‌ی
  * ناشناخته → `false` (fail-closed).
+ *
+ * برای «آیا می‌توان به این سایت اپلای کرد؟» از `isBoardApplyable` استفاده کنید —
+ * این دو عمداً جدا هستند.
  */
 export function isBoardLive(id: string): boolean {
   return PROVIDER_CAPABILITIES[id as JobBoardId]?.workflowState === "live";
 }
 
-/** Boards that can be connected in the extension, including browser-only adapters. */
+/** Boards that can be connected, including server-apply and browser-only adapters. */
 export function isBoardConnectable(id: string): boolean {
   const status = BOARD_STATUS[id as JobBoardId];
-  return status === "live" || status === "extension_only";
+  return status === "live" || status === "server_apply" || status === "extension_only";
+}
+
+/**
+ * آیا کارجو می‌تواند این سایت را **بدونِ** مرورگرِ کاربر اپلای کند؟
+ *
+ * این با `isBoardLive` یکی نیست و نباید یکی شود: `isBoardLive` یعنی «کشفِ سمتِ سرور
+ * پیاده است» (orchestrator می‌تواند scrapePublic بزند)، و این یعنی «اپلایِ سمتِ سرور
+ * پیاده است». جابینجا هر دو را دارد؛ کاربوم/ای‌استخدام/ایران‌تلنت/جاب‌ویژن فقط دومی را.
+ * قاطی‌کردنشان یا کشفِ نپیاده را صدا می‌زند یا اپلایِ کارکننده را پشتِ گیت نگه می‌دارد.
+ */
+export function isBoardApplyable(id: string): boolean {
+  return isServerApplyBoard(id);
 }
 
 /** فهرستِ شناسه‌ی سایت‌هایی که واقعاً کار می‌کنند — درزِ یکپارچگی برای orchestrator. */

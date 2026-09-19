@@ -95,10 +95,14 @@ describe("processJob — happy path (jobinja best-effort)", () => {
 });
 
 describe("processJob — §10 scaffold guardrail", () => {
+  // e-estekhdam is the scaffold example now that jobvision has a written flow.
+  // This board is never dispatched to a node at all (its apply runs on the control
+  // plane), so reaching the spec path means the routing table and the spec
+  // disagreed — and the guardrail must still refuse to submit.
   it("does NOT launch a browser or submit on a scaffold board; records 'skipped'", async () => {
     const { launcher, record } = makeFakeBrowser();
     const report = await processJob(
-      jobinjaJob({ board: "jobvision", listingUrl: "https://jobvision.ir/jobs/123" }),
+      jobinjaJob({ board: "e-estekhdam", listingUrl: "https://www.e-estekhdam.com/kab12x-y" }),
       baseOpts(launcher),
     );
     expect(report.status).toBe("skipped");

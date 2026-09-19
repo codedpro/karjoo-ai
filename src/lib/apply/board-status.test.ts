@@ -49,14 +49,18 @@ describe("BOARD_STATUS — جامعیت روی JobBoardId", () => {
     // بدونِ کلیدِ اضافه/گم‌شده — جدول باید کلِ یونیون را بپوشاند.
     expect(Object.keys(BOARD_STATUS).sort()).toEqual([...ALL_BOARDS].sort());
     for (const id of ALL_BOARDS) {
-      expect(["live", "extension_only", "coming_soon"]).toContain(BOARD_STATUS[id]);
+      expect(["live", "server_apply", "extension_only", "coming_soon"]).toContain(
+        BOARD_STATUS[id],
+      );
     }
   });
 
-  it("جابینجا live، چهار ارائه‌دهنده‌ی فعالِ دیگر extension-only و بقیه داربست‌اند", () => {
+  it("جابینجا live، چهار ارائه‌دهنده‌ی فعالِ دیگر server_apply و بقیه داربست‌اند", () => {
+    // جابینجا تنها سایتی است که هم کشف و هم اپلایِ سرور دارد. چهار تای دیگر اپلایِ
+    // سمتِ سرور دارند (کنترل‌پلین یا نودِ ناوگان) ولی کشف‌شان هنوز از افزونه می‌آید.
     expect(BOARD_STATUS.jobinja).toBe("live");
     for (const id of ["jobvision", "e-estekhdam", "irantalent", "karboom"] as const) {
-      expect(BOARD_STATUS[id], id).toBe("extension_only");
+      expect(BOARD_STATUS[id], id).toBe("server_apply");
     }
     for (const id of PLANNED_BOARDS) {
       expect(BOARD_STATUS[id], id).toBe("coming_soon");

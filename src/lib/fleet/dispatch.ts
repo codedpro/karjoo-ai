@@ -35,6 +35,7 @@ import {
 } from "@/lib/apply/auto-apply";
 import {
   claimUserApplyItems,
+  isNativeProfileResumeBoard,
   recordResult as recordExtensionResult,
   type ClaimedApplyItem,
   type RecordResultInput,
@@ -50,6 +51,7 @@ import {
   markServerExecutionRunning,
 } from "@/lib/apply/execution-run";
 import { enabledApplyBoards, readApplyFilters } from "@/lib/apply/filters";
+import { isWorkerApplyBoard } from "@/lib/apply/apply-channels";
 
 /** هندلِ DB که این لایه نیاز دارد — کلاینتِ کاملِ Drizzle. */
 export type FleetDispatchDb = typeof defaultDb;
@@ -232,12 +234,13 @@ export async function claimFleetJobs(
   const claimItems =
     deps.claimItems ??
     (async (userId: string, lim: number, minScore: number) => {
-      // IranTalent is excluded from the PLAYWRIGHT fleet, not from the server: its
-      // apply is pure HTTP, so it runs on the control plane instead (see
-      // fleet/irantalent-runner.ts). Handing it to a worker node would drive the
-      // apply-spec's DOM steps, which that board has no form for.
+      // Only boards on the WORKER channel are handed to a Playwright node. The
+      // control-plane boards (IranTalent, Karboom, e-estekhdam) are not excluded
+      // from the server — their apply is a pure HTTP transaction, so it runs on the
+      // control plane instead (fleet/server-apply-runner.ts). Handing one to a node
+      // would drive DOM steps against a board that has no form to drive.
       const allowedBoards = enabledApplyBoards(await readApplyFilters(userId, db)).filter(
-        (board) => board !== "irantalent",
+        (board) => isWorkerApplyBoard(board),
       );
       const claimReady = () =>
         claimUserApplyItems(userId, lim, db, {
@@ -342,8 +345,13 @@ export async function claimFleetJobs(
         session = await loadSession(userId, board);
       }
       if (!session) continue; // بدونِ نشست، کار اجراشدنی نیست — رد.
-      const resumeHtml = await loadResumeHtml(userId, item.listingId);
-      if (!resumeHtml) {
+      // A board that sends the résumé already on the user's provider profile
+      // (JobVision) has nothing to upload, so a missing tailored résumé must not
+      // drop the job — releasing it here parked every JobVision task on a 30-minute
+      // retry loop that could never succeed.
+      const needsTailoredResume = !isNativeProfileResumeBoard(item.board);
+      const resumeHtml = needsTailoredResume ? await loadResumeHtml(userId, item.listingId) : null;
+      if (needsTailoredResume && !resumeHtml) {
         await releaseMissingResumeTask(item.taskId);
         continue;
       }

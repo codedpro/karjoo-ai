@@ -28,10 +28,41 @@ import { join } from "node:path";
 
 import type { Browser, BrowserContext, BrowserLauncher, BrowserPage } from "./browser.js";
 import { applyValuesFor, buildApplyPlan, type ApplyPlan } from "./apply-plan.js";
+import { runJobvisionApply } from "./jobvision-flow.js";
 import { prepareSession } from "./session-inject.js";
 import { parseSessionBundle } from "./session-inject.js";
 import type { FleetJob, FleetResultReport } from "./types.js";
 import { Logger, logger as defaultLogger } from "./logger.js";
+
+/**
+ * Boards whose apply is a BROWSER FLOW rather than an APPLY_SPEC form.
+ *
+ * A spec says "fill these selectors, click submit" — that describes Jobinja
+ * exactly. JobVision is an SPA: the confirmation is a route change, the résumé is
+ * the one already on the user's profile, and there is no form to fill. Driving it
+ * needs a written flow, so the spec path is bypassed for these boards.
+ *
+ * Each flow returns the SAME PlanOutcome the spec runner returns, so everything
+ * downstream (proof, logging, reporting) is unchanged.
+ */
+const BOARD_FLOWS: Record<
+  string,
+  (page: BrowserPage, stepTimeoutMs: number) => Promise<PlanOutcome>
+> = {
+  jobvision: async (page, stepTimeoutMs) => {
+    const outcome = await runJobvisionApply(page, { timeoutMs: Math.max(stepTimeoutMs, 15_000) });
+    return {
+      status: outcome.status,
+      confirmed: outcome.confirmed,
+      ...(outcome.reason ? { reason: outcome.reason } : {}),
+    };
+  },
+};
+
+/** Does this board apply through a written flow instead of an APPLY_SPEC? */
+export function hasBoardFlow(board: string): boolean {
+  return board in BOARD_FLOWS;
+}
 
 /** Options for processing one job. */
 export interface ProcessOptions {
@@ -55,30 +86,35 @@ export async function processJob(
 ): Promise<FleetResultReport> {
   const log = opts.logger ?? defaultLogger;
 
-  // Build the plan FIRST (no browser needed) — an unsupported board is skipped.
-  const plan = buildApplyPlan(job);
-  if (!plan) {
-    log.warn("no apply-spec for board; skipping", { board: job.board, taskId: job.taskId });
-    return {
-      taskId: job.taskId,
-      userId: job.userId,
-      status: "skipped",
-      reason: `no apply-spec for board '${job.board}'`,
-    };
-  }
+  // Boards with a written flow (JobVision) never go through the spec path.
+  const boardFlow = BOARD_FLOWS[job.board];
 
-  // §10: scaffold boards are NOT auto-submitted (unverified authenticated form).
-  if (plan.maturity === "scaffold") {
-    log.info("scaffold board — recording skip (TODO real-account)", {
-      board: job.board,
-      taskId: job.taskId,
-    });
-    return {
-      taskId: job.taskId,
-      userId: job.userId,
-      status: "skipped",
-      reason: `board '${job.board}' apply-spec is scaffold (TODO(real-account)); not auto-submitting`,
-    };
+  // Build the plan FIRST (no browser needed) — an unsupported board is skipped.
+  const plan = boardFlow ? null : buildApplyPlan(job);
+  if (!boardFlow) {
+    if (!plan) {
+      log.warn("no apply-spec for board; skipping", { board: job.board, taskId: job.taskId });
+      return {
+        taskId: job.taskId,
+        userId: job.userId,
+        status: "skipped",
+        reason: `no apply-spec for board '${job.board}'`,
+      };
+    }
+
+    // §10: scaffold boards are NOT auto-submitted (unverified authenticated form).
+    if (plan.maturity === "scaffold") {
+      log.info("scaffold board — recording skip (TODO real-account)", {
+        board: job.board,
+        taskId: job.taskId,
+      });
+      return {
+        taskId: job.taskId,
+        userId: job.userId,
+        status: "skipped",
+        reason: `board '${job.board}' apply-spec is scaffold (TODO(real-account)); not auto-submitting`,
+      };
+    }
   }
 
   // Parse the session in memory. We log NOTHING about its contents.
@@ -120,7 +156,9 @@ export async function processJob(
 
     // Per-job custom résumé: render the tailored HTML → PDF and attach it via the upload
     // path (jobinja's cover-letter replacement). Best-effort — falls back to the profile résumé.
-    if (job.resumeHtml?.trim()) {
+    // Flow boards (JobVision) send the résumé already on the user's provider profile, so
+    // there is nothing to upload and rendering one would just cost a page load.
+    if (!boardFlow && job.resumeHtml?.trim()) {
       try {
         resumePdfPath = await renderResumePdf(context, job.resumeHtml, job.taskId, job.resumeFileName);
       } catch (err) {
@@ -130,11 +168,15 @@ export async function processJob(
         });
       }
     }
-    const runnablePlan = resumePdfPath
-      ? buildApplyPlan(job, applyValuesFor(job, resumePdfPath)) ?? plan
-      : plan;
-
-    const outcome = await runPlan(page, runnablePlan, opts.stepTimeoutMs);
+    const outcome = boardFlow
+      ? await boardFlow(page, opts.stepTimeoutMs)
+      : await runPlan(
+          page,
+          resumePdfPath
+            ? (buildApplyPlan(job, applyValuesFor(job, resumePdfPath)) ?? plan!)
+            : plan!,
+          opts.stepTimeoutMs,
+        );
 
     const proof: Record<string, unknown> = {
       finalUrl: page.url(),
