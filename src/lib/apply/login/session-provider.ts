@@ -15,15 +15,30 @@ import { db as defaultDb } from "@/db";
 import { auditEvents, boardAccounts } from "@/db/schema";
 import { irantalentLoginDriver } from "@/lib/apply/login/irantalent-login";
 import { jobinjaLoginDriver } from "@/lib/apply/login/jobinja-login";
+import { karboomLoginDriver } from "@/lib/apply/login/karboom-login";
 import type { BoardLoginDriver, LoginResult } from "@/lib/apply/login/types";
 import { readCredential, recordLoginOutcome } from "@/lib/vault/credential-store";
 import { encryptSession } from "@/lib/vault/crypto";
 import { findBoardAccountId, upsertSessionBlob, type Board, type VaultStoreDb } from "@/lib/vault/store";
 
-/** سایت‌هایی که ورودِ خودکارِ سمتِ سرور دارند. */
+/**
+ * سایت‌هایی که ورودِ خودکارِ سمتِ سرور دارند — یعنی سرور می‌تواند بدونِ مرورگرِ کاربر
+ * نشست بسازد و نشستِ هفت‌روزه‌ی افزونه را تمدید کند.
+ *
+ * چرا جاب‌ویژن و ای‌استخدام این‌جا نیستند (بررسی‌شده روی سایتِ زنده، ۲۰۲۶-۰۹-۲۰):
+ *   • **ای‌استخدام** — ورودش کدِ یکبارمصرفِ پیامکی است و صفحه‌اش
+ *     `robot_preventing_method: "mosparo"` اعلام می‌کند. نه رمزی هست که replay شود،
+ *     نه می‌توان ضدِربات را دور زد (§۱۰). حتی با رمز هم بدونِ صندوقِ پیامکِ کاربر
+ *     نمی‌شود وارد شد.
+ *   • **جاب‌ویژن** — روی یک identity serverِ OIDC سوار است (id_token/refresh_token،
+ *     `BuildSysLoginUrl`). فرمی برای POST کردنِ رمز وجود ندارد.
+ * برای این دو، نشست فقط از افزونه می‌آید. این محدودیتِ خودِ آن سایت‌هاست، نه کارِ
+ * نکرده‌ی ما.
+ */
 const DRIVERS: Partial<Record<Board, BoardLoginDriver>> = {
   jobinja: jobinjaLoginDriver,
   irantalent: irantalentLoginDriver,
+  karboom: karboomLoginDriver,
 };
 
 export function loginDriverFor(board: Board): BoardLoginDriver | null {

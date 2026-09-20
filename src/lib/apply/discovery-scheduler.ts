@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, exists, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, exists, inArray, sql } from "drizzle-orm";
 
 import { client, db as defaultDb, type Database } from "@/db";
 import {
@@ -127,10 +127,20 @@ export async function listEligibleForServerDiscovery(
   const liveBoards = liveBoardIds();
   if (liveBoards.length === 0 || limit <= 0) return [];
 
-  // کاندیداها = کاربرانِ (تاگلِ سرور روشن) *و* دارای نشستِ معتبرِ یک سایتِ زنده. شرطِ نشست با
+  // کاندیداها = کاربرانِ (تاگلِ سرور روشن) *و* دارای نشستِ یک سایتِ زنده. شرطِ نشست با
   // EXISTS داخلِ همین کوئری اعمال می‌شود — *پیش از* مرتب‌سازی/سقف — تا کاربرانِ بی‌نشست (که
   // هرگز تلاش نمی‌شوند و last_discovery_at شان NULL می‌ماند) پنجره‌ی NULLS-FIRST را اشغال و
   // بقیه را گرسنه نکنند. مرتب بر اساسِ «دیرترین تلاش‌شدن» (چرخشِ منصفانه)، سپس سقفِ دور.
+  //
+  // `expires_at` عمداً **شرط نیست**. پیش‌تر این‌جا نشستِ منقضی کنار گذاشته می‌شد در حالی
+  // که مسیرِ اپلای (readSessionBlob) همان نشست را بی‌چون‌وچرا استفاده می‌کرد — یک سیستم،
+  // دو تعریف از «منقضی». نتیجه‌اش این بود: هفت روز پس از آخرین ضبطِ افزونه، کاربر
+  // بی‌صدا از کشف می‌افتاد و صفش دیگر پر نمی‌شد، در حالی که اپلای هنوز کار می‌کرد.
+  //
+  // و آن تاریخ اصلاً *واقعیت* نبود: افزونه انقضا نمی‌فرستاد و سرور یک TTLِ هفت‌روزه‌ی
+  // حدسی می‌زد. مرجعِ واقعیِ «این نشست زنده است یا نه» خودِ سایت است؛ اگر رد کند،
+  // مکثِ board-cooldown جلوی کوبیدن را می‌گیرد. پس این‌جا هم مثلِ مسیرِ اپلای تلاش
+  // می‌کنیم و قضاوت را به سایت می‌سپاریم.
   const hasLiveSession = exists(
     conn
       .select({ one: sql`1` })
@@ -141,7 +151,6 @@ export async function listEligibleForServerDiscovery(
           eq(boardAccounts.userId, users.id),
           inArray(boardAccounts.board, liveBoards),
           eq(boardAccounts.status, "connected"),
-          or(isNull(sessionBlobs.expiresAt), gt(sessionBlobs.expiresAt, sql`now()`)),
         ),
       ),
   );

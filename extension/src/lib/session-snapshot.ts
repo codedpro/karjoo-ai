@@ -136,6 +136,35 @@ export interface SessionRefreshBody {
  * server expects. Returns null when the snapshot has no material (nothing worth
  * pushing). The server is `.strict()`, so we emit only the allowed keys.
  */
+/**
+ * The furthest-out expiry among the captured PERSISTENT cookies, as ISO — or
+ * undefined when the snapshot has none (all session cookies, or a token board).
+ *
+ * Why send it at all: without an `expiresAt` the server stamps a flat 7-day TTL,
+ * which is a guess that is wrong in both directions. A board handing out a
+ * month-long "remember me" cookie got artificially retired after a week, and the
+ * user had to reopen their browser for no reason. The cookie's own lifetime is
+ * the best evidence we have, and we already capture it.
+ *
+ * `MAX` caps how far we will vouch for a session regardless of what the cookie
+ * claims: a two-year cookie does not mean the board will honour the session that
+ * long, and over-promising is worse than re-capturing.
+ */
+const MAX_VOUCHED_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function latestCookieExpiry(
+  snap: SessionSnapshot,
+  now: number = Date.now(),
+): string | undefined {
+  const times = (snap.cookies ?? [])
+    .map((cookie) => cookie.expirationDate)
+    .filter((seconds): seconds is number => typeof seconds === "number" && Number.isFinite(seconds))
+    .map((seconds) => seconds * 1000)
+    .filter((ms) => ms > now);
+  if (times.length === 0) return undefined;
+  return new Date(Math.min(Math.max(...times), now + MAX_VOUCHED_TTL_MS)).toISOString();
+}
+
 export function buildSessionRefreshBody(
   snap: SessionSnapshot,
   userAgent?: string,
@@ -152,7 +181,8 @@ export function buildSessionRefreshBody(
     ...(userAgent ? { userAgent } : {}),
     capturedAt: new Date(snap.capturedAt).toISOString(),
   };
-  return { board: snap.board, session };
+  const expiresAt = latestCookieExpiry(snap);
+  return { board: snap.board, session, ...(expiresAt ? { expiresAt } : {}) };
 }
 
 /**
