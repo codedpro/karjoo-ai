@@ -93,6 +93,19 @@ export function isNativeProfileResumeBoard(board: string): boolean {
   return board === "jobvision" || board === "irantalent";
 }
 
+/**
+ * PURE: the résumé to record as "what was sent" for an application, if any.
+ *
+ * Boards that upload the per-ad PDF (jobinja, e-estekhdam, karboom) sent the
+ * tailored résumé; boards that use the provider's own profile résumé (JobVision,
+ * IranTalent) did not, so linking one there would show a document the employer
+ * never received.
+ */
+export function sentResumeIdFor(board: string, tailoredResumeId: string | undefined): string | undefined {
+  if (!tailoredResumeId) return undefined;
+  return isNativeProfileResumeBoard(board) ? undefined : tailoredResumeId;
+}
+
 /** آیا payloadِ این task فیلترمود است؟ (اپلای بر اساسِ فیلترِ سایت، بدونِ AI). */
 export function isFilterModeTask(payload: unknown): boolean {
   return (
@@ -400,6 +413,16 @@ export async function recordResult(
       ? `${found.board}_submission_unconfirmed: awaiting provider history verification`
       : input.reason ?? null;
 
+  // Which résumé actually went out. Every board that UPLOADS a per-ad PDF sends
+  // the tailored one — jobinja, e-estekhdam, karboom. This used to be
+  // `board === "jobinja"`, written when jobinja was the only uploading board, so
+  // every e-estekhdam application was recorded with no résumé and the archive
+  // told the user it had "probably gone with the site's own profile résumé" —
+  // untrue: the e-estekhdam adapter refuses to apply without the tailored PDF.
+  // JobVision and IranTalent send the profile résumé; linking one there would
+  // show the user a document the employer never received.
+  const sentResumeId = sentResumeIdFor(found.board, tailored?.id);
+
   // ۲) ردیفِ applications را upsert کن (یکتا روی matchId).
   const [application] = await conn
     .insert(applications)
@@ -408,7 +431,7 @@ export async function recordResult(
       matchId: found.matchId,
       listingId: found.listingId,
       // رزومه‌ی واقعاً ارسال‌شده (سفارشیِ همین آگهی) — ستونِ بایگانی.
-      ...(tailored && found.board === "jobinja" ? { resumeId: tailored.id } : {}),
+      ...(sentResumeId ? { resumeId: sentResumeId } : {}),
       status: appStatus,
       channel: "extension",
       matchScore: found.matchScore,
@@ -424,7 +447,7 @@ export async function recordResult(
       set: {
         status: appStatus,
         channel: "extension",
-        ...(tailored && found.board === "jobinja" ? { resumeId: tailored.id } : {}),
+        ...(sentResumeId ? { resumeId: sentResumeId } : {}),
         reason,
         externalRef: input.externalRef ?? null,
         proof: input.proof ?? null,

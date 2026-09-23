@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { isFilterModeTask } from "@/lib/apply/extension-queue";
+import { isFilterModeTask, sentResumeIdFor } from "@/lib/apply/extension-queue";
 
 describe("isFilterModeTask", () => {
   it("payload با mode='filter' → true", () => {
@@ -58,5 +58,25 @@ describe("claimUserApplyItems — معافیتِ انتخابِ کاربر", () 
     expect(src).toMatch(/hasSubmissionEvidence/);
     expect(src).toMatch(/awaiting provider history verification/);
     expect(src).toMatch(/\? "verifying"/);
+  });
+});
+
+describe("sentResumeIdFor — which résumé the archive says was sent", () => {
+  it("links the tailored résumé on every board that uploads the per-ad PDF", () => {
+    // e-estekhdam and karboom were missed: the rule used to be jobinja-only,
+    // so 126 e-estekhdam applications showed "no résumé" in the archive.
+    for (const board of ["jobinja", "e-estekhdam", "karboom"]) {
+      expect(sentResumeIdFor(board, "r1"), board).toBe("r1");
+    }
+  });
+
+  it("never links one where the provider's own profile résumé was sent", () => {
+    for (const board of ["jobvision", "irantalent"]) {
+      expect(sentResumeIdFor(board, "r1"), board).toBeUndefined();
+    }
+  });
+
+  it("links nothing when no tailored résumé exists", () => {
+    expect(sentResumeIdFor("e-estekhdam", undefined)).toBeUndefined();
   });
 });
