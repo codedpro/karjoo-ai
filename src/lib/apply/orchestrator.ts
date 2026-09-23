@@ -41,6 +41,7 @@ import {
   readFilterCursor,
 } from "@/lib/apply/filter-cursor";
 import { getConnector, isBoardLive, liveBoardIds } from "@/lib/apply/registry";
+import { deriveListingAttributes } from "@/lib/apply/listing-attributes";
 import {
   isFreshJobPosting,
   MAX_PROVIDER_SYNC_AGE_DAYS,
@@ -240,6 +241,26 @@ function toCandidateProfile(
 }
 
 /** آگهی نرمال‌شده را upsert می‌کند (بر اساس canonicalId) و خام را ضبط می‌کند. */
+/**
+ * The unified description of a listing — category, job type, remote, clean city —
+ * derived identically for every board so the job finder's filters mean the same
+ * thing on every site. Written on every insert AND update, so a listing whose
+ * title changed is re-described.
+ */
+function unifiedAttributeColumns(job: Pick<JobListing, "title" | "description" | "city">) {
+  const attributes = deriveListingAttributes({
+    title: job.title,
+    description: job.description ?? null,
+    city: job.city ?? null,
+  });
+  return {
+    category: attributes.category,
+    employmentType: attributes.employmentType,
+    isRemote: attributes.remote,
+    cityNorm: attributes.city,
+  };
+}
+
 async function upsertListing(
   listing: JobListing,
 ): Promise<{ row: JobListingRow; isNew: boolean }> {
@@ -262,6 +283,7 @@ async function upsertListing(
     postedAt: toPostedDate(listing.postedAt),
     lastSeenAt: new Date(),
     updatedAt: new Date(),
+    ...unifiedAttributeColumns(listing),
   };
 
   const [row] = await db
@@ -277,6 +299,10 @@ async function upsertListing(
         description: values.description,
         salary: values.salary,
         postedAt: values.postedAt,
+        category: values.category,
+        employmentType: values.employmentType,
+        isRemote: values.isRemote,
+        cityNorm: values.cityNorm,
         lastSeenAt: values.lastSeenAt,
         updatedAt: values.updatedAt,
       },
@@ -498,6 +524,7 @@ async function persistListingWith(
         salary: job.salary ?? null,
         postedAt: toPostedDate(job.postedAt),
         lastSeenAt: sql`now()`,
+        ...unifiedAttributeColumns(job),
       })
     .onConflictDoUpdate({
       target: jobListings.canonicalId,
@@ -509,6 +536,10 @@ async function persistListingWith(
         description: sql`excluded.description`,
         salary: sql`excluded.salary`,
         postedAt: sql`excluded.posted_at`,
+        category: sql`excluded.category`,
+        employmentType: sql`excluded.employment_type`,
+        isRemote: sql`excluded.is_remote`,
+        cityNorm: sql`excluded.city_norm`,
         lastSeenAt: sql`now()`,
         updatedAt: sql`now()`,
       },

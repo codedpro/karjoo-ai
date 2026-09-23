@@ -63,7 +63,7 @@ export function PasswordLoginForm() {
           inputMode="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
+          placeholder="نشانیِ ایمیل"
           className="focus-ring w-full border border-hairline-strong bg-night-900 px-3 py-2.5 text-sm text-bone placeholder:text-whisper"
         />
       </label>

@@ -6,6 +6,12 @@ import { db as defaultDb, type Database } from "@/db";
 import type { JobBoardId } from "@/lib/apply/types";
 import { isBoardApplyable, PROVIDER_CAPABILITIES } from "@/lib/apply/registry";
 import { MAX_PROVIDER_SYNC_AGE_DAYS } from "@/lib/apply/freshness";
+import {
+  ACTIVE_BOARDS,
+  parseUnifiedJobFilters,
+  type EmploymentTypeFilter,
+  type UnifiedJobFilters,
+} from "@/lib/apply/job-filter-options";
 
 export const JOB_SORTS = ["newest", "score", "company", "provider"] as const;
 export type JobSort = (typeof JOB_SORTS)[number];
@@ -20,6 +26,11 @@ export interface JobsQuery {
   q?: string | null;
   board?: string | null;
   city?: string | null;
+  category?: string | null;
+  type?: string | null;
+  /** "1"/true when parsed from a URL or passed back already parsed. */
+  remote?: string | boolean | null;
+  posted?: string | number | null;
   status?: string | null;
   applied?: string | null;
   sort?: JobSort;
@@ -28,10 +39,7 @@ export interface JobsQuery {
   pageSize?: number;
 }
 
-export interface ParsedJobsQuery {
-  q: string | null;
-  board: JobBoardId | null;
-  city: string | null;
+export interface ParsedJobsQuery extends UnifiedJobFilters {
   status: JobMatchStatus | null;
   applied: "all" | "not_applied" | "applied";
   sort: JobSort;
@@ -48,6 +56,11 @@ export interface UnifiedJobRow {
   title: string;
   company: string | null;
   city: string | null;
+  /** Unified attributes — the same vocabulary on every board. */
+  category: string | null;
+  employmentType: EmploymentTypeFilter | null;
+  isRemote: boolean;
+  cityNorm: string | null;
   url: string;
   description: string | null;
   salary: string | null;
@@ -78,11 +91,9 @@ export interface UnifiedJobsPage {
 }
 
 export function parseJobsQuery(params: Record<string, string | undefined>): ParsedJobsQuery {
-  const q = params.q?.trim() ? params.q.trim().slice(0, 80) : null;
-  const board = Object.keys(PROVIDER_CAPABILITIES).includes(params.board ?? "")
-    ? (params.board as JobBoardId)
-    : null;
-  const city = params.city?.trim() ? params.city.trim().slice(0, 80) : null;
+  // The shared filters (search, site, category, city, job type, remote, posted)
+  // come from ONE parser so every list reads a URL the same way.
+  const unified = parseUnifiedJobFilters(params);
   const status = (JOB_MATCH_STATUSES as readonly string[]).includes(params.status ?? "")
     ? (params.status as JobMatchStatus)
     : null;
@@ -97,7 +108,7 @@ export function parseJobsQuery(params: Record<string, string | undefined>): Pars
   const pageSize = Number.isFinite(rawSize)
     ? Math.min(MAX_JOB_PAGE_SIZE, Math.max(5, rawSize))
     : DEFAULT_JOB_PAGE_SIZE;
-  return { q, board, city, status, applied, sort, dir, page, pageSize };
+  return { ...unified, status, applied, sort, dir, page, pageSize };
 }
 
 const JOB_KEY_L = sql.raw(
@@ -129,23 +140,53 @@ function providerAppsCte(userId: string | null) {
   `;
 }
 
-function whereSql(query: ParsedJobsQuery) {
-  const filters = [
-    sql`l.posted_at >= now() - (${MAX_PROVIDER_SYNC_AGE_DAYS}::text || ' days')::interval`,
-  ];
-
-  if (query.board) filters.push(sql`l.board = ${query.board}`);
-  if (query.city) filters.push(sql`l.city ilike ${"%" + query.city + "%"}`);
-  if (query.status) filters.push(sql`m.status = ${query.status}`);
-  if (query.q) {
-    const q = "%" + query.q + "%";
-    filters.push(sql`
-      (l.title ilike ${q}
-        or l.company ilike ${q}
-        or l.city ilike ${q}
-        or l.description ilike ${q})
+/**
+ * The WHERE clause every job list shares. Job lists are restricted to fresh
+ * listings on the active sites: listings from boards Karjoo cannot apply on (or
+ * hand-entered ones) are not advertised as if they were. The archive of what was
+ * already sent passes `history: true` — an application from two months ago must
+ * stay findable with the very same filters.
+ */
+export function unifiedListingWhere(
+  filters: UnifiedJobFilters,
+  alias = "l",
+  opts: { history?: boolean } = {},
+) {
+  const col = (name: string) => sql.raw(`${alias}.${name}`);
+  const parts = opts.history
+    ? []
+    : [
+        sql`${col("posted_at")} >= now() - (${MAX_PROVIDER_SYNC_AGE_DAYS}::text || ' days')::interval`,
+        sql`${col("board")}::text in (${sql.join(
+          ACTIVE_BOARDS.map((b) => sql`${b}`),
+          sql`, `,
+        )})`,
+      ];
+  if (filters.board) parts.push(sql`${col("board")} = ${filters.board}`);
+  if (filters.category) parts.push(sql`${col("category")} = ${filters.category}`);
+  if (filters.type) parts.push(sql`${col("employment_type")} = ${filters.type}`);
+  if (filters.remote) parts.push(sql`${col("is_remote")}`);
+  if (filters.posted) {
+    parts.push(sql`${col("posted_at")} >= now() - (${filters.posted}::text || ' days')::interval`);
+  }
+  // City is a picked value from the cleaned city list; the prefix match keeps a
+  // hand-typed «تهران» working too.
+  if (filters.city) parts.push(sql`${col("city_norm")} ilike ${filters.city + "%"}`);
+  if (filters.q) {
+    const q = "%" + filters.q + "%";
+    parts.push(sql`
+      (${col("title")} ilike ${q}
+        or ${col("company")} ilike ${q}
+        or ${col("city")} ilike ${q}
+        or ${col("description")} ilike ${q})
     `);
   }
+  return parts;
+}
+
+function whereSql(query: ParsedJobsQuery) {
+  const filters = unifiedListingWhere(query);
+  if (query.status) filters.push(sql`m.status = ${query.status}`);
   if (query.applied === "not_applied") {
     filters.push(sql`app.id is null and provider_app.id is null`);
   } else if (query.applied === "applied") {
@@ -176,6 +217,10 @@ export async function listUnifiedJobsPage(
     q: query.q ?? undefined,
     board: query.board ?? undefined,
     city: query.city ?? undefined,
+    category: query.category ?? undefined,
+    type: query.type ?? undefined,
+    remote: query.remote === true || query.remote === "1" ? "1" : undefined,
+    posted: query.posted != null ? String(query.posted) : undefined,
     status: query.status ?? undefined,
     applied: query.applied ?? undefined,
     sort: query.sort,
@@ -210,6 +255,10 @@ export async function listUnifiedJobsPage(
       l.title,
       l.company,
       l.city,
+      l.category,
+      l.employment_type,
+      l.is_remote,
+      l.city_norm,
       l.url,
       l.description,
       l.salary,
@@ -257,6 +306,10 @@ export async function listUnifiedJobsPage(
       title: row.title as string,
       company: (row.company as string | null) ?? null,
       city: (row.city as string | null) ?? null,
+      category: (row.category as string | null) ?? null,
+      employmentType: (row.employment_type as EmploymentTypeFilter | null) ?? null,
+      isRemote: row.is_remote === true,
+      cityNorm: (row.city_norm as string | null) ?? null,
       url: row.url as string,
       description: (row.description as string | null) ?? null,
       salary: (row.salary as string | null) ?? null,
@@ -286,4 +339,26 @@ export async function listUnifiedJobsPage(
     pageSize: parsed.pageSize,
     pageCount: Math.max(1, Math.ceil(filteredTotal / parsed.pageSize)),
   };
+}
+
+
+/**
+ * The cities to offer in the city filter: the cleaned city names that actually
+ * have live listings on the active sites, busiest first.
+ */
+export async function listJobCityOptions(
+  limit = 40,
+  deps: { db?: Database } = {},
+): Promise<Array<{ city: string; count: number }>> {
+  const conn = deps.db ?? defaultDb;
+  const rows = (await conn.execute(sql`
+    select l.city_norm as city, count(*)::int as n
+      from job_listings l
+     where l.city_norm is not null
+       and ${sql.join(unifiedListingWhere(parseUnifiedJobFilters({})), sql` and `)}
+     group by l.city_norm
+     order by n desc
+     limit ${limit}
+  `)) as unknown as { city: string; n: number }[];
+  return rows.map((row) => ({ city: row.city, count: row.n }));
 }

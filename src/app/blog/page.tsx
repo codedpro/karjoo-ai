@@ -26,7 +26,7 @@ export default async function BlogIndex() {
           <div className="rounded-2xl border border-dashed border-border bg-card/50 p-12 text-center text-muted">
             <p className="text-lg font-bold text-foreground">هنوز مقاله‌ای منتشر نشده است</p>
             <p className="mt-2 text-sm">
-              به‌محض انتشار محتوا در موتور IT Master، مقاله‌ها همین‌جا نمایش داده می‌شوند.
+              به‌محض انتشار محتوا در سامانه‌ی محتوای کارجو، مقاله‌ها همین‌جا نمایش داده می‌شوند.
             </p>
           </div>
         ) : (

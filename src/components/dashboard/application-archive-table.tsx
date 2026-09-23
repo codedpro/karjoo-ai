@@ -13,12 +13,14 @@
  *   • قاب `TableFrame` است: اسکرولِ افقی *درونِ* کارت مهار می‌شود و ستون‌های کم‌اهمیت‌تر
  *     (مسیرِ ارسال) در نمایشگرِ باریک پنهان‌اند، پس دیگر `min-w` کور به همه تحمیل نمی‌شود.
  *
- * داده از سرور می‌آید (RSC) و این کامپوننت فقط تعامل (مودال/جست‌وجو) را می‌سازد.
+ * داده (از پیش فیلترشده با فرمِ یکپارچه‌ی شغل‌ها) از سرور می‌آید؛ این کامپوننت فقط
+ * مودالِ شرحِ شغل را می‌سازد.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge, TableFrame, toFaDigits } from "@/components/dashboard/ui";
-import { IconClose, IconSearch } from "@/components/dashboard/icons";
+import { IconClose } from "@/components/dashboard/icons";
+import { BOARD_LABELS, categoryLabel, isActiveBoard } from "@/lib/apply/job-filter-options";
 
 export interface ArchiveRow {
   id: string;
@@ -34,6 +36,7 @@ export interface ArchiveRow {
     city: string | null;
     url: string;
     board: string;
+    category: string | null;
     description: string | null;
   };
   resume: { id: string; title: string | null } | null;
@@ -72,18 +75,7 @@ const ROW_BUTTON =
   "focus-ring inline-flex items-center rounded-lg border border-border px-3 py-1.5 text-xs transition-colors hover:border-brand/50 hover:text-brand";
 
 export function ApplicationArchiveTable({ rows }: { rows: ArchiveRow[] }) {
-  const [query, setQuery] = useState("");
   const [openJd, setOpenJd] = useState<ArchiveRow | null>(null);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      [r.listing.title, r.listing.company, r.listing.city].some((v) =>
-        (v ?? "").toLowerCase().includes(q),
-      ),
-    );
-  }, [rows, query]);
 
   // بستنِ مودال با Esc — انتظارِ پایه‌ی هر دیالوگ؛ نبودش کاربر را گیر می‌انداخت.
   useEffect(() => {
@@ -97,26 +89,6 @@ export function ApplicationArchiveTable({ rows }: { rows: ArchiveRow[] }) {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <label className="relative w-full max-w-xs sm:w-64">
-          <span className="sr-only">جست‌وجو در عنوانِ شغل یا نامِ شرکت</span>
-          <IconSearch
-            className="pointer-events-none absolute inset-y-0 inset-s-3 my-auto h-4 w-4 text-muted"
-            aria-hidden
-          />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="جست‌وجو در عنوان یا شرکت…"
-            className="focus-ring w-full rounded-xl border border-border bg-card py-2 pe-3 ps-9 text-sm placeholder:text-muted/70"
-          />
-        </label>
-        <span className="text-xs text-muted">
-          {toFaDigits(filtered.length)} از {toFaDigits(rows.length)} ارسال
-        </span>
-      </div>
-
       <TableFrame minWidth="34rem">
         <table className="w-full text-right text-sm">
           <thead className="border-b border-border bg-surface/60 text-xs text-muted">
@@ -131,7 +103,7 @@ export function ApplicationArchiveTable({ rows }: { rows: ArchiveRow[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {filtered.map((r) => {
+            {rows.map((r) => {
               const st = STATUS_LABEL[r.status] ?? { fa: r.status, tone: "muted" as const };
               return (
                 <tr key={r.id} className="align-top transition-colors hover:bg-foreground/2">
@@ -145,8 +117,14 @@ export function ApplicationArchiveTable({ rows }: { rows: ArchiveRow[] }) {
                       {r.listing.title}
                     </a>
                     <div className="mt-0.5 text-xs text-muted">
-                      {r.listing.company ?? "—"}
-                      {r.listing.city ? ` · ${r.listing.city}` : ""}
+                      {[
+                        r.listing.company ?? "—",
+                        r.listing.city,
+                        isActiveBoard(r.listing.board) ? BOARD_LABELS[r.listing.board] : null,
+                        categoryLabel(r.listing.category),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </div>
                   </td>
                   <td className="ltr-nums whitespace-nowrap px-4 py-3 text-xs text-muted">

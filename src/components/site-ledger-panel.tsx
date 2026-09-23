@@ -16,21 +16,20 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 type Row = {
   t: string; // HH:MM (Persian digits, LTR)
-  board: string; // real board slug
+  board: string; // real board (Persian name)
   cat: string; // real Jobinja category (fa)
-  model: string; // which model wrote the cover letter
 };
 
 // Real boards + real Jobinja categories (from /api/v10/job/categories).
 const ROWS: Row[] = [
-  { t: "۰۲:۰۴", board: "jobinja", cat: "وب و برنامه‌نویسی", model: "gpt-4o" },
-  { t: "۰۲:۱۷", board: "jobvision", cat: "پشتیبانی و مشتریان", model: "claude" },
-  { t: "۰۲:۳۱", board: "jobinja", cat: "IT / DevOps / Server", model: "gpt-4o" },
-  { t: "۰۲:۴۸", board: "e-estekhdam", cat: "مالی و حسابداری", model: "gemini" },
-  { t: "۰۳:۰۵", board: "karboom", cat: "بازاریابی و فروش", model: "claude" },
-  { t: "۰۳:۲۲", board: "jobinja", cat: "طراحی و گرافیک", model: "gpt-4o" },
-  { t: "۰۳:۴۰", board: "jobvision", cat: "منابع انسانی", model: "gemini" },
-  { t: "۰۳:۵۶", board: "jobinja", cat: "آموزش", model: "claude" },
+  { t: "۰۲:۰۴", board: "جابینجا", cat: "وب و برنامه‌نویسی" },
+  { t: "۰۲:۱۷", board: "جاب‌ویژن", cat: "پشتیبانی و مشتریان" },
+  { t: "۰۲:۳۱", board: "ایران‌تلنت", cat: "شبکه و زیرساخت" },
+  { t: "۰۲:۴۸", board: "ای‌استخدام", cat: "مالی و حسابداری" },
+  { t: "۰۳:۰۵", board: "کاربوم", cat: "بازاریابی و فروش" },
+  { t: "۰۳:۲۲", board: "جابینجا", cat: "طراحی و گرافیک" },
+  { t: "۰۳:۴۰", board: "جاب‌ویژن", cat: "منابع انسانی" },
+  { t: "۰۳:۵۶", board: "ایران‌تلنت", cat: "آموزش" },
 ];
 
 function LedgerRow({ r, isNew }: { r: Row; isNew?: boolean }) {
@@ -39,23 +38,15 @@ function LedgerRow({ r, isNew }: { r: Row; isNew?: boolean }) {
       <span className="ltr-nums shrink-0 font-mono text-bone-dim" dir="ltr">
         {r.t}
       </span>
-      <span
-        className="ltr-nums shrink-0 bg-night-700 px-1.5 py-0.5 font-mono text-[11px] text-bone-soft"
-        dir="ltr"
-      >
+      <span className="shrink-0 bg-night-700 px-1.5 py-0.5 text-[11px] text-bone-soft" dir="rtl">
         {r.board}
       </span>
-      <span className="min-w-0 flex-1 truncate text-bone-soft">{r.cat}</span>
+      <span className="min-w-0 flex-1 truncate text-bone-soft" dir="rtl">
+        {r.cat}
+      </span>
       <span className="inline-flex shrink-0 items-center gap-1 font-medium text-jade">
         <span aria-hidden>✓</span>
         <span className="hidden sm:inline">اپلای شد</span>
-      </span>
-      <span
-        className="ltr-nums hidden shrink-0 border border-hairline-strong px-2 py-0.5 font-mono text-[10px] text-bone-dim md:inline"
-        dir="ltr"
-        title="cover letter model"
-      >
-        {r.model}
         {isNew ? <span className="ml-0.5 animate-pulse text-persimmon">▍</span> : null}
       </span>
     </div>
@@ -100,8 +91,8 @@ export function LedgerPanel() {
       <div className="flex items-center justify-between border-b border-hairline bg-night-950 px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="dot-live" />
-          <span className="font-mono text-xs text-bone-soft" dir="ltr">
-            karjoo <span className="text-bone-dim">— night shift</span>
+          <span className="text-xs text-bone-soft" dir="rtl">
+            کارجو <span className="text-bone-dim">— شیفتِ شب</span>
           </span>
         </div>
         <span className="text-[11px] text-jade">

@@ -572,9 +572,21 @@ export const jobListings = pgTable(
     ingestedAt: timestamp("ingested_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * One vocabulary for every board (lib/apply/listing-attributes.ts), derived on
+     * ingest so the job finder can offer filters that mean the same on every site.
+     * Null = could not be placed; such a job still shows under "all".
+     */
+    category: text("category"),
+    employmentType: text("employment_type"),
+    isRemote: boolean("is_remote").notNull().default(false),
+    cityNorm: text("city_norm"),
   },
   (t) => [
     uniqueIndex("job_listings_canonical_uq").on(t.canonicalId),
+    index("job_listings_category_idx").on(t.category),
+    index("job_listings_city_norm_idx").on(t.cityNorm),
+    index("job_listings_posted_idx").on(t.postedAt),
     uniqueIndex("job_listings_board_external_uq").on(t.board, t.externalId),
     index("job_listings_board_idx").on(t.board),
     index("job_listings_city_idx").on(t.city),

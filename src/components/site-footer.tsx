@@ -16,8 +16,9 @@ export function SiteFooter() {
         <div>
           <h3 className="tracker-fa mb-3 text-whisper">محصول</h3>
           <ul className="space-y-2 text-sm text-bone-soft">
-            <li><Link href="#features" className="hover:text-persimmon">امکانات</Link></li>
-            <li><Link href="#how" className="hover:text-persimmon">چطور کار می‌کند</Link></li>
+            <li><Link href="/jobs" className="hover:text-persimmon">کاریاب</Link></li>
+            <li><Link href="/#caps" className="hover:text-persimmon">امکانات</Link></li>
+            <li><Link href="/#how" className="hover:text-persimmon">چطور کار می‌کند</Link></li>
             <li><Link href="/blog" className="hover:text-persimmon">وبلاگ</Link></li>
           </ul>
         </div>
@@ -26,7 +27,7 @@ export function SiteFooter() {
           <h3 className="tracker-fa mb-3 text-whisper">سایت‌های کاریابی</h3>
           <ul className="space-y-2 text-sm text-bone-soft">
             {site.boards.map((b) => (
-              <li key={b.en}>{b.name}</li>
+              <li key={b.id}>{b.name}</li>
             ))}
           </ul>
         </div>
@@ -46,7 +47,7 @@ export function SiteFooter() {
             </a>
           </p>
           <ThemeSwitch />
-          <p className="ltr-nums">ساخته‌شده با هوش مصنوعی · Powered by IT Master</p>
+          <p>ساخته‌ی تیمِ آی‌تی مستر</p>
         </div>
       </div>
     </footer>

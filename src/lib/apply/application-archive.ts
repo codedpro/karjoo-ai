@@ -10,10 +10,12 @@ import "server-only";
  *
  * همه‌ی کوئری‌ها مقید به `userId` نشست‌اند (قاعده‌ی ۴) — هرگز cross-user.
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import { applications, jobListings, resumes } from "@/db/schema";
+import { unifiedListingWhere } from "@/lib/apply/jobs-query";
+import { parseUnifiedJobFilters, type UnifiedJobFilters } from "@/lib/apply/job-filter-options";
 
 export type ArchiveDb = typeof defaultDb;
 
@@ -32,6 +34,7 @@ export interface ArchivedApplication {
     city: string | null;
     url: string;
     board: string;
+    category: string | null;
     /** شرحِ کاملِ آگهی — در مودال نمایش داده می‌شود. */
     description: string | null;
   };
@@ -45,6 +48,37 @@ export async function listApplicationArchive(
   limit = 100,
   conn: ArchiveDb = defaultDb,
 ): Promise<ArchivedApplication[]> {
+  const page = await listApplicationArchivePage(
+    userId,
+    { filters: parseUnifiedJobFilters({}), page: 1, pageSize: Math.max(1, Math.min(limit, 500)) },
+    conn,
+  );
+  return page.items;
+}
+
+export const ARCHIVE_PAGE_SIZE = 25;
+
+/**
+ * یک صفحه از بایگانی با همان فیلترهای یکپارچه‌ی کاریاب (جست‌وجو، سایت، دسته، شهر،
+ * نوعِ همکاری، دورکاری). جست‌وجو پیش‌تر در مرورگر و فقط روی ۲۰۰ ردیفِ آخر و فقط عنوان
+ * و شرکت انجام می‌شد؛ حالا در پایگاه‌داده و روی کلِ سابقه است.
+ */
+export async function listApplicationArchivePage(
+  userId: string,
+  opts: { filters: UnifiedJobFilters; page: number; pageSize?: number },
+  conn: ArchiveDb = defaultDb,
+): Promise<{ items: ArchivedApplication[]; total: number; page: number; pageCount: number }> {
+  const pageSize = opts.pageSize ?? ARCHIVE_PAGE_SIZE;
+  const filters = unifiedListingWhere(opts.filters, "job_listings", { history: true });
+  const where = and(eq(applications.userId, userId), ...filters);
+  const [{ total }] = await conn
+    .select({ total: count() })
+    .from(applications)
+    .innerJoin(jobListings, eq(applications.listingId, jobListings.id))
+    .where(where);
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, opts.page), pageCount);
+
   const rows = await conn
     .select({
       id: applications.id,
@@ -57,8 +91,10 @@ export async function listApplicationArchive(
       title: jobListings.title,
       company: jobListings.company,
       city: jobListings.city,
+      cityNorm: jobListings.cityNorm,
       url: jobListings.url,
       board: jobListings.board,
+      category: jobListings.category,
       description: jobListings.description,
       resumeId: resumes.id,
       resumeTitle: resumes.title,
@@ -66,11 +102,12 @@ export async function listApplicationArchive(
     .from(applications)
     .innerJoin(jobListings, eq(applications.listingId, jobListings.id))
     .leftJoin(resumes, eq(applications.resumeId, resumes.id))
-    .where(eq(applications.userId, userId))
+    .where(where)
     .orderBy(desc(applications.createdAt))
-    .limit(Math.max(1, Math.min(limit, 500)));
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
 
-  return rows.map((r) => ({
+  const items = rows.map((r) => ({
     id: r.id,
     status: r.status,
     channel: r.channel,
@@ -81,13 +118,15 @@ export async function listApplicationArchive(
     listing: {
       title: r.title,
       company: r.company,
-      city: r.city,
+      city: r.cityNorm ?? r.city,
       url: r.url,
       board: r.board,
+      category: r.category,
       description: r.description,
     },
     resume: r.resumeId ? { id: r.resumeId, title: r.resumeTitle } : null,
   }));
+  return { items, total, page, pageCount };
 }
 
 /**

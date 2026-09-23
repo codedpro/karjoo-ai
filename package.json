@@ -13,6 +13,7 @@
     "resumes:custom": "tsx --conditions=react-server scripts/generate-custom-resumes.mts",
     "repair:provider-failures": "tsx --conditions=react-server scripts/repair-recent-provider-failures.ts",
     "preflight:server-apply": "tsx --conditions=react-server scripts/server-apply-preflight.ts",
+    "backfill:listing-attributes": "tsx --conditions=react-server scripts/backfill-listing-attributes.ts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

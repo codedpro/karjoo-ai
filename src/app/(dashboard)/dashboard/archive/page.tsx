@@ -31,7 +31,15 @@ import {
   ApplicationArchiveTable,
   type ArchiveRow,
 } from "@/components/dashboard/application-archive-table";
-import { listApplicationArchive } from "@/lib/apply/application-archive";
+import { JobFiltersForm } from "@/components/jobs/job-filters-form";
+import { listApplicationArchivePage } from "@/lib/apply/application-archive";
+import { listJobCityOptions } from "@/lib/apply/jobs-query";
+import {
+  hasActiveFilters,
+  parseUnifiedJobFilters,
+  unifiedFiltersToParams,
+  type UnifiedJobFilters,
+} from "@/lib/apply/job-filter-options";
 import { SectionTabs, APPLY_TABS } from "@/components/dashboard/section-tabs";
 
 export const runtime = "nodejs";
@@ -41,9 +49,24 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function ArchivePage() {
+const BASE = "/dashboard/archive";
+
+export default async function ArchivePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await getDashboardUser();
   if (!user) redirect("/login");
+
+  const [raw, cities] = await Promise.all([searchParams, listJobCityOptions()]);
+  const flat: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    flat[key] = Array.isArray(value) ? value[0] : value;
+  }
+  // همان فیلترهای کاریاب و صفحه‌ی شغل‌ها — «تاریخِ انتشار» این‌جا معنا ندارد.
+  const filters: UnifiedJobFilters = { ...parseUnifiedJobFilters(flat), posted: null };
+  const page = Math.max(1, Number.parseInt(flat.page ?? "1", 10) || 1);
 
   return (
     <div className="space-y-6">
@@ -61,8 +84,10 @@ export default async function ArchivePage() {
         جابینجا» برو.
       </Callout>
 
-      <Suspense fallback={<ArchiveSkeleton />}>
-        <ArchiveSection userId={user.userId} />
+      <JobFiltersForm action={BASE} filters={filters} cities={cities} showPosted={false} />
+
+      <Suspense key={JSON.stringify({ filters, page })} fallback={<ArchiveSkeleton />}>
+        <ArchiveSection userId={user.userId} filters={filters} page={page} />
       </Suspense>
     </div>
   );
@@ -70,8 +95,19 @@ export default async function ArchivePage() {
 
 /* ───────────────────────── بخشِ async (Suspense) ───────────────────────── */
 
-async function ArchiveSection({ userId }: { userId: string }) {
-  const items = await listApplicationArchive(userId, 200);
+async function ArchiveSection({
+  userId,
+  filters,
+  page: requestedPage,
+}: {
+  userId: string;
+  filters: UnifiedJobFilters;
+  page: number;
+}) {
+  const { items, total, page, pageCount } = await listApplicationArchivePage(userId, {
+    filters,
+    page: requestedPage,
+  });
 
   // تاریخ‌ها برای مرزِ سرور→کلاینت باید سریال‌پذیر باشند.
   const rows: ArchiveRow[] = items.map((i) => ({
@@ -81,6 +117,20 @@ async function ArchiveSection({ userId }: { userId: string }) {
   }));
 
   if (rows.length === 0) {
+    if (hasActiveFilters(filters)) {
+      return (
+        <EmptyState
+          icon={<IconArchive />}
+          title="با این فیلترها ارسالی پیدا نشد"
+          body="یکی دو فیلتر را بردار یا جست‌وجو را کوتاه‌تر کن."
+          action={
+            <ButtonLink href={BASE} variant="secondary" size="sm">
+              نمایشِ همه‌ی ارسال‌ها
+            </ButtonLink>
+          }
+        />
+      );
+    }
     return (
       <EmptyState
         icon={<IconArchive />}
@@ -96,30 +146,45 @@ async function ArchiveSection({ userId }: { userId: string }) {
     );
   }
 
-  const withResume = rows.filter((r) => r.resume).length;
+  const pageHref = (n: number) => {
+    const params = new URLSearchParams(unifiedFiltersToParams(filters));
+    if (n > 1) params.set("page", String(n));
+    const qs = params.toString();
+    return qs ? `${BASE}?${qs}` : BASE;
+  };
 
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted">
-        از {toFaDigits(rows.length)} ارسال، برای {toFaDigits(withResume)} مورد رزومه‌ی
-        سفارشیِ همان آگهی ذخیره شده است.
+        {toFaDigits(total)} ارسال
+        {pageCount > 1 ? ` — صفحه‌ی ${toFaDigits(page)} از ${toFaDigits(pageCount)}` : ""}
       </p>
       <ApplicationArchiveTable rows={rows} />
+      {pageCount > 1 ? (
+        <nav aria-label="صفحه‌ها" className="flex flex-wrap items-center justify-center gap-2">
+          {page > 1 ? (
+            <ButtonLink href={pageHref(page - 1)} variant="secondary" size="sm">
+              صفحه‌ی قبل
+            </ButtonLink>
+          ) : null}
+          {page < pageCount ? (
+            <ButtonLink href={pageHref(page + 1)} variant="secondary" size="sm">
+              صفحه‌ی بعد
+            </ButtonLink>
+          ) : null}
+        </nav>
+      ) : null}
     </div>
   );
 }
 
 /* ─────────────────────── اسکلتِ هم‌شکلِ محتوا ─────────────────────── */
 
-/** هم‌شکلِ محتوا: خطِ خلاصه + نوارِ جست‌وجو + جدولِ شش‌ستونی. */
+/** هم‌شکلِ محتوا: خطِ خلاصه + جدول. */
 function ArchiveSkeleton() {
   return (
     <div className="space-y-4" aria-hidden>
-      <Skeleton className="h-3 w-64" />
-      <div className="flex items-center gap-3">
-        <Skeleton className="h-10 w-full max-w-xs rounded-xl" />
-        <Skeleton className="h-3 w-24" />
-      </div>
+      <Skeleton className="h-3 w-40" />
       <SkeletonTable rows={6} cols={5} />
     </div>
   );
