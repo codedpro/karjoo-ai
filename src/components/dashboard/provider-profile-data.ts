@@ -18,8 +18,10 @@ export type ProfileProviderId = (typeof PROFILE_PROVIDER_IDS)[number];
 
 const PROFILE_URLS: Record<ProfileProviderId, string> = {
   jobinja: "https://jobinja.ir/app/cv-builder",
-  jobvision: "https://jobvision.ir/resume",
-  "e-estekhdam": "https://www.e-estekhdam.com/karfarmas/profile",
+  // Verified live 2026-09-23. The previous two both 404'd: "/resume" does not
+  // exist on JobVision, and "/karfarmas/profile" is e-estekhdam's EMPLOYER page.
+  jobvision: "https://jobvision.ir/my-cv",
+  "e-estekhdam": "https://www.e-estekhdam.com/panel/users/config-resume",
   irantalent: "https://www.irantalent.com/candidate/cv/edit",
   karboom: "https://karboom.io/profile",
 };

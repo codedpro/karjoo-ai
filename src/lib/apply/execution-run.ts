@@ -439,13 +439,44 @@ export async function blockServerExecution(
 }
 
 /** Server may claim only when no extension owns the account and it is not blocked. */
+/**
+ * May the server fleet run this user's queue right now?
+ *
+ * The server always yields to a LIVE extension — two executors on one account is
+ * the thing this whole lock exists to prevent. But "live" has to mean live. The
+ * old rule was `owner === null || owner === "server"`, so closing Chrome without
+ * pressing Stop left the run owned by an extension that no longer existed, and
+ * the server — with valid sessions, a queue and an online node — refused to work
+ * forever. That is precisely the "close the browser and let the server carry on"
+ * case the fleet is for.
+ *
+ * So a RUNNING extension run whose heartbeat has been silent past STALE_RUN_MS
+ * (the same window extensions already use to reclaim from each other) yields.
+ * The extension heartbeats every tick — at least once a minute while Chrome is
+ * open — so an open browser never trips this.
+ *
+ * What does NOT yield:
+ *   • a run the user PAUSED — that is a deliberate "stop applying", not an
+ *     absence, and the server must not override it;
+ *   • a BLOCKED run — it is parked on a login or captcha only a person can clear.
+ *
+ * Pure and exported so the rule is testable without a database.
+ */
+export function serverMayTakeRun(run: ExecutionRunView, now: number = Date.now()): boolean {
+  if (run.state === "blocked") return false;
+  if (run.owner === null || run.owner === "server") return true;
+  if (run.owner === "extension" && run.state === "running") {
+    const heartbeat = run.heartbeatAt ? Date.parse(run.heartbeatAt) : Number.NaN;
+    return !Number.isFinite(heartbeat) || heartbeat < now - STALE_RUN_MS;
+  }
+  return false;
+}
+
 export async function canServerExecute(
   userId: string,
   conn: RunDb = defaultDb,
 ): Promise<boolean> {
-  const run = await readExecutionRun(userId, conn);
-  if (run.state === "blocked") return false;
-  return run.owner === null || run.owner === "server";
+  return serverMayTakeRun(await readExecutionRun(userId, conn));
 }
 
 export async function markServerExecutionRunning(
@@ -470,9 +501,22 @@ export async function markServerExecutionRunning(
     })
     .onConflictDoUpdate({
       target: applyExecutionRuns.userId,
+      // Must mirror serverMayTakeRun exactly — otherwise the gate says yes, this
+      // upsert matches nothing, and the node silently claims nothing.
       setWhere: and(
-        or(isNull(applyExecutionRuns.owner), eq(applyExecutionRuns.owner, "server")),
         sql`${applyExecutionRuns.state} <> 'blocked'`,
+        or(
+          isNull(applyExecutionRuns.owner),
+          eq(applyExecutionRuns.owner, "server"),
+          and(
+            eq(applyExecutionRuns.owner, "extension"),
+            eq(applyExecutionRuns.state, "running"),
+            or(
+              isNull(applyExecutionRuns.heartbeatAt),
+              lt(applyExecutionRuns.heartbeatAt, new Date(Date.now() - STALE_RUN_MS)),
+            ),
+          ),
+        ),
       ),
       set: {
         state: "running",

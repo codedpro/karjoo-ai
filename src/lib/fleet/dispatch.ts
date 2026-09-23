@@ -307,8 +307,9 @@ export async function claimFleetJobs(
   for (const userId of userIds) {
     if (jobs.length >= safeLimit) break;
 
-    // Shared ownership: an active/paused extension run owns this account until
-    // the user explicitly switches back. A blocked server run also stays stopped.
+    // Shared ownership: a LIVE or PAUSED extension run owns this account; the
+    // server takes over only when an extension run has gone silent (browser
+    // closed) — see serverMayTakeRun. A blocked run stays stopped for everyone.
     if (!(await canExecute(userId))) continue;
 
     // ۱) پلن.

@@ -79,7 +79,13 @@ export const BOARDS = {
     /** JobVision is an SPA: auth is a JWT in localStorage → needs a content-script probe. */
     sessionShape: "token" as const,
     /** The signed-in user's own résumé/profile page in the SPA. */
-    profilePath: "/resume",
+    /**
+     * The user's own CV. Verified live 2026-09-23: jobvision.ir returns a REAL 404
+     * for unknown routes, and "/resume" was one of them — every "connect" and
+     * profile link for JobVision landed on a 404. "/my-cv" is the route the app's
+     * own router declares.
+     */
+    profilePath: "/my-cv",
   },
   "e-estekhdam": {
     id: "e-estekhdam" as const,
@@ -88,7 +94,14 @@ export const BOARDS = {
     /** e-estekhdam is server-rendered; auth lives in a session COOKIE. */
     sessionShape: "cookie" as const,
     /** The signed-in user's own profile page. */
-    profilePath: "/karfarmas/profile",
+    /**
+     * The candidate's résumé settings in the panel. The old value,
+     * "/karfarmas/profile", was the EMPLOYER ("کارفرما") profile path and 404s for a
+     * job seeker. "/panel/users/config-resume" is declared by the panel's own Nuxt
+     * router (verified live 2026-09-23); sibling paths like /panel/cvs only look
+     * alive because the backend bounces ANY /panel/* API path to login.
+     */
+    profilePath: "/panel/users/config-resume",
   },
   karboom: {
     id: "karboom" as const,
