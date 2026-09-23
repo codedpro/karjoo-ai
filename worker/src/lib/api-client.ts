@@ -15,16 +15,20 @@
  *   POST /api/fleet/result      { taskId, userId, status, externalRef?, reason?, proof? }
  *   GET  /api/fleet/commands              → { commands: WorkerCommand[] }  (pending, oldest-first)
  *   POST /api/fleet/commands/:id/ack  { status, result? } → { command }
+ *   GET  /api/fleet/discovery             → { users: FleetDiscoveryUser[] }  (turn claimed)
+ *   POST /api/fleet/discovery  { scope: "user"|"catalog", userId?, board, listings }
  *
  * SECURITY: the credential is sent only in the Authorization header, never logged.
  * The claim response's `session` material is handled by the caller in-memory and
  * NEVER passed to the logger.
  */
 import type {
+  FleetDiscoveryUser,
   FleetJob,
   FleetResultReport,
   WorkerCommand,
 } from "./types.js";
+import type { DiscoveredListing } from "./discovery/types.js";
 
 export type FetchImpl = typeof fetch;
 
@@ -199,6 +203,45 @@ export class KarjooFleetApi {
       method: "GET",
     });
     return extractCommands(res);
+  }
+
+  /**
+   * The assigned users whose discovery turn has come, with what to search on each
+   * board. Asking CLAIMS the turn server-side, so only call this when about to run.
+   */
+  async claimDiscovery(): Promise<FleetDiscoveryUser[]> {
+    const res = await this.request<{ users?: unknown }>("/api/fleet/discovery", { method: "GET" });
+    return Array.isArray(res?.users) ? (res.users as FleetDiscoveryUser[]) : [];
+  }
+
+  /**
+   * Hand discovered listings back. `user` scope queues them for that user (the
+   * server re-checks the user is assigned to this node); `catalog` scope only
+   * adds them to the public job list. Sent in chunks of 100 (the server's cap).
+   */
+  async submitDiscovery(input: {
+    scope: "user" | "catalog";
+    userId?: string;
+    board: string;
+    listings: DiscoveredListing[];
+  }): Promise<{ ingested: number; queued: number }> {
+    let ingested = 0;
+    let queued = 0;
+    for (let i = 0; i < input.listings.length; i += 100) {
+      const body = {
+        scope: input.scope,
+        ...(input.scope === "user" ? { userId: input.userId } : {}),
+        board: input.board,
+        listings: input.listings.slice(i, i + 100),
+      };
+      const res = await this.request<{ ingested?: number; queued?: number }>("/api/fleet/discovery", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      ingested += Number(res?.ingested ?? 0);
+      queued += Number(res?.queued ?? 0);
+    }
+    return { ingested, queued };
   }
 
   /** Acknowledge a command's progress/outcome. */

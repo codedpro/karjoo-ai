@@ -115,3 +115,25 @@ export interface NodeCredentialRecord {
   /** ISO timestamp of enrollment. */
   enrolledAt: string;
 }
+
+/** One board to search for one user — produced by the control plane. */
+export interface FleetDiscoveryBoardSpec {
+  board: "jobinja" | "jobvision" | "e-estekhdam" | "irantalent" | "karboom";
+  enabled: boolean;
+  hasTargeting: boolean;
+  /** Jobinja: the ready search URL built from the user's preferences. */
+  searchUrl?: string | null;
+  categoryKeys?: string[];
+  /** JobVision: the Persian label of each category key. */
+  categoryLabels?: string[];
+  cities?: string[];
+  employmentTypeKeys?: string[];
+  remoteOnly?: boolean;
+}
+
+/** A user whose discovery turn this node has claimed. */
+export interface FleetDiscoveryUser {
+  userId: string;
+  maxAgeDays: number;
+  boards: FleetDiscoveryBoardSpec[];
+}

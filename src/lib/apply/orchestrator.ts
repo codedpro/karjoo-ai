@@ -1292,6 +1292,12 @@ export async function enqueueBrowserDiscoveredListings(
   userId: string,
   listings: JobListing[],
   conn: OrchestratorDb = db,
+  /**
+   * Who found these. The extension discovers in the user's own browser; the fleet
+   * node discovers from an Iranian IP around the clock. Both go through exactly
+   * this path so filtering and dedupe are identical — the tag only records origin.
+   */
+  source: "extension" | "fleet" = "extension",
 ): Promise<BrowserDiscoveryReport> {
   const loaded = await defaultLoadFilterProfile(userId, conn);
   if (!loaded) throw new HttpError(404, "profile not found");
@@ -1368,7 +1374,7 @@ export async function enqueueBrowserDiscoveredListings(
             listingId: listingRow.id,
             url: job.url,
             mode: "filter",
-            discovery: "extension",
+            discovery: source,
           },
         },
         conn as unknown as Parameters<EnqueueFn>[1],
@@ -1384,5 +1390,44 @@ export async function enqueueBrowserDiscoveredListings(
     }
   }
 
+  return report;
+}
+
+
+/** What a public-catalog ingest did. */
+export interface CatalogIngestReport {
+  ingested: number;
+  stale: number;
+  errors: string[];
+}
+
+/**
+ * Persist listings for the PUBLIC catalog — no user, no match, no task.
+ *
+ * The fleet crawls every board's newest listings on its own schedule so the
+ * public jobs page reflects every site, not only whatever some user's filters
+ * happened to find. Nothing here queues an application: turning a listing into
+ * an apply is always a per-user decision made against that user's filters.
+ *
+ * Stale postings are dropped with the same freshness rule the queue uses, so the
+ * public page never advertises something no one could apply to anymore.
+ */
+export async function persistCatalogListings(
+  listings: JobListing[],
+  conn: OrchestratorDb = db,
+): Promise<CatalogIngestReport> {
+  const report: CatalogIngestReport = { ingested: 0, stale: 0, errors: [] };
+  for (const job of listings) {
+    if (!isFreshJobPosting(job)) {
+      report.stale += 1;
+      continue;
+    }
+    try {
+      await persistListingWith(conn, job);
+      report.ingested += 1;
+    } catch (error) {
+      report.errors.push(`${job.id}: ${errMsg(error)}`);
+    }
+  }
   return report;
 }

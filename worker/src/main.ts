@@ -20,6 +20,8 @@ import { runLoop, realSleep } from "./lib/agent.js";
 import { launchChromium } from "./lib/browser.js";
 import { spawnScriptRunner } from "./lib/commands.js";
 import { logger } from "./lib/logger.js";
+import { politeFetch } from "./lib/discovery/http.js";
+import { DiscoveryRunner, runDiscoveryLoop } from "./lib/discovery/runner.js";
 
 async function main(): Promise<void> {
   let cfg;
@@ -65,6 +67,29 @@ async function main(): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
+  // Discovery runs beside the apply loop, not inside it: finding jobs must never
+  // hold up applying to the ones already queued. Off with KARJOO_DISCOVERY=0.
+  const discoveryEnabled = (process.env.KARJOO_DISCOVERY ?? "1") !== "0";
+  const seconds = (name: string, fallback: number) => {
+    const n = Number(process.env[name]);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  const discovery = discoveryEnabled
+    ? runDiscoveryLoop(
+        new DiscoveryRunner(api, politeFetch(), logger),
+        logger,
+        {
+          userIntervalMs: seconds("KARJOO_DISCOVERY_INTERVAL_SEC", 300) * 1000,
+          catalogIntervalMs: seconds("KARJOO_CATALOG_INTERVAL_SEC", 3600) * 1000,
+          stopped: () => stopping,
+          sleep: realSleep,
+        },
+      ).catch((err) => {
+        logger.error("discovery loop crashed", { error: err instanceof Error ? err.message : String(err) });
+      })
+    : Promise.resolve();
+  if (!discoveryEnabled) logger.info("discovery disabled (KARJOO_DISCOVERY=0)");
+
   await runLoop(
     {
       api,
@@ -76,6 +101,7 @@ async function main(): Promise<void> {
     },
     { stopped: () => stopping },
   );
+  await discovery;
 
   logger.info("worker exiting");
   process.exit(0);

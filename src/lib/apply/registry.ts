@@ -112,7 +112,7 @@ export const PROVIDER_CAPABILITIES: Record<JobBoardId, ProviderCapability> = {
     easyApply: true,
     autoApply: true,
     sessionShape: "token",
-    note: "اپلای از سمتِ سرور انجام می‌شود (رزومه‌ی پروفایلِ خودِ جاب‌ویژن)؛ کشفِ آگهی هنوز از افزونه می‌آید.",
+    note: "آگهی‌ها شبانه‌روز از سمتِ سرور پیدا می‌شوند و اپلای هم از سرور انجام می‌شود (رزومه‌ی پروفایلِ خودِ جاب‌ویژن).",
   },
   "e-estekhdam": {
     id: "e-estekhdam",
@@ -125,7 +125,7 @@ export const PROVIDER_CAPABILITIES: Record<JobBoardId, ProviderCapability> = {
     easyApply: true,
     autoApply: true,
     sessionShape: "cookie",
-    note: "اپلای از سمتِ سرور انجام می‌شود و رزومه‌ی اختصاصیِ هر آگهی ارسال می‌شود؛ کشفِ آگهی هنوز از افزونه می‌آید.",
+    note: "آگهی‌ها شبانه‌روز از سمتِ سرور پیدا می‌شوند و برای هر آگهی رزومه‌ی اختصاصی ارسال می‌شود.",
   },
   irantalent: {
     id: "irantalent",
@@ -138,7 +138,7 @@ export const PROVIDER_CAPABILITIES: Record<JobBoardId, ProviderCapability> = {
     easyApply: true,
     autoApply: true,
     sessionShape: "cookie",
-    note: "اپلای از سمتِ سرور انجام می‌شود (رزومه‌ی پروفایلِ خودِ ایران‌تلنت)؛ کشفِ آگهی هنوز از افزونه می‌آید.",
+    note: "آگهی‌ها شبانه‌روز از سمتِ سرور پیدا می‌شوند و اپلای هم از سرور انجام می‌شود (رزومه‌ی پروفایلِ خودِ ایران‌تلنت).",
   },
   karboom: {
     id: "karboom",
@@ -151,7 +151,7 @@ export const PROVIDER_CAPABILITIES: Record<JobBoardId, ProviderCapability> = {
     easyApply: true,
     autoApply: true,
     sessionShape: "cookie",
-    note: "اپلای از سمتِ سرور انجام می‌شود؛ رزومه‌ی اختصاصیِ هر آگهی در ویزارد کاربوم آپلود می‌شود.",
+    note: "آگهی‌ها شبانه‌روز از سمتِ سرور پیدا می‌شوند؛ رزومه‌ی اختصاصیِ هر آگهی در ویزارد کاربوم آپلود می‌شود.",
   },
   iranestekhdam: {
     id: "iranestekhdam",
