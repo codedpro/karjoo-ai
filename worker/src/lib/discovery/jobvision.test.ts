@@ -132,3 +132,23 @@ describe("JobvisionFeed", () => {
     expect(fetchImpl.mock.calls.length).toBe(11);
   });
 });
+
+describe("JobvisionFeed — concurrent refresh", () => {
+  it("shares one refresh between the user and catalog passes", async () => {
+    let sitemapFetches = 0;
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      if (String(input) === JOBVISION_SITEMAP_URL) {
+        sitemapFetches += 1;
+        return new Response(
+          `<urlset><url><loc>https://jobvision.ir/jobs/231098/x</loc><lastmod>2026-09-20T00:00:00Z</lastmod></url></urlset>`,
+        );
+      }
+      return new Response(POSTING);
+    }) as unknown as typeof fetch;
+    const feed = new JobvisionFeed(fetchImpl);
+    const opts = { maxAgeDays: 45, now: () => Date.parse("2026-09-23T00:00:00Z") };
+    const [a, b] = await Promise.all([feed.refresh(opts), feed.refresh(opts)]);
+    expect(sitemapFetches).toBe(1); // the 26 MB sitemap, once
+    expect(a).toBe(b);
+  });
+});

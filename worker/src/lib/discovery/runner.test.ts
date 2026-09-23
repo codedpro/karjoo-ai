@@ -92,24 +92,27 @@ describe("DiscoveryRunner.runUsers", () => {
 });
 
 describe("DiscoveryRunner — budget", () => {
-  it("matches JobVision even when slower boards exhaust the time budget", async () => {
+  it("gives every board its own slice, so one slow board cannot starve the rest", async () => {
+    // Regression: one shared budget let e-estekhdam + the JobVision refresh eat
+    // it all, and IranTalent and Karboom — last in line — were never searched.
+    const boards = ["e-estekhdam", "irantalent", "karboom"] as const;
     const user: FleetDiscoveryUser = {
       userId: "u1",
       maxAgeDays: 45,
-      boards: [
-        { board: "karboom", enabled: true, hasTargeting: true, categoryKeys: ["x"] },
-        { board: "jobvision", enabled: true, hasTargeting: true, categoryLabels: ["L"] },
-      ],
+      boards: boards.map((board) => ({ board, enabled: true, hasTargeting: true, categoryKeys: ["x"] })),
     };
     const { impl } = api([user]);
     let clock = 0;
-    // Every request "takes" 10 minutes, so karboom alone blows the 4-minute budget.
-    const fetchImpl = vi.fn(async () => {
+    const hosts = new Set<string>();
+    // Every request "takes" 10 minutes — far past any single slice.
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      hosts.add(new URL(String(input)).host);
       clock += 10 * 60_000;
-      return new Response("<urlset></urlset>");
+      return new Response("", { status: 500 });
     }) as unknown as typeof fetch;
     const summary = await new DiscoveryRunner(impl, fetchImpl, silent, { now: () => clock }).runUsers();
-    // JobVision ran (first, free); only karboom was cut short.
-    expect(summary.boards).toBe(2);
+    expect(summary.boards).toBe(3);
+    // Every board was actually reached.
+    expect(hosts.size).toBe(3);
   });
 });

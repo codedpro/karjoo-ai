@@ -183,11 +183,27 @@ export interface JobvisionFeedOptions {
 export class JobvisionFeed {
   private readonly seen = new Map<string, number>();
   private readonly postings = new Map<string, JobvisionPosting>();
+  private inFlight: Promise<JobvisionPosting[]> | null = null;
 
   constructor(private readonly fetchImpl: typeof fetch) {}
 
-  /** Read the sitemap; fetch and retain postings new/changed since the last pass. */
-  async refresh(options: JobvisionFeedOptions): Promise<JobvisionPosting[]> {
+  /**
+   * Read the sitemap; fetch and retain postings new/changed since the last pass.
+   *
+   * The user and catalog passes run concurrently and both refresh this feed. A
+   * second caller joins the refresh already running instead of starting another
+   * — two refreshes would download the 26 MB sitemap twice and race on `seen`.
+   */
+  refresh(options: JobvisionFeedOptions): Promise<JobvisionPosting[]> {
+    if (!this.inFlight) {
+      this.inFlight = this.doRefresh(options).finally(() => {
+        this.inFlight = null;
+      });
+    }
+    return this.inFlight;
+  }
+
+  private async doRefresh(options: JobvisionFeedOptions): Promise<JobvisionPosting[]> {
     const now = options.now ?? Date.now;
     const cutoff = providerCutoffMs(options.maxAgeDays, now());
     const cap = options.maxPagesPerRun ?? 300;

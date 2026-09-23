@@ -42,8 +42,16 @@ export interface DiscoveryApi {
 }
 
 export interface DiscoveryRunnerOptions {
-  /** Wall-clock budget for one user, across all their boards. */
-  userBudgetMs: number;
+  /**
+   * Wall-clock slice for ONE board of one user. Per board, not per user: with a
+   * single shared budget, e-estekhdam's detail-per-listing crawl (deliberately
+   * spaced) plus the JobVision refresh used it all up, and the boards after them —
+   * IranTalent and Karboom — were never searched. Karboom had never produced a
+   * listing; being last in line was why.
+   */
+  boardBudgetMs: number;
+  /** How long the user pass may spend refreshing the JobVision sitemap feed. */
+  jobvisionRefreshBudgetMs: number;
   /** Listings one board may yield for one user per pass. */
   maxListingsPerBoard: number;
   /** Wall-clock budget for one catalog board. */
@@ -58,7 +66,8 @@ export interface DiscoveryRunnerOptions {
 }
 
 export const DEFAULT_DISCOVERY_OPTIONS: DiscoveryRunnerOptions = {
-  userBudgetMs: 4 * 60_000,
+  boardBudgetMs: 90_000,
+  jobvisionRefreshBudgetMs: 2 * 60_000,
   maxListingsPerBoard: 300,
   catalogBudgetMs: 5 * 60_000,
   catalogMaxPerBoard: 400,
@@ -146,12 +155,16 @@ export class DiscoveryRunner {
    * Refresh JobVision once and send every newly read posting to the public
    * catalog — whichever pass triggered the refresh.
    */
-  private async refreshJobvision(maxAgeDays: number, summary: PassSummary): Promise<void> {
+  private async refreshJobvision(
+    maxAgeDays: number,
+    summary: PassSummary,
+    budgetMs: number,
+  ): Promise<void> {
     const fresh = await this.guarded("jobvision", summary, () =>
       this.jobvision.refresh({
         maxAgeDays,
         maxPagesPerRun: this.options.jobvisionPagesPerRun,
-        deadlineAt: this.now() + this.options.catalogBudgetMs,
+        deadlineAt: this.now() + budgetMs,
         now: this.now,
       }),
     );
@@ -228,22 +241,21 @@ export class DiscoveryRunner {
     if (users.length === 0) return summary;
 
     if (users.some((u) => u.boards.some((b) => b.board === "jobvision"))) {
-      await this.refreshJobvision(Math.max(...users.map((u) => u.maxAgeDays)), summary);
+      await this.refreshJobvision(
+        Math.max(...users.map((u) => u.maxAgeDays)),
+        summary,
+        this.options.jobvisionRefreshBudgetMs,
+      );
     }
 
     for (const user of users) {
-      const deadlineAt = this.now() + this.options.userBudgetMs;
       // JobVision is matched against the already-fetched window — no network — so
-      // it goes first. Last in line, a slow board ahead of it used to exhaust the
-      // time budget and cut it for work that costs nothing.
+      // it goes first; the rest each get their own slice.
       const ordered = [...user.boards].sort(
         (a, b) => Number(b.board === "jobvision") - Number(a.board === "jobvision"),
       );
       for (const spec of ordered) {
-        if (this.now() >= deadlineAt) {
-          bump(summary, "user_budget_exhausted");
-          break;
-        }
+        const deadlineAt = this.now() + this.options.boardBudgetMs;
         const listings = await this.searchBoard(user, spec, deadlineAt, summary);
         summary.boards += 1;
         if (!listings || listings.length === 0) continue;
@@ -305,7 +317,7 @@ export class DiscoveryRunner {
       }
     }
     // JobVision's catalog is fed by the sitemap feed itself.
-    await this.refreshJobvision(maxAgeDays, summary);
+    await this.refreshJobvision(maxAgeDays, summary, this.options.catalogBudgetMs);
     summary.boards += 1;
     return summary;
   }
@@ -332,8 +344,19 @@ export interface DiscoveryLoopOptions {
 }
 
 /**
- * Run both passes forever, on their own cadences, until stopped. A failed pass
- * is logged and the loop carries on — discovery must never take the node down.
+ * Run both passes forever, each on its own cadence, until stopped.
+ *
+ * The two passes are INDEPENDENT loops. They used to share one: a catalog pass
+ * is five polite per-board budgets back to back (≈20 minutes), and during it no
+ * user could be searched, so every user's queue stalled for a third of each
+ * hour. Running them side by side keeps per-user discovery on its 5-minute beat.
+ *
+ * Politeness is unaffected: both passes use the same politeFetch, whose per-host
+ * queue serialises every request to a board no matter which pass made it. And
+ * the JobVision feed de-duplicates a refresh both passes ask for at once.
+ *
+ * A failed pass is logged and its loop carries on — discovery must never take
+ * the node down.
  */
 export async function runDiscoveryLoop(
   runner: DiscoveryRunner,
@@ -341,28 +364,37 @@ export async function runDiscoveryLoop(
   options: DiscoveryLoopOptions,
   now: () => number = Date.now,
 ): Promise<void> {
-  let nextCatalog = now();
-  while (!options.stopped()) {
-    try {
-      const users = await runner.runUsers();
-      if (users.users > 0) log.info("discovery user pass", { ...users });
-    } catch (err) {
-      log.warn("discovery user pass failed", { reason: err instanceof Error ? err.message : String(err) });
+  // Wait in short slices so a stop request is honoured promptly — systemd
+  // hard-kills a unit that has not exited ~90 s after SIGTERM.
+  async function idle(ms: number): Promise<void> {
+    const until = now() + ms;
+    while (!options.stopped() && now() < until) {
+      await options.sleep(Math.min(5_000, until - now()));
     }
-    if (options.stopped()) break;
-    if (now() >= nextCatalog) {
+  }
+
+  const userLoop = (async () => {
+    while (!options.stopped()) {
+      try {
+        const users = await runner.runUsers();
+        if (users.users > 0) log.info("discovery user pass", { ...users });
+      } catch (err) {
+        log.warn("discovery user pass failed", { reason: err instanceof Error ? err.message : String(err) });
+      }
+      await idle(options.userIntervalMs);
+    }
+  })();
+
+  const catalogLoop = (async () => {
+    while (!options.stopped()) {
       try {
         log.info("discovery catalog pass", { ...(await runner.runCatalog()) });
       } catch (err) {
         log.warn("discovery catalog pass failed", { reason: err instanceof Error ? err.message : String(err) });
       }
-      nextCatalog = now() + options.catalogIntervalMs;
+      await idle(options.catalogIntervalMs);
     }
-    // Wait in short slices so a stop request is honoured promptly — systemd
-    // hard-kills a unit that has not exited ~90 s after SIGTERM.
-    const until = now() + options.userIntervalMs;
-    while (!options.stopped() && now() < until) {
-      await options.sleep(Math.min(5_000, until - now()));
-    }
-  }
+  })();
+
+  await Promise.all([userLoop, catalogLoop]);
 }
