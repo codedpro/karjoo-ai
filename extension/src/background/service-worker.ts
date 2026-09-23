@@ -52,6 +52,7 @@ import {
   mutateRun,
   restartAfterFiltersChanged,
   runAutoApplyTick,
+  runSessionRefreshTick,
   settleActiveCycleForQueueReset,
   setRunBackground,
 } from "@ext/background/auto-apply";
@@ -387,6 +388,9 @@ async function connectBoardAndSync(
 ): Promise<{ ok: boolean }> {
   const result = await handleConnectBoard(board, accountLabel);
   if (result.ok) {
+    // Hand the new session to the vault now, not at the next scheduled push:
+    // connecting is exactly when the user expects the server to be able to act.
+    void runSessionRefreshTick().catch(() => {});
     try {
       const api = await apiFromStorage();
       await importOneBoard(api, board);
@@ -470,6 +474,8 @@ async function handleManageProvider(
   }
   await handleConnectBoard(board, probe.accountLabelHint);
   await setProviderEnabled(board, true);
+  // A reconnect means the old session was dead; push the fresh one right away.
+  void runSessionRefreshTick().catch(() => {});
   try {
     const api = await apiFromStorage();
     await importOneBoard(api, board);

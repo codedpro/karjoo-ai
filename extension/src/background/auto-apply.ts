@@ -30,10 +30,35 @@ import { discoverKarboomListings } from "@ext/lib/karboom-discovery";
 
 let activeCycle: Promise<AutoApplyStatus> | null = null;
 
+/**
+ * Create the background alarms — but only the ones that do not exist yet.
+ *
+ * This runs at the service worker's top level, and an MV3 worker is torn down
+ * after ~30 s idle and re-runs that top level on every wake — which, with a
+ * one-minute auto-apply alarm, is roughly every minute. Chrome's alarms.create
+ * CANCELS and reschedules an existing alarm of the same name. So unconditionally
+ * recreating the 30-minute session alarm on each wake kept pushing its first
+ * firing another 30 minutes out, and the vault push — the thing that lets the
+ * server keep applying after the browser closes — could go a very long time
+ * without running. (One session reached the vault across every user.)
+ *
+ * The session push also fires a minute after it is first scheduled rather than
+ * a full period later: "open the extension, check you're logged in, close it" is
+ * a legitimate way to use it, and it must hand the server something.
+ */
 export function setupAutoApplyAlarms(): void {
   if (typeof chrome === "undefined" || !chrome.alarms) return;
-  chrome.alarms.create(AUTO_APPLY_ALARM, { periodInMinutes: 1 });
-  chrome.alarms.create(SESSION_REFRESH_ALARM, { periodInMinutes: SESSION_REFRESH_MINUTES });
+  ensureAlarm(AUTO_APPLY_ALARM, { periodInMinutes: 1 });
+  ensureAlarm(SESSION_REFRESH_ALARM, {
+    delayInMinutes: 1,
+    periodInMinutes: SESSION_REFRESH_MINUTES,
+  });
+}
+
+function ensureAlarm(name: string, info: chrome.alarms.AlarmCreateInfo): void {
+  chrome.alarms.get(name, (existing) => {
+    if (!existing) chrome.alarms.create(name, info);
+  });
 }
 
 export function registerAutoApplyAlarmListener(): void {
