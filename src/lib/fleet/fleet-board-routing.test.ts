@@ -47,8 +47,11 @@ function filtersWith(...enabled: string[]) {
   return { ...EMPTY_APPLY_FILTERS, boardFilters };
 }
 
-async function runFleet() {
+const ALL_BOARDS = new Set(["jobinja", "jobvision", "e-estekhdam", "irantalent", "karboom"]);
+
+async function runFleet(usable: Set<string> = ALL_BOARDS) {
   return claimFleetJobs("node-1", 5, {
+    readUsableBoards: async () => usable,
     readAssignedUserIds: async () => ["u1"],
     readEntitlements: async () =>
       testEntitlements({ unlimitedApplies: true, workerIpLimit: 1, status: "active" }),
@@ -108,5 +111,20 @@ describe("server-owned runs and board routing", () => {
     const options = claimUserApplyItems.mock.calls[0]![3] as { allowedBoards: string[] };
     expect(options.allowedBoards).not.toContain("linkedin");
     expect(options.allowedBoards).not.toContain("divar");
+  });
+
+  it("never leases a board the node has no way to act on", async () => {
+    // No session and no credential for IranTalent: leasing it would strand the
+    // task — the claim would skip it for want of a session and nothing released it.
+    readApplyFilters.mockResolvedValue(filtersWith("jobinja", "irantalent"));
+    await runFleet(new Set(["jobinja"]));
+    const options = claimUserApplyItems.mock.calls[0]![3] as { allowedBoards: string[] };
+    expect(options.allowedBoards).toEqual(["jobinja"]);
+  });
+
+  it("leases nothing at all when no board has a session", async () => {
+    readApplyFilters.mockResolvedValue(filtersWith("jobinja", "irantalent"));
+    const jobs = await runFleet(new Set());
+    expect(jobs).toEqual([]);
   });
 });

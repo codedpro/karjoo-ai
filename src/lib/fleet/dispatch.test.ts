@@ -137,6 +137,7 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
   });
 
   it("نشستِ همان (کاربر، board) لود می‌شود؛ آیتمِ بدونِ نشست رد می‌شود", async () => {
+    const releaseNoSessionTask = vi.fn(async () => {});
     const loadSession = vi.fn(async (_userId: string, board: string) =>
       board === "jobinja" ? "COOKIES" : null,
     );
@@ -150,6 +151,8 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
       ],
       loadSession,
       loadResumeHtml: async () => "<html>tailored</html>",
+      renewSession: async () => false,
+      releaseNoSessionTask,
     };
 
     const jobs = await claimFleetJobs("n1", 5, deps);
@@ -157,6 +160,10 @@ describe("claimFleetJobs — مرزِ امنیتِ تخصیص + گیت + نشس�
     expect(jobs[0].taskId).toBe("tA");
     expect(jobs[0].session).toBe("COOKIES");
     expect(loadSession).toHaveBeenCalledWith("u1", "jobinja");
+    // The session-less task is handed BACK, not left leased: nothing else would
+    // ever release a node lease, so skipping it stranded it permanently.
+    expect(releaseNoSessionTask).toHaveBeenCalledWith("tB");
+    expect(releaseNoSessionTask).toHaveBeenCalledTimes(1);
   });
 
   it("کاربرِ یافت‌نشده (بدونِ مزایا) ⇒ آن کاربر رد می‌شود (گیت اصلاً صدا نمی‌خورد)", async () => {

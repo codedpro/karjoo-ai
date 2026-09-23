@@ -117,6 +117,12 @@ export interface ClaimFleetDeps {
   loadResumeHtml?: (userId: string, listingId: string) => Promise<string | null>;
   /** آزادسازی task وقتی رزومه‌ی هدف‌گیری‌شده ساخته/خوانده نشد. */
   releaseMissingResumeTask?: (taskId: string) => Promise<void>;
+  /** Hand a claimed task back when no session could be produced for its board. */
+  releaseNoSessionTask?: (taskId: string) => Promise<void>;
+  /** Boards this user has a vaulted session or a login-able credential for. */
+  readUsableBoards?: (userId: string) => Promise<Set<string>>;
+  /** Return this user's node leases that outlived any real job (crash/restart). */
+  releaseStaleLeases?: (userId: string) => Promise<void>;
   /** Shared queue ownership gate. */
   canExecute?: (userId: string) => Promise<boolean>;
   /** Marks this node as the active server owner before claiming. */
@@ -191,6 +197,74 @@ export async function defaultLoadResumeHtml(
   return null;
 }
 
+/**
+ * Boards this user's work can actually run on: a session in the vault, or a
+ * stored credential for a board the server knows how to log in to.
+ */
+async function boardsWithUsableSession(userId: string, db: FleetDispatchDb): Promise<Set<string>> {
+  const { boardsWithCredentialLogin } = await import("@/lib/apply/login/session-provider");
+  const loginBoards = new Set<string>(boardsWithCredentialLogin());
+  const rows = (await db.execute(sql`
+    select ba.board::text as board,
+           bool_or(sb.id is not null) as has_session,
+           bool_or(bc.id is not null) as has_credential
+      from board_accounts ba
+      left join session_blobs sb on sb.board_account_id = ba.id
+      left join board_credentials bc on bc.board_account_id = ba.id
+     where ba.user_id = ${userId}
+       and ba.status = 'connected'
+     group by ba.board
+  `)) as unknown as { board: string; has_session: boolean; has_credential: boolean }[];
+  return new Set(
+    rows
+      .filter((row) => row.has_session || (row.has_credential && loginBoards.has(row.board)))
+      .map((row) => row.board),
+  );
+}
+
+/** Put a leased task back in the queue after `delayMinutes`, recording why. */
+async function releaseLeasedTask(
+  taskId: string,
+  reason: string,
+  delayMinutes: number,
+  db: FleetDispatchDb,
+): Promise<void> {
+  await db
+    .update(tasks)
+    .set({
+      status: "pending",
+      leasedBy: null,
+      leasedAt: null,
+      lastError: reason,
+      runAfter: sql`now() + make_interval(mins => ${delayMinutes})`,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(tasks.id, taskId), eq(tasks.status, "leased")));
+}
+
+/** A node lease older than any real apply means the node died mid-job. */
+export const STALE_FLEET_LEASE_MINUTES = 30;
+
+/**
+ * Return this user's node-leased tasks that have outlived any real apply.
+ *
+ * Extension leases already had a sweep; node leases had none, so a node that
+ * restarted mid-job — which every deploy does — left that task leased forever.
+ */
+async function releaseStaleFleetLeases(userId: string, db: FleetDispatchDb): Promise<void> {
+  await db.execute(sql`
+    update tasks t
+       set status = 'pending', leased_by = null, leased_at = null,
+           last_error = 'released_stale_node_lease', run_after = now(), updated_at = now()
+      from matches m
+     where t.match_id = m.id
+       and m.user_id = ${userId}
+       and t.status = 'leased'
+       and t.leased_by is not null
+       and t.leased_at < now() - make_interval(mins => ${STALE_FLEET_LEASE_MINUTES})
+  `);
+}
+
 async function releaseTaskForMissingResume(
   taskId: string,
   db: FleetDispatchDb,
@@ -240,13 +314,15 @@ export async function claimFleetJobs(
   const claimItems =
     deps.claimItems ??
     (async (userId: string, lim: number, minScore: number) => {
-      // Only boards on the WORKER channel are handed to a Playwright node. The
-      // control-plane boards (IranTalent, Karboom, e-estekhdam) are not excluded
-      // from the server — their apply is a pure HTTP transaction, so it runs on the
-      // control plane instead (fleet/server-apply-runner.ts). Handing one to a node
-      // would drive DOM steps against a board that has no form to drive.
+      // Every server-apply board runs on the node — browser or HTTP. But only
+      // claim boards the node can actually act on: one with a session in the
+      // vault, or a stored credential the server can log in with. Claiming a
+      // board with neither leased the task and then skipped it for want of a
+      // session, and nothing ever released it — with discovery queuing around the
+      // clock, every such task would have piled up leased forever.
+      const usable = await readUsableBoards(userId);
       const allowedBoards = enabledApplyBoards(await readApplyFilters(userId, db)).filter(
-        (board) => isWorkerApplyBoard(board),
+        (board) => isWorkerApplyBoard(board) && usable.has(board),
       );
       const claimReady = () =>
         claimUserApplyItems(userId, lim, db, {
@@ -275,6 +351,18 @@ export async function claimFleetJobs(
     ((userId: string, listingId: string) => defaultLoadResumeHtml(userId, listingId, db));
   const releaseMissingResumeTask =
     deps.releaseMissingResumeTask ?? ((taskId: string) => releaseTaskForMissingResume(taskId, db));
+  const releaseNoSessionTask =
+    deps.releaseNoSessionTask ??
+    (deps.readAssignedUserIds !== undefined
+      ? async () => {}
+      : (taskId: string) => releaseLeasedTask(taskId, "no_session", 30, db));
+  const readUsableBoards =
+    deps.readUsableBoards ?? ((userId: string) => boardsWithUsableSession(userId, db));
+  const releaseStaleLeases =
+    deps.releaseStaleLeases ??
+    (deps.readAssignedUserIds !== undefined
+      ? async () => {}
+      : (userId: string) => releaseStaleFleetLeases(userId, db));
   const isolatedTestDeps = deps.readAssignedUserIds !== undefined;
   const canExecute =
     deps.canExecute ??
@@ -340,6 +428,7 @@ export async function claimFleetJobs(
 
     // ۳) claimِ بالای آستانه — فقط به‌اندازه‌ی ظرفیتِ باقی‌مانده.
     const remaining = safeLimit - jobs.length;
+    await releaseStaleLeases(userId);
     const items = await claimItems(userId, remaining, minScore);
     await markTaskLeases(items.map((item) => item.taskId), nodeId);
 
@@ -351,7 +440,14 @@ export async function claimFleetJobs(
       if (!session && (await renewSession(userId, board))) {
         session = await loadSession(userId, board);
       }
-      if (!session) continue; // بدونِ نشست، کار اجراشدنی نیست — رد.
+      if (!session) {
+        // Defence in depth: the board looked usable at claim time but no session
+        // could be produced (the credential login failed). Hand the task BACK
+        // rather than leaving it leased — nothing reclaims a node lease except
+        // the stale sweep, and silently stranding work is how tasks got stuck.
+        await releaseNoSessionTask(item.taskId);
+        continue;
+      }
       // A board that sends the résumé already on the user's provider profile
       // (JobVision) has nothing to upload, so a missing tailored résumé must not
       // drop the job — releasing it here parked every JobVision task on a 30-minute
