@@ -24,7 +24,7 @@ const DEFAULT_SETTINGS: ResumeSettings = {
   gender: "unspecified",
   fullNameLatin: "",
   resumePhone: "",
-  resumeLang: "fa",
+  resumeLang: "auto",
   resumeTemplate: "classic",
   hideLocation: false,
   broadMatchingMode: false,
@@ -72,7 +72,11 @@ export function parseResumeSettings(
   const gender = ["male", "female", "unspecified"].includes(String(raw.gender))
     ? (raw.gender as ResumeSettings["gender"])
     : "unspecified";
-  const resumeLang = raw.resumeLang === "en" ? "en" : "fa";
+  // "en"/"fa" are explicit pins; anything else — including the old unset state —
+  // is "auto": English by default, Persian only if the AI decides the whole résumé
+  // should be. The old default was Persian.
+  const resumeLang: ResumeSettings["resumeLang"] =
+    raw.resumeLang === "en" || raw.resumeLang === "fa" ? raw.resumeLang : "auto";
   const resumeTemplate = TEMPLATE_IDS.has(String(raw.resumeTemplate))
     ? (raw.resumeTemplate as ResumeSettings["resumeTemplate"])
     : "classic";

@@ -21,7 +21,7 @@ import "server-only";
  *
  * همه‌ی وابستگی‌ها تزریق‌پذیرند تا بدونِ DB/شبکه/رمزِ واقعی تست شوند.
  */
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { db as defaultDb } from "@/db";
 import { prepareNextTailoredResumeForQueue } from "@/lib/resume/queue-prep";
@@ -182,6 +182,8 @@ export async function defaultLoadResumeHtml(
         eq(resumes.listingId, listingId),
         eq(resumes.isBase, false),
       ),
+      // Newest: an already-sent résumé is kept as its own row when regenerated.
+      orderBy: desc(resumes.updatedAt),
       columns: { content: true },
     });
     if (row?.content) return row.content;

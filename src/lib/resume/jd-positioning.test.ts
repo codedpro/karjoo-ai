@@ -149,12 +149,30 @@ describe("JD-shaped positioning helpers", () => {
       highlights: [],
     };
 
-    expect(alignHeadlineToJobTitle(tailored, "SEO Specialist", true).headline).toBe(
+    expect(alignHeadlineToJobTitle(tailored, "SEO Specialist", true, "en").headline).toBe(
       "SEO Specialist",
     );
-    expect(alignHeadlineToJobTitle(tailored, "SEO Specialist", false).headline).toBe(
+    expect(alignHeadlineToJobTitle(tailored, "SEO Specialist", false, "en").headline).toBe(
       "Full-stack Engineer & Growth Systems Builder",
     );
+  });
+
+  it("never pastes an ad title in the other language over the résumé's headline", () => {
+    // Regression: a Persian ad title was copied verbatim onto an English résumé,
+    // putting a Persian headline over English content.
+    const tailored = {
+      headline: "Customer Club Deployment Specialist",
+      summary: "…",
+      skills: [],
+      experience: [],
+      highlights: [],
+    };
+    const persianAd = "کارشناس استقرار و راه‌اندازی باشگاه مشتریان";
+    expect(alignHeadlineToJobTitle(tailored, persianAd, true, "en").headline).toBe(
+      "Customer Club Deployment Specialist",
+    );
+    // …and the ad's own title IS used when it matches the résumé's language.
+    expect(alignHeadlineToJobTitle(tailored, persianAd, true, "fa").headline).toBe(persianAd);
   });
 
   it("scrubs target-company and JD-tailoring leakage from CV content", () => {

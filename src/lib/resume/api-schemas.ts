@@ -115,7 +115,11 @@ export const resumeSettingsSaveSchema = z
     gender: z.enum(["male", "female", "unspecified"]),
     fullNameLatin: z.string().trim().max(200),
     resumePhone: z.string().trim().max(40),
-    resumeLang: z.enum(["fa", "en"]),
+    /**
+     * "auto" (default): English unless the AI decides the whole résumé should be
+     * Persian. "en" / "fa" pin it. Never mixed either way — see language-guard.ts.
+     */
+    resumeLang: z.enum(["auto", "fa", "en"]),
     resumeTemplate: z.enum(["classic", "modern", "compact", "signature"]),
     hideLocation: z.boolean(),
     broadMatchingMode: z.boolean(),

@@ -394,6 +394,9 @@ export async function recordResult(
         eq(resumes.isBase, false),
       ),
     )
+    // The newest version is the one this submit sent. Older rows for the same
+    // job are archives of earlier applications and must not be re-attributed.
+    .orderBy(desc(resumes.updatedAt))
     .limit(1);
 
   const now = new Date();

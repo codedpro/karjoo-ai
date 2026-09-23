@@ -6,10 +6,11 @@ import "server-only";
  * جایگزینِ انگیزه‌نامه برای jobinja: به‌جای یک نامه، یک رزومه‌ی هدف‌گیری‌شده تولید می‌شود که
  * در مسیرِ آپلودِ اپلای (#apply_choice_uploaded_cv) به هر آگهی فرستاده می‌شود.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db as defaultDb, type Database } from "@/db";
 import {
+  applications,
   candidateProfiles,
   jobListings,
   resumes,
@@ -42,6 +43,12 @@ import {
   tailoredPlainText,
 } from "@/lib/resume/repair";
 import { preferLanguage } from "@/lib/resume/script-match";
+import {
+  buildLanguageRepairInstruction,
+  findLanguageViolations,
+  isWrongLanguage,
+  stripLanguageViolations,
+} from "@/lib/resume/language-guard";
 import {
   pickTemplate,
   renderResumeTemplate,
@@ -204,9 +211,15 @@ function alignHeadlineToJobTitle(
   tailored: ResumeTailorOutput,
   jobTitle: string | null | undefined,
   manualMode: boolean,
+  lang: ResumeLang,
 ): ResumeTailorOutput {
   const title = cleanJobTitle(jobTitle);
   if (!manualMode || !title) return tailored;
+  // The ad's own title is used verbatim only when it is in the résumé's language.
+  // A Persian ad title pasted onto an English résumé is what put a Persian
+  // headline over English content; the model's headline is already that title,
+  // translated.
+  if (isWrongLanguage(title, lang)) return tailored;
   return { ...tailored, headline: trimText(title, 140) };
 }
 
@@ -863,7 +876,12 @@ export async function generateTailoredResume(
   // تماس/زبانِ قابلِ تنظیم: کاربر می‌تواند شماره‌ی دلخواه و زبانِ رزومه را در ترجیحات بگذارد.
   const phoneOverride =
     typeof prefs.resumePhone === "string" && prefs.resumePhone.trim() ? prefs.resumePhone.trim() : null;
-  const resumeLang: ResumeLang = prefs.resumeLang === "en" ? "en" : "fa";
+  // The résumé is written in ONE language. "en"/"fa" in preferences pin it;
+  // anything else is automatic: English by default, and the model may decide the
+  // whole résumé should be Persian — resolved from its answer after generation.
+  const langPin: ResumeLang | null =
+    prefs.resumeLang === "en" ? "en" : prefs.resumeLang === "fa" ? "fa" : null;
+  let resumeLang: ResumeLang = langPin ?? "en";
   const declaredSkills = Array.isArray(prefs.declaredSkills)
     ? (prefs.declaredSkills as unknown[]).filter((v): v is string => typeof v === "string")
     : [];
@@ -1088,7 +1106,11 @@ export async function generateTailoredResume(
     buildJobText(
       job,
       [
-        resumeLang === "en" ? "زبانِ رزومه: انگلیسی (English)" : "زبانِ رزومه: فارسی",
+        langPin === "en"
+          ? "زبانِ رزومه: انگلیسی (English)"
+          : langPin === "fa"
+            ? "زبانِ رزومه: فارسی"
+            : "زبانِ رزومه: خودکار — پیش‌فرض انگلیسی؛ فقط اگر آگهی رزومه‌ی فارسی می‌طلبد کلِ رزومه فارسی. زبان را در `language` بنویس.",
         declaredDomains.length
           ? [
               `کاربر اعلام کرده در این حوزه‌ها تجربه دارد: ${labelsForDomains(declaredDomains).join("، ")}.`,
@@ -1113,6 +1135,9 @@ export async function generateTailoredResume(
     ),
     deps.metering ?? {},
   );
+  // Automatic mode: the model has now made its one decision. Everything after this
+  // — repair passes, the headline, the final enforcement — follows it.
+  if (!langPin) resumeLang = tailored.language === "fa" ? "fa" : "en";
 
   {
     const missing = manualMode ? missingPinnedCompanies(tailored, selectedRoles) : [];
@@ -1184,11 +1209,36 @@ export async function generateTailoredResume(
 
   tailored = ensurePinnedExperience(tailored, selectedRoles, plannedPeriods);
   tailored = ensureVariableCompanyExperience(tailored, selectedRoles, selectedVariableCompanies);
-  tailored = alignHeadlineToJobTitle(tailored, job.title, manualMode);
+  tailored = alignHeadlineToJobTitle(tailored, job.title, manualMode, resumeLang);
   tailored = scrubTargetLeakage(tailored, job.company);
   tailored = scrubRestrictedTechnologyPlacement(tailored);
   tailored = fitForTwoToThreePages(tailored);
-  tailored = alignHeadlineToJobTitle(tailored, job.title, manualMode);
+  tailored = alignHeadlineToJobTitle(tailored, job.title, manualMode, resumeLang);
+
+  // One résumé, one language — ENFORCED, after every step that can add text
+  // (repair passes, pinned-company fillers, headline alignment). The prompt asks
+  // for it; the model mixed anyway. Wrong-language fields go back ONCE to be
+  // translated; whatever is still wrong after that is removed, not shipped.
+  {
+    const violations = findLanguageViolations(tailored, resumeLang);
+    if (violations.length > 0) {
+      const repaired = await repairTailoredResume(
+        userId,
+        tailored,
+        buildLanguageRepairInstruction(violations, resumeLang),
+        deps.metering ?? {},
+      );
+      if (findLanguageViolations(repaired, resumeLang).length < violations.length) {
+        tailored = repaired;
+      }
+    }
+    tailored = stripLanguageViolations(tailored, resumeLang, {
+      headline: cleanJobTitle(job.title),
+      titles: tailored.experience.map(
+        (role) => selectedRoles.find((real) => isSameCompanyName(real.company, role.company))?.title,
+      ),
+    });
+  }
 
   // نامِ لاتین برای رزومه‌ی انگلیسی: نامِ فارسی روی رزومه‌ی انگلیسی هم ناخواناست و هم
   // با بقیه‌ی سند نمی‌خواند. کاربر می‌تواند شکلِ لاتین را در ترجیحات بگذارد.
@@ -1260,9 +1310,20 @@ export async function generateTailoredResume(
 
   const existing = await conn.query.resumes.findFirst({
     where: and(eq(resumes.userId, userId), eq(resumes.listingId, listingId), eq(resumes.isBase, false)),
+    orderBy: desc(resumes.updatedAt),
   });
+  // A résumé an application points to is the ARCHIVE of what that employer
+  // received. Rewriting it in place would change "the résumé you sent" after
+  // the fact. So a regeneration for a job that was already applied to writes a
+  // NEW row; readers take the newest, and the application keeps its own.
+  const archived = existing
+    ? await conn.query.applications.findFirst({
+        where: eq(applications.resumeId, existing.id),
+        columns: { id: true },
+      })
+    : undefined;
   let id: string;
-  if (existing) {
+  if (existing && !archived) {
     await conn
       .update(resumes)
       .set({ content: html, title, profileId: profile.id, updatedAt: sql`now()` })

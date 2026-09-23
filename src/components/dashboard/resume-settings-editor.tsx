@@ -110,11 +110,12 @@ export function ResumeSettingsEditor({
             <Field label="زبان رزومه">
               <select
                 value={settings.resumeLang}
-                onChange={(event) => patch("resumeLang", event.target.value as "fa" | "en")}
+                onChange={(event) => patch("resumeLang", event.target.value as ResumeSettings["resumeLang"])}
                 className={controlClass}
               >
-                <option value="fa">فارسی</option>
-                <option value="en">English</option>
+                <option value="auto">خودکار — انگلیسی، مگر آگهی رزومه‌ی فارسی بخواهد</option>
+                <option value="en">همیشه انگلیسی</option>
+                <option value="fa">همیشه فارسی</option>
               </select>
             </Field>
             <Field label="قالب رزومه">

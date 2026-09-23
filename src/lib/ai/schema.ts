@@ -61,6 +61,12 @@ export type ScoreAndDraftOutput = z.infer<typeof scoreAndDraftSchema>;
  * بازنویسیِ همان واقعیت‌های کاربر. عنوان‌ها انگلیسی/فارسی هرچه در داده‌ی کاربر بود.
  */
 export const resumeTailorSchema = z.object({
+  /**
+   * The ONE language the whole résumé is written in. Only meaningful when the
+   * user left the language on automatic: the model decides once (English unless
+   * the résumé should clearly be Persian) and every field then follows it.
+   */
+  language: z.enum(["en", "fa"]).optional(),
   /** عنوانِ حرفه‌ایِ هدف‌گیری‌شده برای این نقش (مثلِ عنوانِ آگهی، منطبق با تجربه‌ی کاربر). */
   headline: z.string().min(1).max(160),
   /** خلاصه‌ی حرفه‌ایِ ۴ جمله‌ای، بازنویسی‌شده برای این آگهی. */
