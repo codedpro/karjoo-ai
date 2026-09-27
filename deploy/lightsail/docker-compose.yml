@@ -5,19 +5,31 @@
 # (.github/workflows/deploy-lightsail.yml) ships IMAGES only; a change to this
 # file or edge/ is copied over by hand (deploy/lightsail/README.md).
 #
-#   Cloudflare tunnel "karjoo-lightsail" ─► edge :3000 (alias "app") ─► app_blue | app_green
-#   app ─► onexai:8081 ─► 1xai-api:8081   (/v1 gateway + HMAC-signed /svc wallet API)
+#   Cloudflare tunnel "karjoo-lightsail" ─► edge :3000 (alias "app") ─► web (karjoo-app)
+#   web ─► onexai:8081 ─► 1xai-api:8081   (/v1 gateway + HMAC-signed /svc wallet API)
 #   host cron ─► 127.0.0.1:3030 (edge) ─► /api/internal/top-up every 10 min
 #
 # Nothing here depends on another machine. Blog content comes from ITMaster via
 # https://itmaster-pull.code-nest.dev (WAF: Lightsail IPs, /v1/publish/ only).
+#
+# 1xai owns this box. Every service here runs in sideprojects.slice (systemd:
+# one CPU core and 3.5 GB RAM for ALL side projects together, lowest CPU
+# weight) and is first in line for the OOM killer, so karjoo can never starve
+# 1xai. Deploys are a plain recreate (a few seconds of 502s are fine here);
+# zero-downtime blue/green is reserved for 1xai.
 # =============================================================================
 name: karjoo
+
+x-side: &side
+  cgroup_parent: sideprojects.slice
+  oom_score_adj: 500
 
 services:
   # Postgres 16 on Debian — the same image family as the old host, so text
   # collations (and every index built on them) restore identically.
   db:
+    <<: *side
+    oom_score_adj: 300
     image: postgres:16
     container_name: karjoo-db
     restart: always
@@ -35,28 +47,33 @@ services:
     networks: [karjoo]
     deploy:
       resources:
-        limits: { cpus: "0.5", memory: 1G }
+        limits: { cpus: "0.5", memory: 768M }
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
-  # Drizzle migrations (src/db/migrate.ts) from the NEW image, before a slot
-  # starts. Not part of `up`: deploy/activate.sh runs it.
+  # Drizzle migrations (src/db/migrate.ts) from the NEW image, before web is
+  # recreated. Not part of `up`: deploy/activate.sh runs it.
   migrate:
+    <<: *side
     image: karjoo:latest
     profiles: ["migrate"]
     env_file: [.env]
     command: ["npm", "run", "db:migrate"]
     networks: [karjoo]
     restart: "no"
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512M }
     logging:
       driver: json-file
       options: { max-size: "5m", max-file: "2" }
 
-  app_blue: &app
-    image: karjoo:blue
-    container_name: karjoo-app-blue
-    restart: unless-stopped
+  web:
+    <<: *side
+    image: karjoo:latest
+    container_name: karjoo-app
+    restart: always
     env_file: [.env]
     volumes:
       - uploads:/app/uploads
@@ -74,19 +91,16 @@ services:
       start_period: 30s
     deploy:
       resources:
-        limits: { cpus: "1", memory: 1536M }
+        limits: { cpus: "1", memory: 1280M }
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }
 
-  app_green:
-    <<: *app
-    image: karjoo:green
-    container_name: karjoo-app-green
 
   # What the tunnel reaches as http://app:3000; also 127.0.0.1:3030 on the host
   # for the discovery cron — see edge/default.conf.
   edge:
+    <<: *side
     image: nginx:1.29-alpine
     container_name: karjoo-edge
     restart: always
@@ -106,6 +120,7 @@ services:
   # The one door into 1xai: TCP :8081 → 1xai-api:8081, nothing else. Only this
   # container joins 1xai's network, so the app never sees 1xai's database.
   onexai:
+    <<: *side
     image: alpine/socat:1.8.0.3
     container_name: karjoo-onexai
     restart: always
@@ -123,6 +138,7 @@ services:
   # Tunnel "karjoo-lightsail" in the CodeNest Cloudflare account (the 1xai.ir
   # zone lives there); remotely managed, origin http://app:3000.
   cloudflared:
+    <<: *side
     image: cloudflare/cloudflared:latest
     container_name: karjoo-cloudflared
     restart: always

@@ -11,12 +11,11 @@ Production runs on the Lightsail box `3.212.80.123`, which it shares with 1xai a
 | `docker-compose.yml` | copy of `deploy/lightsail/docker-compose.yml` |
 | `.env` | secrets (0600, never in git): the app's variables plus `POSTGRES_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN` and `OPS_TELEGRAM_*` |
 | `edge/default.conf` | copy of `deploy/lightsail/edge/default.conf` |
-| `edge/upstream.inc` | names the live slot; written by `activate.sh` |
 | `deploy/` | copies of `activate.sh`, `ci-deploy.sh` and `backup-telegram.sh`; `ci-deploy.log` is kept here |
 | `ops/discovery-cron.sh` | copy of `scripts/discovery-cron.sh` |
 
 ```
-tunnel karjoo-lightsail ─► edge :3000 (alias "app") ─► app_blue | app_green
+tunnel karjoo-lightsail ─► edge :3000 (alias "app") ─► web
 host cron ─► 127.0.0.1:3030 (edge) ─► /api/internal/top-up, every 10 min
 app ─► onexai:8081 ─► 1xai-api:8081   (/v1 gateway and the HMAC-signed /svc wallet API)
 ```
@@ -31,27 +30,35 @@ Volumes:
 - `uploads`: resume files, mounted at `/app/uploads`
 - `catalogs`: the `.karjoo-runtime/catalogs` disk cache
 
+## Sharing the box with 1xai
+
+1xai owns this box. Every container of this project runs in `sideprojects.slice` (`/etc/systemd/system/sideprojects.slice`), together with the other side projects:
+
+- **CPU:** one core for all side projects together (`CPUQuota=100%`), and a fifth of 1xai's CPU weight when the two compete.
+- **Memory:** 3.5 GB for all side projects together (`MemoryMax`, soft limit 3 GB).
+- **Out-of-memory:** these containers are killed first (`oom_score_adj` 300–500), so a runaway can't take down 1xai or the box.
+
+Docker and containerd themselves run at a lower CPU weight, so an image pull yields to running containers.
+
+Deploys are deliberately plain: the app restarts, so there are a few seconds of 502s. Zero-downtime blue/green is 1xai's alone.
+
 ## Deploys
 
-A push to `main` runs `.github/workflows/deploy-lightsail.yml`. Docs and `deploy/` changes are skipped. The workflow does this:
+A push to `main` runs `.github/workflows/deploy-lightsail.yml`. The image is built on GitHub, never on this box. GitHub then SSHes to the box with a key that can only run `deploy/ci-deploy.sh`.
 
-1. GitHub builds the `Dockerfile` into `ghcr.io/codedpro/karjoo:<sha>`. The build includes the browser-extension zip, created from `extension/`.
-2. The deploy job SSHes to the box with a key whose only permitted command is `deploy/ci-deploy.sh`.
-3. `activate.sh` then:
-   1. runs `npm run db:migrate` from the new image
-   2. starts the new image in the idle slot
-   3. waits until `/api/extension/version` answers
-   4. switches the edge to the new slot
-   5. checks `https://karjoo.1xai.ir` and switches back if the check fails
-   6. drains the old slot and stops it
+`ci-deploy.sh` is polite:
 
-Any failure is reported on Telegram.
+1. It runs at the lowest priority.
+2. It waits for any other side-project deploy, and for 1xai's own deploy lock, then holds that lock while it pulls and restarts, so it never overlaps a 1xai deploy.
+3. It tags the running build `:previous`, pulls the new one as `:latest`, and hands over to `activate.sh`.
 
-**Rolling back:** run `ssh lightsail ~/karjoo/deploy/activate.sh --rollback`. This does not undo migrations.
+`activate.sh` runs `npm run db:migrate` from the new image; if that fails, nothing changes. It then recreates `web`, waits for `/api/extension/version`, and runs `refresh-content.mjs`. GitHub builds can't reach ITMaster, so `/blog` and the other ITMaster-fed pages are refreshed after the restart.
 
-**Changing compose or edge files:** edit the file here and merge it. Then copy it into `~/karjoo` and check it with `docker compose config -q`. Apply only the service you changed, with `docker compose up -d --no-deps <svc>`. Never run a bare `up -d`: it would start both slots.
+If the new build is unhealthy, `activate.sh` recreates the app from `:previous` and alerts on Telegram.
 
-**Remote fleet workers** (`scripts/deploy-worker.sh`) run on Iranian nodes and reach the control plane at `https://karjoo.1xai.ir`. They are not deployed from this box.
+**Roll back:** `ssh lightsail ~/karjoo/deploy/activate.sh --rollback`. This swaps `:latest` and `:previous`. It doesn't undo a schema change.
+
+**Changing compose, edge or cron files:** CI doesn't copy these. Edit the file here and merge it. Then copy it into `~/karjoo` and check it with `docker compose config -q`. Apply it with `docker compose up -d --no-deps <svc>`.
 
 ## Backups
 

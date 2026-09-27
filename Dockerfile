@@ -36,7 +36,8 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     DATABASE_URL=postgres://build:build@127.0.0.1:9/build
-RUN npm run build
+# node_modules leaves this stage: the runner takes it from `deps` as its own layer.
+RUN npm run build && rm -rf node_modules
 
 # ---- runner
 FROM base AS runner
@@ -44,6 +45,9 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     CHROMIUM_PATH=/usr/bin/chromium \
     PORT=3000
+# Two layers on purpose: node_modules (~1 GB) only changes with package-lock.json,
+# so a normal deploy pulls just the app layer onto the shared Lightsail box.
+COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app ./
 RUN mkdir -p uploads .karjoo-runtime/catalogs && chown -R node:node uploads .karjoo-runtime
 USER node
