@@ -10,5 +10,10 @@ export const POST = createWebhookRoute({
   revalidate: (a) => {
     revalidatePath(`/blog/${a.slug}`);
     revalidatePath("/blog");
+    // Engine-fed metadata routes (hourly ISR otherwise): a publish shows up at once,
+    // and deploy/lightsail/refresh-content.mjs can refresh a new slot through here.
+    revalidatePath("/sitemap.xml");
+    revalidatePath("/robots.txt");
+    revalidatePath("/llms.txt");
   },
 });

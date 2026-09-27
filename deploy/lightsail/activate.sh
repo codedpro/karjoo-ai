@@ -9,8 +9,9 @@
 # 1. migrate — Drizzle migrations from the new image against the live database.
 #    If they fail, nothing else happens: the live slot keeps serving. (A
 #    migration that did apply is NOT undone by a later failure or a rollback.)
-# 2. The new image starts in the IDLE slot (app_blue / app_green) and is
-#    checked directly on /api/extension/version.
+# 2. The new image starts in the IDLE slot (app_blue / app_green), is checked
+#    directly on /api/extension/version, and its ITMaster-fed pages (/blog,
+#    sitemap, robots, llms.txt) are refreshed (refresh-content.mjs).
 # 3. The edge — what the tunnel reaches as http://app:3000 — is pointed at it:
 #    edge/upstream.inc is replaced and nginx reloads gracefully, so in-flight
 #    requests finish on the old slot and new ones reach the new.
@@ -107,6 +108,12 @@ activate() { # $1 = deploy | rollback
         say "slot $new never became healthy — ${live:-nothing} still live, users saw nothing"
         notify "⚠️ karjoo $mode: the new app never became healthy; the previous one is still serving (no downtime). Needs a look."
         return 1
+    fi
+    # ITMaster-fed pages were prerendered on GitHub without the engine: refresh
+    # them in the new slot before it takes traffic (never blocks the deploy).
+    if ! sudo docker exec "karjoo-app-$new" node deploy/lightsail/refresh-content.mjs 2>&1 | tail -2; then
+        say "WARN: ITMaster content refresh failed — /blog may be empty until the engine's next push"
+        notify "⚠️ karjoo deploy: ITMaster content refresh failed on the new slot; /blog may list no articles until the next publish."
     fi
     set_upstream "karjoo-app-$new"
     if [ -z "$live" ]; then
