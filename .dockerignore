@@ -6,3 +6,15 @@
 .karjoo-runtime
 node_modules
 extension/node_modules
+extension/dist
+worker/node_modules
+worker/dist
+.env
+.env.*
+!.env.example
+uploads
+logs
+backups
+karjoo-extension.zip
+public/karjoo-extension.zip
+tsconfig.tsbuildinfo

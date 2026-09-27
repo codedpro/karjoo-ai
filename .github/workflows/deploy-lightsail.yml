@@ -1,0 +1,85 @@
+# Build karjoo on GitHub and ship it to AWS Lightsail with zero downtime.
+#
+# build   the production image (Dockerfile) → ghcr.io/codedpro/karjoo:<sha>.
+#         Layers are cached in the GitHub Actions cache; Lightsail never
+#         compiles anything, it only pulls.
+# deploy  ssh to Lightsail with a key that can only run
+#         ~/karjoo/deploy/ci-deploy.sh (migrations, blue/green switch, Telegram
+#         alert on failure). The job's GITHUB_TOKEN (packages:read) goes over
+#         stdin for the pull and expires with the job.
+#
+# Secrets: LIGHTSAIL_SSH_KEY      private half of the forced-command key
+#          LIGHTSAIL_KNOWN_HOSTS  pinned host key line for 3.212.80.123
+# Roll back: `ssh lightsail ~/karjoo/deploy/activate.sh --rollback`, or re-run
+# the deploy job of an older run.
+name: deploy-lightsail
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'deploy/**'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-lightsail
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  LIGHTSAIL_HOST: ubuntu@3.212.80.123
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          provenance: false
+          tags: ghcr.io/codedpro/karjoo:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          build-args: NEXT_PUBLIC_SITE_URL=https://karjoo.1xai.ir
+          cache-from: type=gha,scope=karjoo
+          cache-to: type=gha,scope=karjoo,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read   # the token handed to Lightsail can only READ images
+    steps:
+      - name: Deploy on Lightsail
+        env:
+          SSH_KEY: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.LIGHTSAIL_KNOWN_HOSTS }}
+          SHA: ${{ github.sha }}
+          REG_USER: ${{ github.actor }}
+          REG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n%s\n' "$REG_USER" "$REG_TOKEN" \
+            | ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+                  -o ServerAliveInterval=15 "$LIGHTSAIL_HOST" "deploy $SHA"

@@ -1,0 +1,151 @@
+# =============================================================================
+# Karjoo — production on AWS Lightsail (3.212.80.123, shared with 1xai + xray)
+# =============================================================================
+# Runtime copy: ~/karjoo/docker-compose.yml, next to .env and edge/. CI
+# (.github/workflows/deploy-lightsail.yml) ships IMAGES only; a change to this
+# file or edge/ is copied over by hand (deploy/lightsail/README.md).
+#
+#   Cloudflare tunnel "karjoo-lightsail" ─► edge :3000 (alias "app") ─► app_blue | app_green
+#   app ─► onexai:8081 ─► 1xai-api:8081   (/v1 gateway + HMAC-signed /svc wallet API)
+#   host cron ─► 127.0.0.1:3030 (edge) ─► /api/internal/top-up every 10 min
+#
+# Nothing here depends on another machine. Blog content comes from ITMaster via
+# https://itmaster-pull.code-nest.dev (WAF: Lightsail IPs, /v1/publish/ only).
+# =============================================================================
+name: karjoo
+
+services:
+  # Postgres 16 on Debian — the same image family as the old host, so text
+  # collations (and every index built on them) restore identically.
+  db:
+    image: postgres:16
+    container_name: karjoo-db
+    restart: always
+    environment:
+      POSTGRES_DB: karjoo
+      POSTGRES_USER: karjoo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U karjoo -d karjoo"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [karjoo]
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 1G }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # Drizzle migrations (src/db/migrate.ts) from the NEW image, before a slot
+  # starts. Not part of `up`: deploy/activate.sh runs it.
+  migrate:
+    image: karjoo:latest
+    profiles: ["migrate"]
+    env_file: [.env]
+    command: ["npm", "run", "db:migrate"]
+    networks: [karjoo]
+    restart: "no"
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+
+  app_blue: &app
+    image: karjoo:blue
+    container_name: karjoo-app-blue
+    restart: unless-stopped
+    env_file: [.env]
+    volumes:
+      - uploads:/app/uploads
+      - catalogs:/app/.karjoo-runtime/catalogs
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [karjoo]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/extension/version').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 1536M }
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  app_green:
+    <<: *app
+    image: karjoo:green
+    container_name: karjoo-app-green
+
+  # What the tunnel reaches as http://app:3000; also 127.0.0.1:3030 on the host
+  # for the discovery cron — see edge/default.conf.
+  edge:
+    image: nginx:1.29-alpine
+    container_name: karjoo-edge
+    restart: always
+    ports: ["127.0.0.1:3030:3000"]
+    volumes:
+      - ./edge:/etc/nginx/conf.d:ro
+    networks:
+      karjoo:
+        aliases: [app]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 64M }
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+
+  # The one door into 1xai: TCP :8081 → 1xai-api:8081, nothing else. Only this
+  # container joins 1xai's network, so the app never sees 1xai's database.
+  onexai:
+    image: alpine/socat:1.8.0.3
+    container_name: karjoo-onexai
+    restart: always
+    command: ["TCP-LISTEN:8081,fork,reuseaddr", "TCP:1xai-api:8081"]
+    networks:
+      karjoo:
+      onexai:
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 32M }
+    logging:
+      driver: json-file
+      options: { max-size: "2m", max-file: "2" }
+
+  # Tunnel "karjoo-lightsail" in the CodeNest Cloudflare account (the 1xai.ir
+  # zone lives there); remotely managed, origin http://app:3000.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: karjoo-cloudflared
+    restart: always
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on: [edge]
+    networks: [karjoo]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits: { cpus: "0.25", memory: 128M }
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "2" }
+
+volumes:
+  db_data:
+  uploads:
+  catalogs:
+
+networks:
+  karjoo:
+    name: karjoo-net
+  onexai:
+    name: 1xai_internal
+    external: true

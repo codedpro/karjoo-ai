@@ -12,19 +12,22 @@
 #
 set -uo pipefail
 
-APP_DIR="/home/website-dev/karjoo-ai"
+# Paths default to the old London host; the Lightsail cron sets KARJOO_HOME and
+# KARJOO_ENV_FILE (see deploy/lightsail/README.md).
+APP_DIR="${KARJOO_HOME:-/home/website-dev/karjoo-ai}"
+ENV_FILE="${KARJOO_ENV_FILE:-${APP_DIR}/.env.local}"
 LOG_DIR="${APP_DIR}/logs"
 LOG="${LOG_DIR}/discovery-cron.log"
 ENDPOINT="http://127.0.0.1:3030/api/internal/top-up"
 
 mkdir -p "${LOG_DIR}"
 
-SECRET="$(sed -n 's/^INTERNAL_API_SECRET=//p' "${APP_DIR}/.env.local" | head -1)"
+SECRET="$(sed -n 's/^INTERNAL_API_SECRET=//p' "${ENV_FILE}" | head -1)"
 # strip surrounding quotes (double then single) via bash parameter expansion — no tr quoting.
 SECRET="${SECRET%\"}"; SECRET="${SECRET#\"}"
 SECRET="${SECRET%\'}"; SECRET="${SECRET#\'}"
 if [ -z "${SECRET}" ]; then
-  echo "$(date -Is) ERROR: INTERNAL_API_SECRET missing in .env.local" >> "${LOG}"
+  echo "$(date -Is) ERROR: INTERNAL_API_SECRET missing in ${ENV_FILE}" >> "${LOG}"
   exit 1
 fi
 
